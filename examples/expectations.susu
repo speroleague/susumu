@@ -1,0 +1,1 @@
+expectation e_project_explainable target=project subject=- status=proposed source="human:product" title="Project behavior should be explainable" detail="The project should expose enough evidence for engineers, AI agents, and business stakeholders to understand its workflows and expectations.";

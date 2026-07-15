@@ -2,9 +2,9 @@
 
 Susumu makes an existing software project explainable.
 
-The first release is a local-first Rust scanner and terminal workbench for engineers. Point it at a repository and it builds a deterministic evidence model of source files, symbols, dependencies, call flows, ambiguity, and maintainability findings. The result can be saved as a portable `.susu` artifact and reopened without the source tree.
+It sits between source control, specifications, reviews, and business decisions. Point it at a repository and it builds a deterministic evidence model of source files, symbols, dependencies, workflows, call flows, ambiguity, expectations, verifications, decisions, and work records. The result can be saved as a portable `.susu` artifact and reopened without the source tree.
 
-This is the first surface of a larger product. The long-term goal is a shared project memory for engineers, AI agents, business stakeholders, and reviewers: what the system is, what it does, what is expected of it, what work addressed those expectations, and what people have decided or questioned.
+The first release is a local-first Rust scanner, terminal workbench, review packet generator, and standalone web review surface. The long-term goal is a shared project memory for engineers, AI agents, business stakeholders, and reviewers: what the system is, what it does, what is expected of it, what work addressed those expectations, and what people have decided or questioned.
 
 ## Principles
 
@@ -37,9 +37,43 @@ This is the first surface of a larger product. The long-term goal is a shared pr
 
 This first model is a call-flow model, not yet full variable-level data lineage. That distinction matters: Susumu should grow its evidence carefully rather than overstate what static analysis can prove.
 
-## Run it
+## Quick start
 
 Rust 1.88 or newer is required.
+
+Generate the demo artifact:
+
+```powershell
+cargo run -- .\examples\demo-project --expectations .\examples\demo-project\expectations.susu --verifications .\examples\demo-project\verifications.susu --decisions .\examples\demo-project\decisions.susu --work .\examples\demo-project\work.susu --output .\target\susumu-demo.susu --headless
+```
+
+Open the engineering TUI:
+
+```powershell
+cargo run -- .\target\susumu-demo.susu
+```
+
+Create a review packet and open the local web portal:
+
+```powershell
+cargo run -- review create .\target\susumu-demo.susu --output .\target\susumu-demo.review.susu
+cargo run -- review serve .\target\susumu-demo.review.susu
+```
+
+Or export the same review as a standalone HTML file:
+
+```powershell
+cargo run -- review export-html .\target\susumu-demo.review.susu --output .\target\susumu-demo.html
+```
+
+Scan your own project:
+
+```powershell
+cargo run -- C:\path\to\project --output project.susu --headless
+cargo run -- project.susu
+```
+
+## Command reference
 
 ```powershell
 cargo run -- C:\path\to\project
@@ -241,11 +275,21 @@ work wk_checkout_agent target=workflow subject=w_8feec23b6a19d218 expectation=e_
 
 Every statement ends in `;`, so insignificant whitespace and newlines can be removed. Readable and minified artifacts use the same grammar and parser.
 
-See [the artifact contract](docs/artifact.md), [the product architecture](docs/vision.md), and [the Susumu vernacular](docs/vernacular.md) for the boundary between today’s scanner and the broader vision.
+See [the artifact contract](docs/artifact.md), [the product architecture](docs/vision.md), and [the Susumu vernacular](docs/vernacular.md) for the boundary between today's scanner and the broader vision.
+
+## Roadmap
+
+- Deepen deterministic adapters for Rust, PHP, Python, JavaScript, TypeScript, and TSX.
+- Add more workflow types: jobs, queues, events, tests, database boundaries, policies, and deployment checks.
+- Expand `.susu` with threaded reviews, comments, ownership, source revisions, and migration support.
+- Improve dirty/stale review detection so changed code automatically flags affected expectations, verifications, and decisions.
+- Build the stakeholder web experience as a polished workflow and decision portal on the same review packet model.
+- Add CI and pull-request workflows for `check --json`, `diff --json`, `review create`, `review diff`, and Git-connected work records.
+- Keep AI optional and bring-your-own-key. Generated summaries or draft records should be labeled, cited, and reviewable before becoming trusted project memory.
 
 ## Status
 
-This is an intentionally narrow first vertical slice. It proves the scanner → evidence model → `.susu` artifact → consumer loop. Framework-aware routes, data lineage, expectations, agent work records, review threads, and the stakeholder web application are next-layer capabilities, not claims made by version 0.1.
+This is an early vertical slice. It proves the scanner -> evidence model -> `.susu` artifact -> TUI/web/review consumer loop. It is already useful for exploring code flow and project memory, but it should be treated as pre-1.0 software while the artifact model, adapters, review workflow, and web experience mature.
 
 ## License
 

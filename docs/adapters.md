@@ -17,7 +17,7 @@ The initial adapters are:
 | Adapter | Baseline evidence | Initial HTTP conventions |
 | --- | --- | --- |
 | Rust | functions, methods, `use`, calls | Axum-compatible routes, Actix Web attributes |
-| PHP | functions, methods, namespace uses/includes, calls | Laravel `Route::…`, Symfony `#[Route]` |
+| PHP | functions, methods, namespace uses/includes, calls | Laravel `Route::...`, Symfony `#[Route]` |
 | Python | functions, imports, calls | FastAPI-style method decorators, Flask `route` |
 | JavaScript/TypeScript/TSX | functions, methods, imports, calls | Express-compatible `app`/`router` methods |
 

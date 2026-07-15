@@ -36,7 +36,7 @@ The Rust TUI is fast, local, keyboard-driven, source-specific, and comfortable i
 
 ### Stakeholder web experience
 
-The web application is a first-class product, not a browser skin for the TUI. A useful shorthand is “Swagger documentation for the entire system,” expanded into a modern workflow and decision portal.
+The web application is a first-class product, not a browser skin for the TUI. A useful shorthand is "Swagger documentation for the entire system," expanded into a modern workflow and decision portal.
 
 It should provide:
 

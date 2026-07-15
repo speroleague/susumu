@@ -6,12 +6,12 @@ Susumu should make project knowledge easier to trust by saying what kind of stat
 
 | Category | Meaning | Preferred voice |
 | --- | --- | --- |
-| Scanner-observed | Facts parsed or measured directly from source files. | “Observed route `POST /checkout`.” |
-| Susumu-derived | Deterministic analysis calculated from observed records. | “Workflow attention score includes 5 outgoing calls.” |
-| Human-authored | Intent, expectations, decisions, review notes, or business language entered by people. | “Checkout must reserve inventory before charging.” |
-| Imported | Records copied from external systems such as CI, issue trackers, policy tools, or requirement stores. | “CI run `123456` reported passed.” |
-| Verification-reported | A check result linked to an expectation. | “Verification `v_checkout` reported failed.” |
-| AI-suggested | Optional generated hypotheses, summaries, clusters, or drafts. | “AI draft suggests a missing expectation.” |
+| Scanner-observed | Facts parsed or measured directly from source files. | "Observed route `POST /checkout`." |
+| Susumu-derived | Deterministic analysis calculated from observed records. | "Workflow attention score includes 5 outgoing calls." |
+| Human-authored | Intent, expectations, decisions, review notes, or business language entered by people. | "Checkout must reserve inventory before charging." |
+| Imported | Records copied from external systems such as CI, issue trackers, policy tools, or requirement stores. | "CI run `123456` reported passed." |
+| Verification-reported | A check result linked to an expectation. | "Verification `v_checkout` reported failed." |
+| AI-suggested | Optional generated hypotheses, summaries, clusters, or drafts. | "AI draft suggests a missing expectation." |
 
 Every record should make provenance inspectable through a `source`, stable target id, or both.
 
@@ -19,10 +19,10 @@ Every record should make provenance inspectable through a `source`, stable targe
 
 Scanner-generated text should be factual, bounded, and unemotional.
 
-- Prefer “observed,” “resolved,” “unresolved,” “linked,” “not found,” “matched,” and “reported.”
-- Avoid “should,” “must,” “needs,” “bad,” “messy,” “broken,” “risky,” and “important” in scanner-generated findings.
-- Do not imply business priority from static evidence. Use “attention score” or “look here first,” not “business priority.”
-- Do not imply correctness from static evidence. Use “passed verification linked” rather than “requirement satisfied.”
+- Prefer "observed," "resolved," "unresolved," "linked," "not found," "matched," and "reported."
+- Avoid "should," "must," "needs," "bad," "messy," "broken," "risky," and "important" in scanner-generated findings.
+- Do not imply business priority from static evidence. Use "attention score" or "look here first," not "business priority."
+- Do not imply correctness from static evidence. Use "passed verification linked" rather than "requirement satisfied."
 - Do not imply intent from implementation. Code can show behavior; expectations show intent.
 - Preserve uncertainty as a first-class result. If a target is ambiguous or external, say so and keep the gap.
 
@@ -66,7 +66,7 @@ attention workflow=w_checkout source="susumu:derived" score=110 detail="critical
 
 ### `expectation`
 
-Expectations are authored or imported intent. Human and policy language may use “must,” “should,” and other normative words because the source is making a requirement claim, not the scanner.
+Expectations are authored or imported intent. Human and policy language may use "must," "should," and other normative words because the source is making a requirement claim, not the scanner.
 
 Good:
 
@@ -102,7 +102,7 @@ Avoid treating decisions as scanner evidence:
 Decision accepted, therefore implementation is correct.
 ```
 
-When a decision includes a `basis` fingerprint, Susumu may later emit a scanner-derived stale-review finding if the targeted evidence changes. That finding means “review the decision against new evidence,” not “the decision is wrong.”
+When a decision includes a `basis` fingerprint, Susumu may later emit a scanner-derived stale-review finding if the targeted evidence changes. That finding means "review the decision against new evidence," not "the decision is wrong."
 
 ### `work`
 

@@ -2,7 +2,7 @@
 name = "susumu"
 version = "0.1.0"
 edition = "2024"
-description = "A local-first code flow explorer"
+description = "Local-first project memory: scan code into portable workflow, expectation, verification, decision, and review artifacts."
 license = "MIT"
 repository = "https://github.com/susumu-lang/susumu"
 rust-version = "1.88"

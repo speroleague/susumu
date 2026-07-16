@@ -7174,6 +7174,25 @@ mod tests {
         assert_eq!(expectations[0].status, ExpectationStatus::Accepted);
         assert_eq!(expectations[0].source, "human:test");
         assert!(expectations[0].title.contains("Acme Checkout"));
+        assert!(
+            expectations[0]
+                .detail
+                .contains("authored expectations.susu sidecar")
+        );
+        assert_eq!(expectations[1].status, ExpectationStatus::Proposed);
+        assert!(expectations[1].title.contains("primary workflows"));
+        assert!(
+            expectations[1]
+                .detail
+                .contains("business or product workflows")
+        );
+        assert_eq!(expectations[2].status, ExpectationStatus::Proposed);
+        assert!(expectations[2].title.contains("verification evidence"));
+        assert!(
+            expectations[2]
+                .detail
+                .contains("tests, CI runs, manual reviews")
+        );
     }
 
     #[test]

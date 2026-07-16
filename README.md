@@ -4,7 +4,7 @@ Susumu makes an existing software project explainable.
 
 It sits between source control, specifications, reviews, and business decisions. Point it at a repository and it builds a deterministic evidence model of source files, symbols, dependencies, workflows, call flows, ambiguity, expectations, verifications, decisions, and work records.
 
-The first release is local-first: a Rust scanner, terminal workbench, review packet generator, Git connector, and standalone web review surface. The long-term goal is shared project memory for engineers, AI agents, business stakeholders, and reviewers: what the system is, what it does, what is expected of it, what work addressed those expectations, and what people have decided or questioned.
+The first release is local-first: a Rust scanner, terminal workbench, review packet generator, Git connector, and standalone web review surface. The core scan, check, review packet, and portal loop runs without AI keys. The long-term goal is shared project memory for engineers, AI agents, business stakeholders, and reviewers: what the system is, what it does, what is expected of it, what work addressed those expectations, and what people have decided or questioned.
 
 ## The daily loop
 

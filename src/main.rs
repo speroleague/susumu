@@ -7890,6 +7890,76 @@ mod tests {
     }
 
     #[test]
+    fn core_review_build_has_no_ai_dependency() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join("main.rs"), "fn main() {}\n").expect("write source");
+        fs::write(
+            temp.path().join("expectations.susu"),
+            "expectation e_ai_optional target=project subject=- status=accepted source=\"human:test\" title=\"AI stays optional\" detail=\"Core scan, check, review packet, and portal output should work without AI configuration.\";\n",
+        )
+        .expect("write expectations sidecar");
+
+        let artifact = temp.path().join("target").join("project.susu");
+        let packet = temp.path().join("target").join("project.review.susu");
+        let check = temp.path().join("target").join("project.check.json");
+        let html = temp.path().join("target").join("project.review.html");
+
+        build_review(&ReviewBuildArgs {
+            target: temp.path().to_path_buf(),
+            expectations: None,
+            verifications: None,
+            decisions: None,
+            work: None,
+            artifact_output: artifact.clone(),
+            output: packet.clone(),
+            check_json: Some(check.clone()),
+            html: Some(html.clone()),
+            strict: false,
+            fail_on_check: false,
+            json: false,
+            serve: false,
+            host: "127.0.0.1".to_owned(),
+            port: 0,
+        })
+        .expect("core review build should not require AI configuration");
+
+        let built = read_analysis_artifact(&artifact).expect("read built artifact");
+        assert!(
+            built
+                .expectations
+                .iter()
+                .any(|expectation| expectation.id == "e_ai_optional")
+        );
+        assert!(check.exists());
+
+        let packet = read_review_packet(&packet).expect("read review packet");
+        assert!(
+            packet
+                .artifact
+                .expectations
+                .iter()
+                .any(|expectation| expectation.id == "e_ai_optional")
+        );
+        assert!(
+            fs::read_to_string(&html)
+                .expect("read html portal")
+                .contains("AI stays optional")
+        );
+
+        let readme = include_str!("../README.md");
+        let vision = include_str!("../docs/vision.md");
+        let vernacular = include_str!("../docs/vernacular.md");
+        assert!(readme.contains("runs without AI keys"));
+        assert!(vision.contains("The core product does not require AI."));
+        assert!(vision.contains("Optional bring-your-own-key AI"));
+        assert!(vision.contains("labeled as generated"));
+        assert!(vision.contains("cite underlying evidence"));
+        assert!(vision.contains("human acceptance"));
+        assert!(vernacular.contains("source=\"ai:draft\""));
+        assert!(vernacular.contains("status=proposed"));
+    }
+
+    #[test]
     fn handoff_flags_expectations_and_work_without_verification() {
         let mut artifact = test_artifact();
         refresh_derived_analysis(&mut artifact);

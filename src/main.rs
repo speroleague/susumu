@@ -7746,6 +7746,19 @@ mod tests {
     #[test]
     fn review_packet_embeds_artifact_and_handoff_state() {
         let mut artifact = test_artifact();
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("src")).expect("create source dir");
+        fs::write(
+            temp.path().join("src").join("api.ts"),
+            "export function checkout() { return 'ok'; }\n",
+        )
+        .expect("write api source");
+        fs::write(
+            temp.path().join("src").join("routes.php"),
+            "<?php function php_checkout() { return 'ok'; }\n",
+        )
+        .expect("write php source");
+        artifact.root = temp.path().display().to_string();
         refresh_derived_analysis(&mut artifact);
         artifact.works.push(Work {
             id: "wk_checkout".to_owned(),
@@ -7772,6 +7785,14 @@ mod tests {
         assert_eq!(json["project"]["name"], "fixture");
         assert_eq!(json["artifact"]["project_name"], "fixture");
         assert_eq!(json["artifact"]["workflows"].as_array().unwrap().len(), 2);
+        let previews = json["source_previews"].as_array().expect("source previews");
+        assert!(previews.iter().any(|preview| {
+            preview["file_id"] == "f_api"
+                && preview["path"] == "src/api.ts"
+                && preview["lines"][0]["tokens"]
+                    .as_array()
+                    .is_some_and(|tokens| !tokens.is_empty())
+        }));
         assert_eq!(json["top_workflows"][0]["id"], "w_checkout");
         assert_eq!(
             json["expectations_without_verification"][0]["id"],

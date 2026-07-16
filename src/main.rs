@@ -30,6 +30,13 @@ use syntect::{
     parsing::{SyntaxReference, SyntaxSet},
 };
 
+mod cli_values;
+
+use cli_values::{
+    DecisionStatusArg, ExpectationStatusArg, ExpectationTargetArg, GitTargetDepth,
+    GitTargetDepthArg, VerificationStatusArg, WorkKindArg, WorkStatusArg,
+};
+
 #[derive(Debug, Parser)]
 #[command(
     name = "susumu",
@@ -1161,137 +1168,6 @@ struct GitRewindArgs {
     /// Emit machine-readable JSON.
     #[arg(long)]
     json: bool,
-}
-
-#[derive(Debug, Clone)]
-struct GitTargetDepthArg(GitTargetDepth);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GitTargetDepth {
-    Project,
-    File,
-    Workflow,
-}
-
-impl std::str::FromStr for GitTargetDepthArg {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "project" => Ok(Self(GitTargetDepth::Project)),
-            "file" => Ok(Self(GitTargetDepth::File)),
-            "workflow" => Ok(Self(GitTargetDepth::Workflow)),
-            _ => Err(format!("unknown git target depth: {value}")),
-        }
-    }
-}
-
-impl From<GitTargetDepthArg> for GitTargetDepth {
-    fn from(value: GitTargetDepthArg) -> Self {
-        value.0
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ExpectationTargetArg(ExpectationTarget);
-
-impl std::str::FromStr for ExpectationTargetArg {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        value.parse().map(Self)
-    }
-}
-
-impl From<ExpectationTargetArg> for ExpectationTarget {
-    fn from(value: ExpectationTargetArg) -> Self {
-        value.0
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ExpectationStatusArg(ExpectationStatus);
-
-impl std::str::FromStr for ExpectationStatusArg {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        value.parse().map(Self)
-    }
-}
-
-impl From<ExpectationStatusArg> for ExpectationStatus {
-    fn from(value: ExpectationStatusArg) -> Self {
-        value.0
-    }
-}
-
-#[derive(Debug, Clone)]
-struct VerificationStatusArg(VerificationStatus);
-
-impl std::str::FromStr for VerificationStatusArg {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        value.parse().map(Self)
-    }
-}
-
-impl From<VerificationStatusArg> for VerificationStatus {
-    fn from(value: VerificationStatusArg) -> Self {
-        value.0
-    }
-}
-
-#[derive(Debug, Clone)]
-struct DecisionStatusArg(DecisionStatus);
-
-impl std::str::FromStr for DecisionStatusArg {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        value.parse().map(Self)
-    }
-}
-
-impl From<DecisionStatusArg> for DecisionStatus {
-    fn from(value: DecisionStatusArg) -> Self {
-        value.0
-    }
-}
-
-#[derive(Debug, Clone)]
-struct WorkKindArg(WorkKind);
-
-impl std::str::FromStr for WorkKindArg {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        value.parse().map(Self)
-    }
-}
-
-impl From<WorkKindArg> for WorkKind {
-    fn from(value: WorkKindArg) -> Self {
-        value.0
-    }
-}
-
-#[derive(Debug, Clone)]
-struct WorkStatusArg(WorkStatus);
-
-impl std::str::FromStr for WorkStatusArg {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        value.parse().map(Self)
-    }
-}
-
-impl From<WorkStatusArg> for WorkStatus {
-    fn from(value: WorkStatusArg) -> Self {
-        value.0
-    }
 }
 
 fn main() -> Result<()> {

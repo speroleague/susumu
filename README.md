@@ -41,6 +41,26 @@ This first model is a call-flow model, not yet full variable-level data lineage.
 
 Rust 1.88 or newer is required.
 
+Start a project the easy Susumu way:
+
+```powershell
+cargo run -- init C:\path\to\project --name "My Project"
+cargo run -- review C:\path\to\project
+cargo run -- open C:\path\to\project\.susumu\review.susu
+```
+
+For the current repository, the daily loop is intentionally short:
+
+```powershell
+cargo run -- review
+cargo run -- status
+cargo run -- git --since main
+cargo run -- review
+cargo run -- open
+```
+
+By convention, the simple commands write generated project memory under `.susumu/`: `project.susu`, `review.susu`, `check.json`, `review.html`, and `work.susu`. Keep authored expectations in `expectations.susu`; let Susumu write the generated review files.
+
 Generate the demo artifact:
 
 ```powershell
@@ -76,6 +96,34 @@ cargo run -- project.susu
 ```
 
 ## Command reference
+
+Run the daily review workflow with convention-based outputs:
+
+```powershell
+cargo run -- review
+```
+
+This scans the current project, automatically loads `expectations.susu`, merges `.susumu/work.susu` when present, and writes `.susumu/project.susu`, `.susumu/review.susu`, `.susumu/check.json`, and `.susumu/review.html`.
+
+Open the generated portal:
+
+```powershell
+cargo run -- open
+```
+
+Check current status without writing review outputs:
+
+```powershell
+cargo run -- status
+```
+
+Connect recent Git commits to the latest Susumu artifact and export work records:
+
+```powershell
+cargo run -- git --since main
+```
+
+By default, `susumu git` reads `.susumu/project.susu`, inspects up to 25 commits, and writes `.susumu/work.susu`. Re-run `susumu review` afterward to include those work records in the review packet.
 
 ```powershell
 cargo run -- C:\path\to\project

@@ -86,11 +86,20 @@ enum Command {
     /// Produce a compact project handoff for humans or agents.
     Handoff(HandoffArgs),
 
-    /// Create point-in-time review packets.
+    /// Create the daily Susumu review outputs, or use advanced review subcommands.
     Review {
+        #[command(flatten)]
+        args: ReviewShortcutArgs,
+
         #[command(subcommand)]
-        command: ReviewCommand,
+        command: Option<ReviewCommand>,
     },
+
+    /// Open the latest Susumu review portal.
+    Open(OpenArgs),
+
+    /// Show the current Susumu project status.
+    Status(StatusArgs),
 
     /// Author expectation sidecar records.
     Expectation {
@@ -116,10 +125,13 @@ enum Command {
         command: WorkCommand,
     },
 
-    /// Import project memory from local Git history.
+    /// Connect local Git history to Susumu work, or use advanced Git subcommands.
     Git {
+        #[command(flatten)]
+        args: GitShortcutArgs,
+
         #[command(subcommand)]
-        command: GitCommand,
+        command: Option<GitCommand>,
     },
 }
 
@@ -252,6 +264,50 @@ enum ReviewCommand {
 
     /// Export a saved review packet as a standalone HTML portal.
     ExportHtml(ReviewExportHtmlArgs),
+}
+
+#[derive(Debug, Args)]
+#[allow(clippy::struct_excessive_bools)]
+struct ReviewShortcutArgs {
+    /// Directory to scan, or an existing .susu artifact to package.
+    #[arg(default_value = ".")]
+    target: PathBuf,
+
+    /// Directory for convention-based Susumu outputs.
+    #[arg(long, default_value = ".susumu", value_name = "DIR")]
+    output_dir: PathBuf,
+
+    /// Merge work records from a .susu artifact or work-only fragment.
+    #[arg(long, value_name = "FILE")]
+    work: Option<PathBuf>,
+
+    /// Fail the embedded check result on warnings as well as critical items.
+    #[arg(long)]
+    strict: bool,
+
+    /// Exit nonzero after writing outputs if the check result failed.
+    #[arg(long)]
+    fail_on_check: bool,
+
+    /// Skip writing the standalone HTML portal.
+    #[arg(long)]
+    no_html: bool,
+
+    /// Serve the built review packet as a local web portal after writing outputs.
+    #[arg(long)]
+    serve: bool,
+
+    /// Host interface to bind when --serve is used.
+    #[arg(long, default_value = "127.0.0.1")]
+    host: String,
+
+    /// Port to bind when --serve is used. Use 0 to ask the OS for an available port.
+    #[arg(long, default_value_t = 7878)]
+    port: u16,
+
+    /// Emit a machine-readable build summary.
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -419,6 +475,60 @@ struct ReviewExportHtmlArgs {
     /// HTML file to write.
     #[arg(short, long, value_name = "FILE")]
     output: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct OpenArgs {
+    /// Review packet to open.
+    #[arg(default_value = ".susumu/review.susu")]
+    packet: PathBuf,
+
+    /// Host interface to bind.
+    #[arg(long, default_value = "127.0.0.1")]
+    host: String,
+
+    /// Port to bind. Use 0 to ask the OS for an available port.
+    #[arg(long, default_value_t = 7878)]
+    port: u16,
+
+    /// Print the review summary instead of serving the portal.
+    #[arg(long)]
+    summary: bool,
+
+    /// Open the embedded artifact in the Susumu TUI instead of serving the portal.
+    #[arg(long)]
+    tui: bool,
+
+    /// Maximum items to print when --summary is used.
+    #[arg(long, default_value_t = 8)]
+    max_items: usize,
+
+    /// Emit the stored review packet JSON instead of serving the portal.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct StatusArgs {
+    /// Directory to scan, or an existing .susu artifact to check.
+    #[arg(default_value = ".")]
+    target: PathBuf,
+
+    /// Directory for convention-based Susumu outputs.
+    #[arg(long, default_value = ".susumu", value_name = "DIR")]
+    output_dir: PathBuf,
+
+    /// Fail on warnings as well as critical items.
+    #[arg(long)]
+    strict: bool,
+
+    /// Maximum review items to print.
+    #[arg(long, default_value_t = 10)]
+    max_items: usize,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -753,6 +863,53 @@ struct GitConnectArgs {
 }
 
 #[derive(Debug, Args)]
+struct GitShortcutArgs {
+    /// Git repository to inspect.
+    #[arg(long, default_value = ".")]
+    repo: PathBuf,
+
+    /// Current .susu artifact to connect against.
+    #[arg(long, default_value = ".susumu/project.susu")]
+    artifact: PathBuf,
+
+    /// Work sidecar to update with connected commits.
+    #[arg(short, long, default_value = ".susumu/work.susu")]
+    output: PathBuf,
+
+    /// Starting revision or ref, such as main or HEAD~10.
+    #[arg(long)]
+    since: Option<String>,
+
+    /// Ending revision or ref. Defaults to HEAD when --since is used.
+    #[arg(long)]
+    until: Option<String>,
+
+    /// Maximum number of commits to inspect.
+    #[arg(long, default_value_t = 25)]
+    limit: usize,
+
+    /// Maximum commit connections to print.
+    #[arg(long, default_value_t = 20)]
+    max_items: usize,
+
+    /// Do not write work records; only print the connections.
+    #[arg(long)]
+    no_export: bool,
+
+    /// Provenance label for exported work records.
+    #[arg(long, default_value = "import:git-connect")]
+    source: String,
+
+    /// Emit compact .susu syntax when exporting work.
+    #[arg(long)]
+    minify: bool,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
 struct GitImportArgs {
     /// Git repository to read.
     #[arg(long, default_value = ".")]
@@ -999,14 +1156,22 @@ fn run_command(command: Command) -> Result<()> {
         Command::Check(args) => check(&args),
         Command::Diff(args) => diff(&args),
         Command::Handoff(args) => handoff(&args),
-        Command::Review { command } => match command {
-            ReviewCommand::Build(args) => build_review(&args),
-            ReviewCommand::Create(args) => create_review(&args),
-            ReviewCommand::Open(args) => open_review(&args),
-            ReviewCommand::Diff(args) => diff_reviews(&args),
-            ReviewCommand::Serve(args) => serve_review(&args),
-            ReviewCommand::ExportHtml(args) => export_review_html(&args),
-        },
+        Command::Review { args, command } => {
+            if let Some(command) = command {
+                match command {
+                    ReviewCommand::Build(args) => build_review(&args),
+                    ReviewCommand::Create(args) => create_review(&args),
+                    ReviewCommand::Open(args) => open_review(&args),
+                    ReviewCommand::Diff(args) => diff_reviews(&args),
+                    ReviewCommand::Serve(args) => serve_review(&args),
+                    ReviewCommand::ExportHtml(args) => export_review_html(&args),
+                }
+            } else {
+                review_shortcut(&args)
+            }
+        }
+        Command::Open(args) => open_shortcut(&args),
+        Command::Status(args) => status_shortcut(&args),
         Command::Expectation { command } => match command {
             ExpectationCommand::Add(args) => add_expectation(args),
             ExpectationCommand::List(args) => list_expectations(&args),
@@ -1027,11 +1192,120 @@ fn run_command(command: Command) -> Result<()> {
             WorkCommand::List(args) => list_works(&args),
             WorkCommand::Remove(args) => remove_work(&args),
         },
-        Command::Git { command } => match command {
-            GitCommand::Connect(args) => git_connect(&args),
-            GitCommand::Import(args) => import_git_work(&args),
-            GitCommand::Rewind(args) => git_rewind(&args),
-        },
+        Command::Git { args, command } => {
+            if let Some(command) = command {
+                match command {
+                    GitCommand::Connect(args) => git_connect(&args),
+                    GitCommand::Import(args) => import_git_work(&args),
+                    GitCommand::Rewind(args) => git_rewind(&args),
+                }
+            } else {
+                git_shortcut(&args)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct DailyReviewPaths {
+    artifact: PathBuf,
+    packet: PathBuf,
+    check_json: PathBuf,
+    html: PathBuf,
+    work: PathBuf,
+}
+
+fn review_shortcut(args: &ReviewShortcutArgs) -> Result<()> {
+    let paths = daily_review_paths(&args.target, &args.output_dir);
+    let work = args
+        .work
+        .clone()
+        .or_else(|| paths.work.exists().then_some(paths.work.clone()));
+    build_review(&ReviewBuildArgs {
+        target: args.target.clone(),
+        expectations: None,
+        verifications: None,
+        decisions: None,
+        work,
+        artifact_output: paths.artifact,
+        output: paths.packet,
+        check_json: Some(paths.check_json),
+        html: (!args.no_html).then_some(paths.html),
+        strict: args.strict,
+        fail_on_check: args.fail_on_check,
+        json: args.json,
+        serve: args.serve,
+        host: args.host.clone(),
+        port: args.port,
+    })
+}
+
+fn open_shortcut(args: &OpenArgs) -> Result<()> {
+    if args.summary || args.tui || args.json {
+        return open_review(&ReviewOpenArgs {
+            packet: args.packet.clone(),
+            max_items: args.max_items,
+            json: args.json,
+            tui: args.tui,
+        });
+    }
+
+    serve_review(&ReviewServeArgs {
+        packet: args.packet.clone(),
+        host: args.host.clone(),
+        port: args.port,
+    })
+}
+
+fn status_shortcut(args: &StatusArgs) -> Result<()> {
+    let paths = daily_review_paths(&args.target, &args.output_dir);
+    let work = paths.work.exists().then_some(paths.work);
+    check(&CheckArgs {
+        target: args.target.clone(),
+        expectations: None,
+        verifications: None,
+        decisions: None,
+        work,
+        strict: args.strict,
+        max_items: args.max_items,
+        json: args.json,
+    })
+}
+
+fn git_shortcut(args: &GitShortcutArgs) -> Result<()> {
+    git_connect(&GitConnectArgs {
+        repo: args.repo.clone(),
+        artifact: args.artifact.clone(),
+        since: args.since.clone(),
+        until: args.until.clone(),
+        limit: Some(args.limit),
+        max_items: args.max_items,
+        export_work: (!args.no_export).then_some(args.output.clone()),
+        source: args.source.clone(),
+        minify: args.minify,
+        json: args.json,
+    })
+}
+
+fn daily_review_paths(target: &Path, output_dir: &Path) -> DailyReviewPaths {
+    let base = conventional_output_dir(target, output_dir);
+    DailyReviewPaths {
+        artifact: base.join("project.susu"),
+        packet: base.join("review.susu"),
+        check_json: base.join("check.json"),
+        html: base.join("review.html"),
+        work: base.join("work.susu"),
+    }
+}
+
+fn conventional_output_dir(target: &Path, output_dir: &Path) -> PathBuf {
+    if output_dir.is_absolute() {
+        return output_dir.to_path_buf();
+    }
+    if target.is_dir() {
+        target.join(output_dir)
+    } else {
+        output_dir.to_path_buf()
     }
 }
 
@@ -1180,12 +1454,7 @@ fn init_repository(args: &InitArgs) -> Result<()> {
         expectations.len(),
         file.display()
     );
-    eprintln!(
-        "next: susumu {} --expectations {} --output target/{}.susu --headless",
-        args.target.display(),
-        file.display(),
-        sanitize_artifact_name(&project_name)
-    );
+    eprintln!("next: susumu review {}", args.target.display());
     Ok(())
 }
 
@@ -1236,23 +1505,6 @@ fn starter_expectations(project_name: &str, source: &str) -> Vec<Expectation> {
             }
         })
         .collect()
-}
-
-fn sanitize_artifact_name(name: &str) -> String {
-    let mut output = String::new();
-    for character in name.chars() {
-        if character.is_ascii_alphanumeric() {
-            output.push(character.to_ascii_lowercase());
-        } else if matches!(character, '-' | '_' | ' ' | '.') && !output.ends_with('-') {
-            output.push('-');
-        }
-    }
-    let trimmed = output.trim_matches('-');
-    if trimmed.is_empty() {
-        "project".to_owned()
-    } else {
-        trimmed.to_owned()
-    }
 }
 
 fn write_text_file(path: &Path, contents: &str) -> Result<()> {
@@ -4691,8 +4943,7 @@ fn export_git_connect_work(
     };
     let written = exported.len();
     merge_works(&mut works, exported);
-    fs::write(output, write_works(&works, args.minify)?)
-        .with_context(|| format!("could not write {}", output.display()))?;
+    write_text_file(output, &write_works(&works, args.minify)?)?;
     Ok(Some(GitConnectExport {
         path: output.display().to_string(),
         written,
@@ -5609,6 +5860,51 @@ mod tests {
                 .iter()
                 .any(|expectation| expectation.id == "e_auto")
         );
+    }
+
+    #[test]
+    fn shortcut_commands_parse_without_subcommands() {
+        let review = Cli::try_parse_from(["susumu", "review"]).expect("parse review shortcut");
+        match review.command.expect("review command") {
+            Command::Review { command, .. } => assert!(command.is_none()),
+            other => panic!("expected review shortcut, got {other:?}"),
+        }
+
+        let git = Cli::try_parse_from(["susumu", "git"]).expect("parse git shortcut");
+        match git.command.expect("git command") {
+            Command::Git { command, .. } => assert!(command.is_none()),
+            other => panic!("expected git shortcut, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn review_shortcut_writes_convention_based_outputs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join("main.rs"), "fn main() {}\n").expect("write source");
+        fs::write(
+            temp.path().join("expectations.susu"),
+            "expectation e_review target=project subject=- status=accepted source=\"human:test\" title=\"Review stays easy\" detail=\"Daily review should use convention-based outputs.\";\n",
+        )
+        .expect("write expectations sidecar");
+
+        review_shortcut(&ReviewShortcutArgs {
+            target: temp.path().to_path_buf(),
+            output_dir: PathBuf::from(".susumu"),
+            work: None,
+            strict: false,
+            fail_on_check: false,
+            no_html: false,
+            serve: false,
+            host: "127.0.0.1".to_owned(),
+            port: 0,
+            json: false,
+        })
+        .expect("run review shortcut");
+
+        assert!(temp.path().join(".susumu").join("project.susu").exists());
+        assert!(temp.path().join(".susumu").join("review.susu").exists());
+        assert!(temp.path().join(".susumu").join("check.json").exists());
+        assert!(temp.path().join(".susumu").join("review.html").exists());
     }
 
     #[test]

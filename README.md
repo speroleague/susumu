@@ -23,6 +23,7 @@ cargo run -- review
 cargo run -- status
 cargo run -- git --since main
 cargo run -- expectations --search git
+cargo run -- verify e_susumu_easy_daily_cli --passed --method "cargo test --locked"
 cargo run -- review
 cargo run -- open
 ```
@@ -33,12 +34,14 @@ That is the core workflow:
 2. `status` shows the review queue without opening the portal.
 3. `git --since main` connects recent commits to expectations and writes work records.
 4. `expectations --search git` helps you find the right expectation id when a commit needs an explicit link.
-5. `review` runs again so the new work records appear in the packet.
-6. `open` starts the local stakeholder/engineering portal.
+5. `verify` records how an expectation was checked.
+6. `review` runs again so the new work and verification records appear in the packet.
+7. `open` starts the local stakeholder/engineering portal.
 
 By convention:
 
 - Humans author `expectations.susu`.
+- Humans or automation record checks in `verifications.susu`.
 - Susumu writes `.susumu/project.susu`.
 - Susumu writes `.susumu/review.susu`.
 - Susumu writes `.susumu/check.json`.
@@ -93,6 +96,14 @@ Browse or search expectation ids:
 cargo run -- expectations
 cargo run -- expectations --search git
 cargo run -- expectations --status accepted
+```
+
+Record verification evidence:
+
+```powershell
+cargo run -- verify e_susumu_easy_daily_cli --passed --method "cargo test --locked"
+cargo run -- verify e_susumu_docs_teach_daily_workflow --failed --method "manual docs review"
+cargo run -- verify e_susumu_git_work_support --inconclusive --method "reviewed local git output"
 ```
 
 Connect Git work to the latest Susumu artifact:
@@ -271,6 +282,14 @@ cargo run -- check project.susu --json
 
 `check` exits nonzero when critical review items are present, such as failed verifications. Add `--strict` to also fail on warnings such as stale targets, inconclusive verifications, blocked work, or changed verification/decision evidence.
 
+Record verification from the daily workflow:
+
+```powershell
+cargo run -- verify e_susumu_easy_daily_cli --passed --method "cargo test --locked"
+```
+
+`verify` validates the expectation against the current project, writes or updates `verifications.susu`, and prints `susumu review` as the next step. The easy `review` path automatically loads both `expectations.susu` and `verifications.susu` from initialized repositories. Use the advanced `verification add` command when you need explicit ids, sidecar-only workflows, or lower-level scripting.
+
 Create a handoff brief for a human reviewer or the next agent:
 
 ```powershell
@@ -319,7 +338,7 @@ Inside the TUI, use `1` through `9`, `0`, or `Tab` to change views, `j`/`k` or t
 
 This repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`.
 
-The `Rust checks` job runs formatting, tests, and Clippy as hard gates. The `Susumu self-review packet` job builds the repository's own `.susu` artifact, automatically loading `expectations.susu`, writes `check --json`, creates a `.review.susu` packet, exports the standalone HTML portal, and uploads those files as workflow artifacts.
+The `Rust checks` job runs formatting, tests, and Clippy as hard gates. The `Susumu self-review packet` job builds the repository's own `.susu` artifact, automatically loading `expectations.susu` and `verifications.susu`, writes `check --json`, creates a `.review.susu` packet, exports the standalone HTML portal, and uploads those files as workflow artifacts.
 
 The self-review `check --json` step records its exit code but does not fail the job, because review findings are useful output for the packet. In a production repository, use `cargo run -- status --strict`, `cargo run -- check project.susu --strict`, or `cargo run -- diff old.susu new.susu --fail-on-stale` when the review signal should block a pull request.
 

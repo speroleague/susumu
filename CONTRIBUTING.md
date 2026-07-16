@@ -29,8 +29,9 @@ Before a pull request, the useful habit is:
 3. Commit with a single-line conventional commit message.
 4. Run `cargo run -- git --since origin/main` to connect the commit to expectations.
 5. If Susumu reports a valid commit as unconnected, run `cargo run -- git link <commit> <expectation-id>` to record the relationship explicitly.
-6. Run `cargo run -- review` so the generated packet includes that work.
-7. Use `cargo run -- status` or `cargo run -- open --summary` to inspect what still needs review.
+6. When you have actually checked an expectation, run `cargo run -- verify <expectation-id> --passed --method "<check>"`.
+7. Run `cargo run -- review` so the generated packet includes that work and verification.
+8. Use `cargo run -- status` or `cargo run -- open --summary` to inspect what still needs review.
 
 Generated `.susu`, `.review.susu`, HTML, and target files should usually stay out of commits unless they are intentional fixtures or examples.
 

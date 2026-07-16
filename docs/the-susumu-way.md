@@ -13,6 +13,7 @@ cargo run -- review
 cargo run -- status
 cargo run -- git --since main
 cargo run -- expectations --search git
+cargo run -- verify e_susumu_easy_daily_cli --passed --method "cargo test --locked"
 cargo run -- review
 cargo run -- open
 ```
@@ -24,6 +25,7 @@ susumu review
 susumu status
 susumu git --since main
 susumu expectations --search git
+susumu verify e_susumu_easy_daily_cli --passed --method "cargo test --locked"
 susumu review
 susumu open
 ```
@@ -38,6 +40,8 @@ People edit authored sidecars:
 - `work.susu` only when work records are intentionally authored by hand.
 
 The most important one is `expectations.susu`. Start there. A project does not need perfect records on day one.
+
+The easy `susumu review` path automatically loads `expectations.susu` and `verifications.susu` from the project directory when they exist.
 
 ## Which files Susumu writes
 
@@ -85,6 +89,7 @@ When possible, `susumu git` will suggest likely expectations and print ready-to-
 Before opening a pull request:
 
 ```powershell
+susumu verify <expectation-id> --passed --method "cargo test --locked"
 susumu review
 susumu open
 ```
@@ -102,8 +107,9 @@ A good agent loop is:
 3. Use a conventional commit message.
 4. Run `susumu git --since <base>`.
 5. If the commit is unconnected but the intent is known, run `susumu git link <commit> <expectation-id>`.
-6. Run `susumu review`.
-7. Report which expectation the work supported and what still needs verification.
+6. Run `susumu verify <expectation-id> --passed --method "<check>"` when a check has actually been performed.
+7. Run `susumu review`.
+8. Report which expectation the work supported and what still needs verification.
 
 Agents should not claim an expectation is satisfied just because they changed code. Work supports an expectation. Verification checks it. Decisions record judgment about it.
 
@@ -163,6 +169,14 @@ Susumu can report support:
 - scanner findings affect the target.
 
 Susumu should not silently convert support into proof. A work record is not a passed test. A matching commit message is not a business approval. A route observed by a scanner is not a complete runtime guarantee.
+
+Use `susumu verify` to record checks explicitly:
+
+```powershell
+susumu verify e_checkout_sequence --passed --method "cargo test checkout_order"
+susumu verify e_checkout_sequence --failed --method "manual QA"
+susumu verify e_checkout_sequence --inconclusive --method "reviewed logs"
+```
 
 That boundary is the trust model.
 

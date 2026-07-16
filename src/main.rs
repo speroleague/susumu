@@ -104,6 +104,9 @@ enum Command {
     /// Browse and search expectation ids for reviews, Git links, and verification.
     Expectations(ExpectationsArgs),
 
+    /// Record verification evidence for an expectation.
+    Verify(VerifyArgs),
+
     /// Author expectation sidecar records.
     Expectation {
         #[command(subcommand)]
@@ -555,6 +558,65 @@ struct ExpectationsArgs {
     /// Maximum expectations to print.
     #[arg(long, default_value_t = 50)]
     max_items: usize,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+#[allow(clippy::struct_excessive_bools)]
+struct VerifyArgs {
+    /// Expectation id being checked.
+    expectation: String,
+
+    /// Directory or artifact used to validate the expectation id.
+    #[arg(long, default_value = ".")]
+    target: PathBuf,
+
+    /// Verification sidecar to update.
+    #[arg(short, long, default_value = "verifications.susu")]
+    file: PathBuf,
+
+    /// Optional explicit id. Omit to derive a stable id from the record.
+    #[arg(long)]
+    id: Option<String>,
+
+    /// Mark the verification as passed.
+    #[arg(long, conflicts_with_all = ["failed", "inconclusive"])]
+    passed: bool,
+
+    /// Mark the verification as failed.
+    #[arg(long, conflicts_with_all = ["passed", "inconclusive"])]
+    failed: bool,
+
+    /// Mark the verification as inconclusive.
+    #[arg(long, conflicts_with_all = ["passed", "failed"])]
+    inconclusive: bool,
+
+    /// Method used to check the expectation.
+    #[arg(long)]
+    method: String,
+
+    /// Provenance label such as human:engineer or ci:github-actions.
+    #[arg(long, default_value = "human:local")]
+    source: String,
+
+    /// Optional evidence id or external evidence reference.
+    #[arg(long)]
+    evidence: Option<String>,
+
+    /// Optional evidence fingerprint this verification was based on.
+    #[arg(long)]
+    basis: Option<String>,
+
+    /// Verification detail. Defaults to a generated summary.
+    #[arg(long)]
+    detail: Option<String>,
+
+    /// Emit compact .susu syntax.
+    #[arg(long)]
+    minify: bool,
 
     /// Emit machine-readable JSON.
     #[arg(long)]
@@ -1255,6 +1317,7 @@ fn run_command(command: Command) -> Result<()> {
         Command::Open(args) => open_shortcut(&args),
         Command::Status(args) => status_shortcut(&args),
         Command::Expectations(args) => expectations_shortcut(&args),
+        Command::Verify(args) => verify_shortcut(args),
         Command::Expectation { command } => match command {
             ExpectationCommand::Add(args) => add_expectation(args),
             ExpectationCommand::List(args) => list_expectations(&args),
@@ -1577,6 +1640,117 @@ fn expectation_status_heading(status: &str) -> &'static str {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct VerifyJson {
+    file: String,
+    id: String,
+    expectation: String,
+    status: String,
+    method: String,
+    evidence: Option<String>,
+    source: String,
+}
+
+fn verify_shortcut(args: VerifyArgs) -> Result<()> {
+    let status = verification_status_from_flags(&args)?;
+    let analysis = load_analysis(&args.target, None, None, None, None, false)?;
+    let expectation = analysis
+        .expectations
+        .iter()
+        .find(|expectation| expectation.id == args.expectation)
+        .with_context(|| {
+            format!(
+                "{} does not contain expectation {}; try `susumu expectations --search <term>`",
+                args.target.display(),
+                args.expectation
+            )
+        })?;
+    let evidence = args.evidence.filter(|value| !value.trim().is_empty());
+    let detail = args.detail.unwrap_or_else(|| {
+        format!(
+            "Recorded by susumu verify. Expectation: {} - {}. Method: {}.",
+            expectation.id, expectation.title, args.method
+        )
+    });
+    let id = args.id.unwrap_or_else(|| {
+        verification_id(
+            &expectation.id,
+            status,
+            &args.method,
+            &args.source,
+            evidence.as_deref(),
+            &detail,
+        )
+    });
+    let verification = Verification {
+        id,
+        expectation_id: expectation.id.clone(),
+        status,
+        method: args.method,
+        source: args.source,
+        evidence,
+        basis: args.basis.filter(|value| !value.trim().is_empty()),
+        detail,
+    };
+    let written = write_verification_record(&args.file, verification, args.minify)?;
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&VerifyJson {
+                file: args.file.display().to_string(),
+                id: written.id,
+                expectation: written.expectation_id,
+                status: written.status.to_string(),
+                method: written.method,
+                evidence: written.evidence,
+                source: written.source,
+            })
+            .context("could not serialize verification report")?
+        );
+    } else {
+        println!(
+            "wrote verification {} to {}",
+            written.id,
+            args.file.display()
+        );
+        println!("Expectation: {}  {}", expectation.id, expectation.title);
+        println!("Status: {}", written.status);
+        println!("Method: {}", written.method);
+        println!("next:");
+        println!("  susumu review");
+    }
+
+    Ok(())
+}
+
+fn verification_status_from_flags(args: &VerifyArgs) -> Result<VerificationStatus> {
+    match (args.passed, args.failed, args.inconclusive) {
+        (true, false, false) => Ok(VerificationStatus::Passed),
+        (false, true, false) => Ok(VerificationStatus::Failed),
+        (false, false, true) => Ok(VerificationStatus::Inconclusive),
+        (false, false, false) => {
+            bail!("choose one verification status: --passed, --failed, or --inconclusive")
+        }
+        _ => bail!("choose only one verification status"),
+    }
+}
+
+fn write_verification_record(
+    file: &Path,
+    verification: Verification,
+    minify: bool,
+) -> Result<Verification> {
+    let mut verifications = if file.exists() {
+        read_verification_sidecar(&file.to_path_buf())?
+    } else {
+        Vec::new()
+    };
+    merge_verifications(&mut verifications, vec![verification.clone()]);
+    write_text_file(file, &write_verifications(&verifications, minify)?)?;
+    Ok(verification)
+}
+
 fn git_shortcut(args: &GitShortcutArgs) -> Result<()> {
     git_connect(&GitConnectArgs {
         repo: args.repo.clone(),
@@ -1645,6 +1819,13 @@ fn load_analysis(
         None
     };
     let expectations = expectations.or(discovered_expectations.as_ref());
+    let discovered_verifications = if verifications.is_none() && !is_artifact {
+        let candidate = target.join("verifications.susu");
+        candidate.exists().then_some(candidate)
+    } else {
+        None
+    };
+    let verifications = verifications.or(discovered_verifications.as_ref());
 
     if let Some(expectations) = expectations {
         let source = fs::read_to_string(expectations)
@@ -4376,16 +4557,8 @@ fn add_verification(args: AddVerification) -> Result<()> {
         detail: args.detail,
     };
 
-    let mut verifications = if args.file.exists() {
-        read_verification_sidecar(&args.file)?
-    } else {
-        Vec::new()
-    };
-
     let id = verification.id.clone();
-    merge_verifications(&mut verifications, vec![verification]);
-    fs::write(&args.file, write_verifications(&verifications, false)?)
-        .with_context(|| format!("could not write {}", args.file.display()))?;
+    write_verification_record(&args.file, verification, false)?;
     eprintln!("wrote verification {id} to {}", args.file.display());
     Ok(())
 }
@@ -6506,6 +6679,31 @@ mod tests {
     }
 
     #[test]
+    fn directory_scans_auto_merge_verifications_sidecar() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            temp.path().join("expectations.susu"),
+            "expectation e_auto target=project subject=- status=accepted source=\"human:test\" title=\"Auto loaded\" detail=\"Directory scans should load this sidecar.\";\n",
+        )
+        .expect("write expectations sidecar");
+        fs::write(
+            temp.path().join("verifications.susu"),
+            "verification v_auto expectation=e_auto status=passed method=\"manual review\" source=\"human:test\" evidence=- basis=- detail=\"Reviewed.\";\n",
+        )
+        .expect("write verifications sidecar");
+
+        let analysis = load_analysis(&temp.path().to_path_buf(), None, None, None, None, false)
+            .expect("load analysis");
+
+        assert!(
+            analysis
+                .verifications
+                .iter()
+                .any(|verification| verification.id == "v_auto")
+        );
+    }
+
+    #[test]
     fn shortcut_commands_parse_without_subcommands() {
         let review = Cli::try_parse_from(["susumu", "review"]).expect("parse review shortcut");
         match review.command.expect("review command") {
@@ -6585,6 +6783,95 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].id, "e_git_links");
+    }
+
+    #[test]
+    fn verify_command_parses_passed_status() {
+        let cli = Cli::try_parse_from([
+            "susumu",
+            "verify",
+            "e_checkout_sequence",
+            "--passed",
+            "--method",
+            "cargo test checkout",
+            "--evidence",
+            "run:123",
+        ])
+        .expect("parse verify shortcut");
+
+        match cli.command.expect("command") {
+            Command::Verify(args) => {
+                assert_eq!(args.expectation, "e_checkout_sequence");
+                assert!(args.passed);
+                assert_eq!(args.method, "cargo test checkout");
+                assert_eq!(args.evidence.as_deref(), Some("run:123"));
+            }
+            other => panic!("expected verify shortcut, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn verify_shortcut_writes_verification_sidecar() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join("main.rs"), "fn main() {}\n").expect("write source");
+        fs::write(
+            temp.path().join("expectations.susu"),
+            "expectation e_verify target=project subject=- status=accepted source=\"human:test\" title=\"Verify shortcut\" detail=\"The verify shortcut should write verification records.\";\n",
+        )
+        .expect("write expectations sidecar");
+        let output = temp.path().join("verifications.susu");
+
+        verify_shortcut(VerifyArgs {
+            expectation: "e_verify".to_owned(),
+            target: temp.path().to_path_buf(),
+            file: output.clone(),
+            id: None,
+            passed: true,
+            failed: false,
+            inconclusive: false,
+            method: "cargo test".to_owned(),
+            source: "human:test".to_owned(),
+            evidence: Some("run:123".to_owned()),
+            basis: None,
+            detail: None,
+            minify: false,
+            json: false,
+        })
+        .expect("verify succeeds");
+
+        let verifications = read_verification_sidecar(&output).expect("read verification sidecar");
+        assert_eq!(verifications.len(), 1);
+        assert_eq!(verifications[0].expectation_id, "e_verify");
+        assert_eq!(verifications[0].status, VerificationStatus::Passed);
+        assert_eq!(verifications[0].method, "cargo test");
+        assert_eq!(verifications[0].evidence.as_deref(), Some("run:123"));
+        assert!(
+            verifications[0]
+                .detail
+                .contains("Recorded by susumu verify.")
+        );
+    }
+
+    #[test]
+    fn verify_requires_one_status_flag() {
+        let result = verification_status_from_flags(&VerifyArgs {
+            expectation: "e_verify".to_owned(),
+            target: PathBuf::from("."),
+            file: PathBuf::from("verifications.susu"),
+            id: None,
+            passed: false,
+            failed: false,
+            inconclusive: false,
+            method: "manual review".to_owned(),
+            source: "human:test".to_owned(),
+            evidence: None,
+            basis: None,
+            detail: None,
+            minify: false,
+            json: false,
+        });
+
+        assert!(result.is_err());
     }
 
     #[test]

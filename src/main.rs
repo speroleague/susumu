@@ -7450,6 +7450,11 @@ mod tests {
             "expectation e_review target=project subject=- status=accepted source=\"human:test\" title=\"Review stays easy\" detail=\"Daily review should use convention-based outputs.\";\n",
         )
         .expect("write expectations sidecar");
+        fs::write(
+            temp.path().join("verifications.susu"),
+            "verification v_review expectation=e_review status=passed method=\"manual smoke test\" source=\"human:test\" evidence=\"local:review\" detail=\"The daily review command wrote convention-based outputs.\";\n",
+        )
+        .expect("write verifications sidecar");
 
         review_shortcut(&ReviewShortcutArgs {
             target: temp.path().to_path_buf(),
@@ -7465,10 +7470,48 @@ mod tests {
         })
         .expect("run review shortcut");
 
-        assert!(temp.path().join(".susumu").join("project.susu").exists());
-        assert!(temp.path().join(".susumu").join("review.susu").exists());
-        assert!(temp.path().join(".susumu").join("check.json").exists());
-        assert!(temp.path().join(".susumu").join("review.html").exists());
+        let artifact_path = temp.path().join(".susumu").join("project.susu");
+        let packet_path = temp.path().join(".susumu").join("review.susu");
+        let check_path = temp.path().join(".susumu").join("check.json");
+        let html_path = temp.path().join(".susumu").join("review.html");
+        assert!(artifact_path.exists());
+        assert!(packet_path.exists());
+        assert!(check_path.exists());
+        assert!(html_path.exists());
+
+        let artifact = read_analysis_artifact(&artifact_path).expect("read project artifact");
+        assert!(
+            artifact
+                .expectations
+                .iter()
+                .any(|expectation| expectation.id == "e_review")
+        );
+        assert!(
+            artifact
+                .verifications
+                .iter()
+                .any(|verification| verification.id == "v_review")
+        );
+
+        let packet = read_review_packet(&packet_path).expect("read review packet");
+        assert_eq!(packet.artifact.expectations.len(), 1);
+        assert_eq!(packet.artifact.verifications.len(), 1);
+        assert!(
+            packet
+                .expectation_readiness
+                .iter()
+                .any(|item| item.expectation_id == "e_review" && item.bucket == "verified")
+        );
+
+        let check_json: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&check_path).expect("read check json"))
+                .expect("check json should parse");
+        assert_eq!(check_json["project"]["name"], artifact.project_name);
+        assert!(
+            fs::read_to_string(&html_path)
+                .expect("read html portal")
+                .contains("Susumu Review")
+        );
     }
 
     #[test]

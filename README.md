@@ -2,17 +2,112 @@
 
 Susumu makes an existing software project explainable.
 
-It sits between source control, specifications, reviews, and business decisions. Point it at a repository and it builds a deterministic evidence model of source files, symbols, dependencies, workflows, call flows, ambiguity, expectations, verifications, decisions, and work records. The result can be saved as a portable `.susu` artifact and reopened without the source tree.
+It sits between source control, specifications, reviews, and business decisions. Point it at a repository and it builds a deterministic evidence model of source files, symbols, dependencies, workflows, call flows, ambiguity, expectations, verifications, decisions, and work records.
 
-The first release is a local-first Rust scanner, terminal workbench, review packet generator, and standalone web review surface. The long-term goal is a shared project memory for engineers, AI agents, business stakeholders, and reviewers: what the system is, what it does, what is expected of it, what work addressed those expectations, and what people have decided or questioned.
+The first release is local-first: a Rust scanner, terminal workbench, review packet generator, Git connector, and standalone web review surface. The long-term goal is shared project memory for engineers, AI agents, business stakeholders, and reviewers: what the system is, what it does, what is expected of it, what work addressed those expectations, and what people have decided or questioned.
 
-## Principles
+## The daily loop
 
-- Evidence before explanation. A source location, parser result, test result, commit, or explicit declaration backs every factual claim.
-- Ambiguity stays visible. Susumu records unresolved and dynamic calls as gaps instead of inventing connections.
-- One model, multiple experiences. The engineering TUI and the future stakeholder web application consume the same `.susu` artifact.
-- Local-first and open source. The first scanner needs no service, account, or AI key.
-- AI is optional. Bring-your-own-key AI may later summarize or propose hypotheses, but its output must be labeled and may not silently become observed fact.
+Rust 1.88 or newer is required.
+
+Start a project:
+
+```powershell
+cargo run -- init C:\path\to\project --name "My Project"
+```
+
+Use Susumu day to day:
+
+```powershell
+cargo run -- review
+cargo run -- status
+cargo run -- git --since main
+cargo run -- review
+cargo run -- open
+```
+
+That is the core workflow:
+
+1. `review` scans the project and writes the current review files.
+2. `status` shows the review queue without opening the portal.
+3. `git --since main` connects recent commits to expectations and writes work records.
+4. `review` runs again so the new work records appear in the packet.
+5. `open` starts the local stakeholder/engineering portal.
+
+By convention:
+
+- Humans author `expectations.susu`.
+- Susumu writes `.susumu/project.susu`.
+- Susumu writes `.susumu/review.susu`.
+- Susumu writes `.susumu/check.json`.
+- Susumu writes `.susumu/review.html`.
+- Susumu writes `.susumu/work.susu` when Git work is exported.
+
+Keep authored intent in normal source control. Keep generated `.susumu/` files local unless you intentionally publish or attach them.
+
+For the philosophy and team workflow, read [The Susumu Way](docs/the-susumu-way.md).
+
+## Common commands
+
+Create starter expectations:
+
+```powershell
+cargo run -- init C:\path\to\project --name "Checkout Service"
+```
+
+Build the daily review files:
+
+```powershell
+cargo run -- review
+```
+
+Build and immediately serve the portal:
+
+```powershell
+cargo run -- review --serve
+```
+
+Open the latest portal:
+
+```powershell
+cargo run -- open
+```
+
+Print the saved review summary instead of serving:
+
+```powershell
+cargo run -- open --summary
+```
+
+Check current status:
+
+```powershell
+cargo run -- status
+```
+
+Connect Git work to the latest Susumu artifact:
+
+```powershell
+cargo run -- git --since main
+```
+
+Run the engineering TUI on the latest generated artifact:
+
+```powershell
+cargo run -- .\.susumu\project.susu
+```
+
+## How the records fit together
+
+Susumu keeps different kinds of truth separate:
+
+- Scanner evidence says what was observed in code.
+- Expectations say what humans or a business expect.
+- Verifications say how an expectation was checked.
+- Decisions say what judgment was made.
+- Work records say what humans, agents, imports, or automation changed or reviewed.
+
+The scanner can determine support, not satisfaction. If a commit links to an expectation, Susumu can show that work supports the expectation. It still needs verification before the expectation should be treated as proven.
 
 ## Current capabilities
 
@@ -26,114 +121,42 @@ The first release is a local-first Rust scanner, terminal workbench, review pack
 - Resolves same-file calls exactly and unique project-wide calls as likely.
 - Preserves ambiguous and external calls as visible gaps.
 - Reports deterministic findings for large files, long workflow units, high fan-out, ambiguous targets, parse recovery, and call cycles.
-- Carries authored expectations as explicit intent records linked to projects, files, symbols, or workflows.
-- Flags expectation records that are missing subjects or point at stale evidence ids.
-- Carries verification records that say how expectations were checked, with status, method, source, and evidence.
-- Carries decision records that capture authored judgment, approvals, exceptions, and unresolved business choices.
-- Carries work records that explain what humans, agents, imports, or automation changed or reviewed.
+- Carries authored expectations, verification records, decision records, and work records.
+- Summarizes expectation support in review packets.
+- Connects local Git commits to workflows, expectations, and exported work records.
 - Builds a Review queue from stale decisions, failed or inconclusive verification records, scanner findings, and unresolved workflow gaps.
 - Explores overview metrics, review items, expectations, verifications, decisions, work records, detected workflows, call flows, findings, and files in a Ratatui interface.
+- Exports a standalone web portal with workflow drill-down and syntax-highlighted source previews.
 - Reads and writes the versioned `.susu` syntax in readable or minified form.
 
 This first model is a call-flow model, not yet full variable-level data lineage. That distinction matters: Susumu should grow its evidence carefully rather than overstate what static analysis can prove.
 
-## Quick start
+## Demo project
 
-Rust 1.88 or newer is required.
+The demo project is shaped like a small product system: TypeScript checkout routes, PHP Laravel-style routes, Rust Axum-style routes, authored expectations, verification records, decision records, and work records.
 
-Start a project the easy Susumu way:
-
-```powershell
-cargo run -- init C:\path\to\project --name "My Project"
-cargo run -- review C:\path\to\project
-cargo run -- open C:\path\to\project\.susumu\review.susu
-```
-
-For the current repository, the daily loop is intentionally short:
-
-```powershell
-cargo run -- review
-cargo run -- status
-cargo run -- git --since main
-cargo run -- review
-cargo run -- open
-```
-
-By convention, the simple commands write generated project memory under `.susumu/`: `project.susu`, `review.susu`, `check.json`, `review.html`, and `work.susu`. Keep authored expectations in `expectations.susu`; let Susumu write the generated review files.
-
-Generate the demo artifact:
+Build a rich demo artifact:
 
 ```powershell
 cargo run -- .\examples\demo-project --expectations .\examples\demo-project\expectations.susu --verifications .\examples\demo-project\verifications.susu --decisions .\examples\demo-project\decisions.susu --work .\examples\demo-project\work.susu --output .\target\susumu-demo.susu --headless
 ```
 
-Open the engineering TUI:
+Open it in the TUI:
 
 ```powershell
 cargo run -- .\target\susumu-demo.susu
 ```
 
-Create a review packet and open the local web portal:
+Create and serve a demo review portal:
 
 ```powershell
 cargo run -- review build .\examples\demo-project --expectations .\examples\demo-project\expectations.susu --verifications .\examples\demo-project\verifications.susu --decisions .\examples\demo-project\decisions.susu --work .\examples\demo-project\work.susu --artifact-output .\target\susumu-demo.susu --output .\target\susumu-demo.review.susu --html .\target\susumu-demo.html
 cargo run -- review serve .\target\susumu-demo.review.susu
 ```
 
-Or create/export from an existing artifact:
+## Advanced command reference
 
-```powershell
-cargo run -- review create .\target\susumu-demo.susu --output .\target\susumu-demo.review.susu
-cargo run -- review export-html .\target\susumu-demo.review.susu --output .\target\susumu-demo.html
-```
-
-Scan your own project:
-
-```powershell
-cargo run -- init C:\path\to\project --name "My Project"
-cargo run -- C:\path\to\project --output project.susu --headless
-cargo run -- project.susu
-```
-
-## Command reference
-
-Run the daily review workflow with convention-based outputs:
-
-```powershell
-cargo run -- review
-```
-
-This scans the current project, automatically loads `expectations.susu`, merges `.susumu/work.susu` when present, and writes `.susumu/project.susu`, `.susumu/review.susu`, `.susumu/check.json`, and `.susumu/review.html`.
-
-Open the generated portal:
-
-```powershell
-cargo run -- open
-```
-
-Check current status without writing review outputs:
-
-```powershell
-cargo run -- status
-```
-
-Connect recent Git commits to the latest Susumu artifact and export work records:
-
-```powershell
-cargo run -- git --since main
-```
-
-By default, `susumu git` reads `.susumu/project.susu`, inspects up to 25 commits, and writes `.susumu/work.susu`. Re-run `susumu review` afterward to include those work records in the review packet.
-
-```powershell
-cargo run -- C:\path\to\project
-```
-
-Start a project the Susumu way by creating an authored expectations sidecar:
-
-```powershell
-cargo run -- init C:\path\to\project --name "Checkout Service"
-```
+The short commands are the normal path. The commands below expose the underlying plumbing when you need explicit files, CI behavior, fixtures, or advanced review comparisons.
 
 Scan a repository, write an artifact, and skip the TUI:
 
@@ -141,32 +164,21 @@ Scan a repository, write an artifact, and skip the TUI:
 cargo run -- C:\path\to\project --output project.susu --headless
 ```
 
-Merge authored expectations while scanning. Initialized repositories automatically load `expectations.susu`; use `--expectations` when the sidecar lives somewhere else:
-
-```powershell
-cargo run -- C:\path\to\project --expectations expectations.susu --output project.susu --headless
-```
-
-Merge expectations, verifications, decisions, and work together:
+Merge authored sidecars while scanning:
 
 ```powershell
 cargo run -- C:\path\to\project --expectations expectations.susu --verifications verifications.susu --decisions decisions.susu --work work.susu --output project.susu --headless
 ```
 
-Create or update an expectation-only sidecar:
+Create or update expectation sidecars:
 
 ```powershell
 cargo run -- expectation add --file expectations.susu --target project --source human:product --title "Keep architecture explainable" --detail "The project should keep scanner evidence, authored intent, and review feedback in the same portable artifact."
-```
-
-List or remove authored expectations:
-
-```powershell
 cargo run -- expectation list --file expectations.susu
 cargo run -- expectation remove --file expectations.susu e_91bbd1
 ```
 
-Create, list, or remove verification sidecars. A verification can optionally carry `--basis`; verifications without a basis are anchored to the checked expectation target fingerprint when merged into a scan artifact.
+Create, list, or remove verification sidecars:
 
 ```powershell
 cargo run -- verification add --file verifications.susu --expectation e_91bbd1 --status passed --method "cargo test checkout_order" --source ci:github-actions --evidence run:123456 --detail "The checkout order test passed in CI."
@@ -174,7 +186,7 @@ cargo run -- verification list --file verifications.susu
 cargo run -- verification remove --file verifications.susu v_checkout_order
 ```
 
-Create, list, or remove decision sidecars. A decision can optionally carry `--basis`; decisions without a basis are anchored to the current target fingerprint when merged into a scan artifact.
+Create, list, or remove decision sidecars:
 
 ```powershell
 cargo run -- decision add --file decisions.susu --target workflow --subject w_8feec23b6a19d218 --status accepted --source human:director --title "Accept checkout exception" --detail "The team accepts this implementation exception for the current release with follow-up verification required."
@@ -190,17 +202,14 @@ cargo run -- work list --file work.susu
 cargo run -- work remove --file work.susu wk_checkout_agent
 ```
 
-Import local Git commits as project-wide work records:
+Import local Git commits as work records:
 
 ```powershell
 cargo run -- git import --since main --output work.susu
-cargo run -- git import --limit 25 --output work.susu
-cargo run -- git import --since main --artifact project.susu --target-depth file --output work.susu
-cargo run -- git import --since main --artifact project.susu --target-depth workflow --output work.susu
 cargo run -- git import --since main --artifact project.susu --target-depth workflow --output work.susu --json
 ```
 
-The importer reads local `git log`, creates one completed work record per commit, uses stable ids derived from commit hashes, records `evidence="commit:<sha>"`, and includes changed files in the work detail. Without `--artifact`, imports stay project-wide. With `--artifact`, `--target-depth file` targets exactly one matched artifact file, while `--target-depth workflow` targets exactly one workflow from the changed files; ambiguous commits stay file- or project-level instead of guessing. If a commit message or body mentions exactly one known expectation id, the imported work links `expectation=<id>` and may use that expectation's target when no more specific changed-file target is available. Add `--json` when an agent or CI job needs a machine-readable import report.
+`git import` creates one completed work record per commit. Without `--artifact`, imports stay project-wide. With `--artifact`, `--target-depth file` targets exactly one matched artifact file, while `--target-depth workflow` targets exactly one workflow from the changed files. Ambiguous commits stay file- or project-level instead of guessing.
 
 Connect Git commits to Susumu workflows and records:
 
@@ -210,7 +219,7 @@ cargo run -- git connect --artifact project.susu --limit 25 --json
 cargo run -- git connect --artifact project.susu --since main --export-work work.susu
 ```
 
-`git connect` is read-only unless `--export-work` is supplied. It correlates commits with the current artifact by changed workflow files, explicit Susumu ids in commit messages, expectation targets, verification/decision targets, and existing work records with `evidence="commit:<sha>"`. Commits with a matching work record are `connected`; commits that touch known Susumu context but do not have a work record are `needs_record`; commits with no visible Susumu relationship are `unconnected`. With `--export-work`, Susumu writes completed work records for `needs_record` commits using stable commit-derived ids, so reruns update the same records instead of duplicating them.
+`git connect` is read-only unless `--export-work` is supplied. It correlates commits with the current artifact by changed workflow files, explicit Susumu ids in commit messages, expectation targets, verification/decision targets, and existing work records with `evidence="commit:<sha>"`.
 
 Compare the current artifact against code evidence from an older Git ref:
 
@@ -220,19 +229,7 @@ cargo run -- git rewind --from main --artifact project.susu --json
 cargo run -- git rewind --from main --artifact project.susu --old-output old-main.susu
 ```
 
-`git rewind` reconstructs the selected ref into a temporary snapshot without checking out or mutating the repository, scans that snapshot, and runs the same comparison model as `diff`. This is the first bridge toward connecting Susumu records with historical Git work: it answers "what did the workflow evidence look like at that ref compared with the current artifact?"
-
-Write the compact form:
-
-```powershell
-cargo run -- C:\path\to\project --output project.min.susu --minify --headless
-```
-
-Open an existing artifact:
-
-```powershell
-cargo run -- project.susu
-```
+`git rewind` reconstructs the selected ref into a temporary snapshot without checking out or mutating the repository, scans that snapshot, and runs the same comparison model as `diff`.
 
 Check an artifact or project for review blockers:
 
@@ -251,9 +248,7 @@ cargo run -- handoff project.susu
 cargo run -- handoff project.susu --json
 ```
 
-`handoff` turns the current Susumu artifact into a compact briefing: evidence counts, record counts, overall review result, the most important workflows Susumu can infer, review items, expectations that still need verification, completed work that needs verification, caveats, and suggested next actions. It is intentionally scanner-first and deterministic, so teams can use it without AI keys.
-
-Create a point-in-time review packet:
+Create point-in-time review packets:
 
 ```powershell
 cargo run -- review build C:\path\to\project --artifact-output project.susu --output review.susu --check-json check.json --html review.html
@@ -261,20 +256,7 @@ cargo run -- review create project.susu --output review.susu
 cargo run -- review create project.susu --json
 ```
 
-`review build` is the day-to-day command for initialized projects. It scans the project, automatically loads `expectations.susu` when present, writes the current `.susu` artifact, creates the review packet, can write `check --json`, and can export the standalone HTML portal. Add `--serve` to open the local portal after building, or `--fail-on-check` when CI should fail after outputs are written.
-
-Review packets include expectation support summaries. These summaries show whether each expectation's target is currently observed and which verification, work, decision, or finding records are linked. They do not prove the expectation is satisfied; they show what evidence currently supports or fails to support review.
-
-To let real Git history support expectations, export work records from commits and include them in the next review build:
-
-```powershell
-cargo run -- git connect --artifact .\target\susumu-self.susu --since origin/main --export-work .\target\susumu-work.susu
-cargo run -- review build . --work .\target\susumu-work.susu --artifact-output .\target\susumu-self.susu --output .\target\susumu-self.review.susu --check-json .\target\susumu-self-check.json --html .\target\susumu-self.review.html
-```
-
-`review create` packages an existing artifact or project together with the handoff summary, check result, review items, top workflows, caveats, next actions, and portable syntax-highlighted source snippets when the source files are readable. The packet uses JSON with `schema_version="susumu.review.v1"`, so it can be attached to pull requests, stored as a release decision snapshot, passed to an AI agent, or opened later by a TUI/web review surface. Creating a packet does not fail just because review issues are present; those issues are captured inside the packet.
-
-Open or compare review packets later:
+Open, compare, serve, or export review packets:
 
 ```powershell
 cargo run -- review open review.susu
@@ -285,12 +267,6 @@ cargo run -- review serve review.susu
 cargo run -- review export-html review.susu --output review.html
 ```
 
-`review open` replays the saved packet summary without needing the original project directory. Add `--tui` to open the embedded artifact in the existing Susumu TUI for workflow, record, finding, and source drill-down. `review diff` compares two review snapshots: review result changes, review item changes, next-action changes, top-workflow changes, embedded artifact changes, and stale evidence in the newer packet. Add `--fail-on-regression` when CI should fail if the newer packet newly fails or has more critical review items.
-
-`review serve` starts a local-only web portal, prints a localhost URL, and serves the packet as a modern single-page HTML/CSS/JavaScript review surface with clickable workflow drill-down, expectation traceability, linked verification/decision/work context, source preview panes, and embedded syntax highlighting. It has no frontend build step and no external assets. The server also exposes `/review.json` for tooling.
-
-`review export-html` writes the same portal as a standalone HTML file. Use it when you want to attach the review to a pull request, send it to a stakeholder, archive a release decision, or open it without running a server.
-
 Compare two artifacts:
 
 ```powershell
@@ -299,30 +275,15 @@ cargo run -- diff old.susu new.susu --fail-on-stale
 cargo run -- diff old.susu new.susu --json
 ```
 
-`diff` compares files, workflows, expectations, verifications, decisions, and work records. It also lists stale verification or decision evidence detected in the newer artifact. Add `--fail-on-stale` when CI or an agent should stop if previously accepted checks or judgments need review.
+Write the compact form:
+
+```powershell
+cargo run -- C:\path\to\project --output project.min.susu --minify --headless
+```
+
+## TUI controls
 
 Inside the TUI, use `1` through `9`, `0`, or `Tab` to change views, `j`/`k` or the arrow keys to move, `Enter` to jump from a Review or Connections item to its source record, `b` to go back, `e` to export readable syntax, `m` to export minified syntax, and `q` to quit. The `0` shortcut jumps to the final Files tab; use `Tab` or the arrow keys for any tab between `9` and `0`.
-
-## Dogfooding Susumu
-
-This repository uses Susumu to describe Susumu.
-
-The root `expectations.susu` file is the authored intent: the project expectations humans want Susumu to preserve and review. When Susumu scans this initialized repo, it automatically loads that sidecar. The generated artifact, check JSON, review packet, and HTML portal are produced from the current repository state.
-
-This repo has already been initialized with `expectations.susu`. Generate the self-review artifact:
-
-```powershell
-cargo run -- . --output .\target\susumu-self.susu --headless
-```
-
-Build and view the review packet:
-
-```powershell
-cargo run -- review build . --artifact-output .\target\susumu-self.susu --output .\target\susumu-self.review.susu --check-json .\target\susumu-self-check.json --html .\target\susumu-self.review.html
-cargo run -- review serve .\target\susumu-self.review.susu
-```
-
-This is the intended loop for other projects too: keep expectations explicit, let Susumu observe the code, then review what the generated artifact says is implemented, unresolved, stale, or missing.
 
 ## CI and pull requests
 
@@ -330,27 +291,7 @@ This repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`
 
 The `Rust checks` job runs formatting, tests, and Clippy as hard gates. The `Susumu self-review packet` job builds the repository's own `.susu` artifact, automatically loading `expectations.susu`, writes `check --json`, creates a `.review.susu` packet, exports the standalone HTML portal, and uploads those files as workflow artifacts.
 
-The self-review `check --json` step records its exit code but does not fail the job, because review findings are useful output for the packet. In a production repository, use `cargo run -- check project.susu --strict` or `cargo run -- diff old.susu new.susu --fail-on-stale` when the review signal should block a pull request.
-
-## Try the workflow demo
-
-The Susumu self-scan is useful for checking parser coverage, but this repository is a CLI/TUI, so it does not currently produce many business workflows. The demo project is intentionally shaped like a small product system: TypeScript checkout routes, PHP Laravel-style routes, Rust Axum-style routes, authored expectations, verification records, decision records, and work records.
-
-Build a rich demo artifact:
-
-```powershell
-cargo run -- .\examples\demo-project --expectations .\examples\demo-project\expectations.susu --verifications .\examples\demo-project\verifications.susu --decisions .\examples\demo-project\decisions.susu --work .\examples\demo-project\work.susu --output .\target\susumu-demo.susu --headless
-```
-
-Open it in the TUI:
-
-```powershell
-cargo run -- .\target\susumu-demo.susu
-```
-
-The Overview and Workflows tabs put the highest-attention workflows first. The score is deterministic: observed triggers, resolved handlers, fan-out, unresolved call edges, linked expectations, and linked verification records all contribute explicit reasons. The Review tab then turns the sharp edges into a navigable queue. Press `Enter` on a review item to inspect the underlying finding, verification, decision, work record, or workflow, then `b` to return.
-
-The Connections tab groups work records into review-oriented buckets such as Git-connected work, work that needs verification, blocked review work, and unlinked work. Selecting a connection shows commit evidence, linked expectation context, verification status, and source preview when the work targets a workflow. Selecting a workflow also shows linked expectations, verification records, work records, and decisions in the workflow detail pane, so implementation evidence, business intent, check results, activity history, and authored judgment are visible together. Workflow, flow, finding, and file selections also show a source preview when the original source tree is available, with syntax highlighting powered by Syntect and the evidence line emphasized. The Overview and Files tabs show source availability so portable artifacts remain honest when opened away from their original repository.
+The self-review `check --json` step records its exit code but does not fail the job, because review findings are useful output for the packet. In a production repository, use `cargo run -- status --strict`, `cargo run -- check project.susu --strict`, or `cargo run -- diff old.susu new.susu --fail-on-stale` when the review signal should block a pull request.
 
 ## A `.susu` artifact
 
@@ -372,7 +313,7 @@ work wk_checkout_agent target=workflow subject=w_8feec23b6a19d218 expectation=e_
 
 Every statement ends in `;`, so insignificant whitespace and newlines can be removed. Readable and minified artifacts use the same grammar and parser.
 
-See [the artifact contract](docs/artifact.md), [the product architecture](docs/vision.md), and [the Susumu vernacular](docs/vernacular.md) for the boundary between today's scanner and the broader vision.
+See [the artifact contract](docs/artifact.md), [the product architecture](docs/vision.md), [the Susumu vernacular](docs/vernacular.md), and [The Susumu Way](docs/the-susumu-way.md) for the boundary between today's scanner and the broader vision.
 
 ## Roadmap
 
@@ -381,7 +322,6 @@ See [the artifact contract](docs/artifact.md), [the product architecture](docs/v
 - Expand `.susu` with threaded reviews, comments, ownership, source revisions, and migration support.
 - Improve dirty/stale review detection so changed code automatically flags affected expectations, verifications, and decisions.
 - Build the stakeholder web experience as a polished workflow and decision portal on the same review packet model.
-- Add CI and pull-request workflows for `check --json`, `diff --json`, `review create`, `review diff`, and Git-connected work records.
 - Keep AI optional and bring-your-own-key. Generated summaries or draft records should be labeled, cited, and reviewable before becoming trusted project memory.
 
 ## Status

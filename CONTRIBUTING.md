@@ -12,6 +12,25 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
+Use Susumu while changing Susumu:
+
+```powershell
+cargo run -- review
+cargo run -- status
+cargo run -- git --since origin/main
+cargo run -- review
+cargo run -- open
+```
+
+Before a pull request, the useful habit is:
+
+1. Update `expectations.susu` when the change adds or clarifies project intent.
+2. Make the code or docs change.
+3. Commit with a single-line conventional commit message.
+4. Run `cargo run -- git --since origin/main` to connect the commit to expectations.
+5. Run `cargo run -- review` so the generated packet includes that work.
+6. Use `cargo run -- status` or `cargo run -- open --summary` to inspect what still needs review.
+
 Generated `.susu`, `.review.susu`, HTML, and target files should usually stay out of commits unless they are intentional fixtures or examples.
 
 ## Design rules
@@ -36,4 +55,5 @@ Language-specific behavior belongs behind the adapter boundary in `src/language/
 - [Artifact contract](docs/artifact.md)
 - [Language and framework adapters](docs/adapters.md)
 - [Product architecture](docs/vision.md)
+- [The Susumu Way](docs/the-susumu-way.md)
 - [Susumu vernacular](docs/vernacular.md)

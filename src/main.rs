@@ -5046,7 +5046,7 @@ struct GitImportContext<'a> {
     target_depth: GitTargetDepth,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct GitCommit {
     hash: String,
     author_name: String,
@@ -5339,7 +5339,13 @@ fn git_connection(artifact: &ProjectAnalysis, commit: &GitCommit) -> GitConnecti
         reasons.push(format!("{} work record link(s)", works.len()));
     }
 
-    let has_record = !works.is_empty();
+    let missing_expectation_work =
+        missing_expectation_work_records(artifact, &commit.hash, &expectations);
+    let has_record = if expectations.is_empty() {
+        !works.is_empty()
+    } else {
+        missing_expectation_work.is_empty()
+    };
     let has_context = !workflows.is_empty()
         || !expectations.is_empty()
         || !verifications.is_empty()
@@ -5355,6 +5361,11 @@ fn git_connection(artifact: &ProjectAnalysis, commit: &GitCommit) -> GitConnecti
 
     if reasons.is_empty() {
         reasons.push("no Susumu records or workflow files matched".to_owned());
+    } else if !missing_expectation_work.is_empty() {
+        reasons.push(format!(
+            "{} expectation work record(s) missing",
+            missing_expectation_work.len()
+        ));
     } else if !has_record {
         reasons.push("no work record references this commit".to_owned());
     }
@@ -5602,6 +5613,27 @@ fn connected_works(
     records
 }
 
+fn missing_expectation_work_records(
+    artifact: &ProjectAnalysis,
+    commit_hash: &str,
+    expectations: &[GitConnectedRecord],
+) -> Vec<GitConnectedRecord> {
+    expectations
+        .iter()
+        .filter(|expectation| {
+            !artifact.works.iter().any(|work| {
+                work.expectation_id.as_deref() == Some(expectation.id.as_str())
+                    && work
+                        .evidence
+                        .as_deref()
+                        .and_then(commit_evidence_hash)
+                        .is_some_and(|hash| commit_hash_matches(commit_hash, hash))
+            })
+        })
+        .cloned()
+        .collect()
+}
+
 fn commit_evidence_hash(evidence: &str) -> Option<&str> {
     evidence
         .strip_prefix("commit:")
@@ -5629,7 +5661,7 @@ fn export_git_connect_work(
         .records
         .iter()
         .filter(|connection| connection.status == "needs_record")
-        .map(|connection| work_from_git_connection(artifact, connection, &args.source))
+        .flat_map(|connection| works_from_git_connection(artifact, connection, &args.source))
         .collect::<Vec<_>>();
     let mut works = if output.exists() {
         read_work_sidecar(output)?
@@ -5646,15 +5678,43 @@ fn export_git_connect_work(
     }))
 }
 
+fn works_from_git_connection(
+    artifact: &ProjectAnalysis,
+    connection: &GitConnection,
+    source: &str,
+) -> Vec<Work> {
+    let missing_expectations =
+        missing_expectation_work_records(artifact, &connection.commit, &connection.expectations);
+    if !missing_expectations.is_empty() {
+        let preserve_single_id = connection.expectations.len() == 1;
+        return missing_expectations
+            .iter()
+            .map(|expectation| {
+                work_from_git_connection(
+                    artifact,
+                    connection,
+                    source,
+                    Some(expectation.id.as_str()),
+                    preserve_single_id,
+                )
+            })
+            .collect();
+    }
+    vec![work_from_git_connection(
+        artifact, connection, source, None, true,
+    )]
+}
+
 fn work_from_git_connection(
     artifact: &ProjectAnalysis,
     connection: &GitConnection,
     source: &str,
+    expectation_id: Option<&str>,
+    preserve_single_id: bool,
 ) -> Work {
-    let expectation_id = single_connected_id(&connection.expectations);
     let (target, subject) = work_target_from_connection(artifact, connection, expectation_id);
     Work {
-        id: git_work_id(&connection.commit),
+        id: git_connection_work_id(&connection.commit, expectation_id, preserve_single_id),
         target,
         subject,
         expectation_id: expectation_id.map(str::to_owned),
@@ -5703,10 +5763,6 @@ fn work_target_from_connection(
         );
     }
     (ExpectationTarget::Project, None)
-}
-
-fn single_connected_id(records: &[GitConnectedRecord]) -> Option<&str> {
-    (records.len() == 1).then(|| records[0].id.as_str())
 }
 
 fn git_connect_work_detail(connection: &GitConnection) -> String {
@@ -6198,6 +6254,25 @@ fn single_workflow_for_files(artifact: &ProjectAnalysis, file_ids: &[String]) ->
 fn git_work_id(hash: &str) -> String {
     let short = hash.chars().take(16).collect::<String>();
     format!("wk_git_{short}")
+}
+
+fn git_connection_work_id(
+    hash: &str,
+    expectation_id: Option<&str>,
+    preserve_single_id: bool,
+) -> String {
+    if preserve_single_id {
+        return git_work_id(hash);
+    }
+    let Some(expectation_id) = expectation_id else {
+        return git_work_id(hash);
+    };
+    let mut digest = Sha256::new();
+    digest.update(hash.as_bytes());
+    digest.update([0]);
+    digest.update(expectation_id.as_bytes());
+    let suffix = hex_prefix(&digest.finalize(), 4);
+    format!("{}_{}", git_work_id(hash), suffix)
 }
 
 fn short_hash(hash: &str) -> String {
@@ -7364,7 +7439,7 @@ mod tests {
         });
         let commit = test_commit("Address checkout sequence", "", &["src/api.ts"]);
 
-        let report = build_git_connect_report(&artifact, &[commit]);
+        let report = build_git_connect_report(&artifact, std::slice::from_ref(&commit));
 
         assert_eq!(report.connected, 1);
         assert_eq!(report.needs_record, 0);
@@ -7472,8 +7547,10 @@ mod tests {
         let commit = test_commit("Address e_checkout_sequence", "", &["notes.txt"]);
         let report = build_git_connect_report(&artifact, &[commit]);
 
-        let work = work_from_git_connection(&artifact, &report.records[0], "import:test");
+        let works = works_from_git_connection(&artifact, &report.records[0], "import:test");
+        let work = &works[0];
 
+        assert_eq!(works.len(), 1);
         assert_eq!(work.id, "wk_git_f240cd96a07f2ea7");
         assert_eq!(work.target, ExpectationTarget::Workflow);
         assert_eq!(work.subject.as_deref(), Some("w_checkout"));
@@ -7518,11 +7595,81 @@ mod tests {
         assert_eq!(report.needs_record, 1);
         assert_eq!(report.records[0].expectations[0].id, "e_git_work_support");
 
-        let work = work_from_git_connection(&artifact, &report.records[0], "import:test");
+        let works = works_from_git_connection(&artifact, &report.records[0], "import:test");
+        let work = &works[0];
 
+        assert_eq!(works.len(), 1);
         assert_eq!(work.target, ExpectationTarget::Project);
         assert_eq!(work.subject, None);
         assert_eq!(work.expectation_id.as_deref(), Some("e_git_work_support"));
+    }
+
+    #[test]
+    fn git_connect_export_writes_work_for_each_matched_expectation() {
+        let mut artifact = test_artifact();
+        artifact.expectations = vec![
+            Expectation {
+                id: "e_readiness".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:maintainer".to_owned(),
+                title: "Readiness board exists".to_owned(),
+                detail: "Portal should show readiness.".to_owned(),
+            },
+            Expectation {
+                id: "e_dirty_links".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:maintainer".to_owned(),
+                title: "Dirty source links exist".to_owned(),
+                detail: "Portal should show dirty source links.".to_owned(),
+            },
+        ];
+        let commit = test_commit(
+            "feat: support e_readiness and e_dirty_links",
+            "",
+            &["src/main.rs"],
+        );
+        let report = build_git_connect_report(&artifact, std::slice::from_ref(&commit));
+
+        assert_eq!(report.needs_record, 1);
+        assert_eq!(report.records[0].expectations.len(), 2);
+        assert!(
+            report.records[0]
+                .reasons
+                .iter()
+                .any(|reason| reason == "2 expectation work record(s) missing")
+        );
+
+        let works = works_from_git_connection(&artifact, &report.records[0], "import:test");
+
+        assert_eq!(works.len(), 2);
+        assert_ne!(works[0].id, works[1].id);
+        assert_eq!(works[0].target, ExpectationTarget::Project);
+        assert_eq!(works[1].target, ExpectationTarget::Project);
+        assert_eq!(works[0].expectation_id.as_deref(), Some("e_dirty_links"));
+        assert_eq!(works[1].expectation_id.as_deref(), Some("e_readiness"));
+
+        artifact.works.push(Work {
+            id: "wk_existing_dirty".to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            expectation_id: Some("e_dirty_links".to_owned()),
+            kind: WorkKind::Implementation,
+            status: WorkStatus::Completed,
+            source: "human:test".to_owned(),
+            evidence: Some("commit:f240cd96a07f2ea7b14cc1932c58914ed0871575".to_owned()),
+            title: "Existing dirty links work".to_owned(),
+            detail: "Already connected.".to_owned(),
+        });
+        let report = build_git_connect_report(&artifact, &[commit]);
+        let works = works_from_git_connection(&artifact, &report.records[0], "import:test");
+
+        assert_eq!(report.needs_record, 1);
+        assert_eq!(works.len(), 1);
+        assert_eq!(works[0].expectation_id.as_deref(), Some("e_readiness"));
     }
 
     #[test]
@@ -7569,8 +7716,10 @@ mod tests {
         let commit = test_commit("Touch checkout route", "", &["src/api.ts"]);
         let report = build_git_connect_report(&artifact, &[commit]);
 
-        let work = work_from_git_connection(&artifact, &report.records[0], "import:test");
+        let works = works_from_git_connection(&artifact, &report.records[0], "import:test");
+        let work = &works[0];
 
+        assert_eq!(work.target, ExpectationTarget::Workflow);
         assert_eq!(work.target, ExpectationTarget::Workflow);
         assert_eq!(work.subject.as_deref(), Some("w_checkout"));
         assert_eq!(work.expectation_id.as_deref(), Some("e_checkout_sequence"));

@@ -74,6 +74,8 @@ susumu review
 
 The first command connects commits to expectations and exports work records. The second command folds that work back into the review packet.
 
+If one commit clearly supports multiple expectations, Susumu writes separate work records so each expectation gets its own reviewable support.
+
 If Susumu cannot safely infer which expectation a commit supports, link it explicitly:
 
 ```powershell

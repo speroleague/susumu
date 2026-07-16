@@ -154,7 +154,7 @@ The scanner can determine support, not satisfaction. If a commit links to an exp
 - Summarizes expectation support in review packets.
 - Shows an expectation evidence ladder in the portal: observed target, linked work, verification evidence, decision context, review status, and the next suggested action.
 - Groups expectations by readiness in the portal and surfaces dirty or stale evidence with nearby syntax-highlighted source when Susumu can locate it.
-- Connects local Git commits to workflows, expectations, and exported work records.
+- Connects local Git commits to workflows, expectations, and exported work records, including separate work records when one commit supports multiple expectations.
 - Builds a Review queue from stale decisions, failed or inconclusive verification records, scanner findings, and unresolved workflow gaps.
 - Explores overview metrics, review items, expectations, verifications, decisions, work records, detected workflows, call flows, findings, and files in a Ratatui interface.
 - Exports a standalone web portal with workflow drill-down and syntax-highlighted source previews.

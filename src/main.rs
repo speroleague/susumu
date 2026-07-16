@@ -47,7 +47,7 @@ use handoff::{
 };
 use review_packet::review_packet;
 use review_types::{
-    CheckItem, CheckItemJson, CheckSeverity, ExpectationReadiness, ExpectationSupport,
+    CheckItem, CheckItemJson, CheckReport, CheckSeverity, ExpectationReadiness, ExpectationSupport,
     ExpectationVerificationSupport, READINESS_BUCKETS, ReviewItemStored, ReviewPacketStored,
     check_result_reason,
 };
@@ -1286,6 +1286,12 @@ struct DailyReviewPaths {
     work: PathBuf,
 }
 
+#[derive(Debug)]
+struct ReviewBuildState {
+    project_name: String,
+    check: CheckReport,
+}
+
 fn review_shortcut(args: &ReviewShortcutArgs) -> Result<()> {
     let paths = daily_review_paths(&args.target, &args.output_dir);
     let work = args
@@ -2242,6 +2248,24 @@ fn create_review(args: &ReviewCreateArgs) -> Result<()> {
 }
 
 fn build_review(args: &ReviewBuildArgs) -> Result<()> {
+    let state = write_review_build_outputs(args)?;
+    print_review_build_summary(args, &state)?;
+
+    if args.serve {
+        serve_review(&ReviewServeArgs {
+            packet: args.output.clone(),
+            host: args.host.clone(),
+            port: args.port,
+        })?;
+    }
+
+    if args.fail_on_check && state.check.failed {
+        process::exit(1);
+    }
+    Ok(())
+}
+
+fn write_review_build_outputs(args: &ReviewBuildArgs) -> Result<ReviewBuildState> {
     let analysis = load_analysis(
         &args.target,
         args.expectations.as_ref(),
@@ -2253,58 +2277,84 @@ fn build_review(args: &ReviewBuildArgs) -> Result<()> {
     write_text_file(&args.artifact_output, &write_susu(&analysis, false)?)?;
 
     let check = check_report(&analysis, args.strict);
-    if let Some(check_output) = &args.check_json {
-        let check_json = check_json(&analysis, &check);
-        write_text_file(
-            check_output,
-            &serde_json::to_string_pretty(&check_json)
-                .context("could not serialize check report")?,
-        )?;
-    }
+    write_review_build_check_json(args, &analysis, &check)?;
+    write_review_build_packet(args, &analysis, &check)?;
 
-    let handoff = handoff_report(&analysis, &check);
+    Ok(ReviewBuildState {
+        project_name: analysis.project_name,
+        check,
+    })
+}
+
+fn write_review_build_check_json(
+    args: &ReviewBuildArgs,
+    analysis: &ProjectAnalysis,
+    check: &CheckReport,
+) -> Result<()> {
+    let Some(check_output) = &args.check_json else {
+        return Ok(());
+    };
+    let check_json = check_json(analysis, check);
+    write_text_file(
+        check_output,
+        &serde_json::to_string_pretty(&check_json).context("could not serialize check report")?,
+    )
+}
+
+fn write_review_build_packet(
+    args: &ReviewBuildArgs,
+    analysis: &ProjectAnalysis,
+    check: &CheckReport,
+) -> Result<()> {
+    let handoff = handoff_report(analysis, check);
     let packet = review_packet(
         args.target.display().to_string(),
         current_unix_seconds(),
-        &analysis,
-        &check,
+        analysis,
+        check,
         &handoff,
     );
     let packet_json =
         serde_json::to_string_pretty(&packet).context("could not serialize review packet")?;
     write_text_file(&args.output, &packet_json)?;
+    write_review_build_html(args, &packet_json)
+}
 
-    if let Some(html_output) = &args.html {
-        let stored_packet: ReviewPacketStored =
-            serde_json::from_str(&packet_json).context("could not read built review packet")?;
-        write_text_file(html_output, &review_portal_html(&stored_packet)?)?;
-    }
+fn write_review_build_html(args: &ReviewBuildArgs, packet_json: &str) -> Result<()> {
+    let Some(html_output) = &args.html else {
+        return Ok(());
+    };
+    let stored_packet: ReviewPacketStored =
+        serde_json::from_str(packet_json).context("could not read built review packet")?;
+    write_text_file(html_output, &review_portal_html(&stored_packet)?)
+}
 
+fn print_review_build_summary(args: &ReviewBuildArgs, state: &ReviewBuildState) -> Result<()> {
     if args.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
-                "project": analysis.project_name,
+                "project": state.project_name,
                 "artifact": args.artifact_output,
                 "review_packet": args.output,
                 "check_json": args.check_json,
                 "html": args.html,
                 "result": {
-                    "status": if check.failed { "failed" } else { "passed" },
-                    "failed": check.failed,
-                    "strict": check.strict,
-                    "reason": check_result_reason(&check),
+                    "status": if state.check.failed { "failed" } else { "passed" },
+                    "failed": state.check.failed,
+                    "strict": state.check.strict,
+                    "reason": check_result_reason(&state.check),
                 },
                 "review": {
-                    "critical": check.critical,
-                    "warning": check.warning,
-                    "attention": check.attention,
+                    "critical": state.check.critical,
+                    "warning": state.check.warning,
+                    "attention": state.check.attention,
                 }
             }))
             .context("could not serialize review build summary")?
         );
     } else {
-        println!("Susumu review build: {}", analysis.project_name);
+        println!("Susumu review build: {}", state.project_name);
         println!("Artifact: {}", args.artifact_output.display());
         println!("Review packet: {}", args.output.display());
         if let Some(check_output) = &args.check_json {
@@ -2315,24 +2365,13 @@ fn build_review(args: &ReviewBuildArgs) -> Result<()> {
         }
         println!(
             "Review: {} critical, {} warning, {} attention ({})",
-            check.critical,
-            check.warning,
-            check.attention,
-            check_result_reason(&check)
+            state.check.critical,
+            state.check.warning,
+            state.check.attention,
+            check_result_reason(&state.check)
         );
     }
 
-    if args.serve {
-        serve_review(&ReviewServeArgs {
-            packet: args.output.clone(),
-            host: args.host.clone(),
-            port: args.port,
-        })?;
-    }
-
-    if args.fail_on_check && check.failed {
-        process::exit(1);
-    }
     Ok(())
 }
 

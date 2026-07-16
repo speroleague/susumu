@@ -22,6 +22,7 @@ Use Susumu day to day:
 cargo run -- review
 cargo run -- status
 cargo run -- git --since main
+cargo run -- expectations --search git
 cargo run -- review
 cargo run -- open
 ```
@@ -31,8 +32,9 @@ That is the core workflow:
 1. `review` scans the project and writes the current review files.
 2. `status` shows the review queue without opening the portal.
 3. `git --since main` connects recent commits to expectations and writes work records.
-4. `review` runs again so the new work records appear in the packet.
-5. `open` starts the local stakeholder/engineering portal.
+4. `expectations --search git` helps you find the right expectation id when a commit needs an explicit link.
+5. `review` runs again so the new work records appear in the packet.
+6. `open` starts the local stakeholder/engineering portal.
 
 By convention:
 
@@ -83,6 +85,14 @@ Check current status:
 
 ```powershell
 cargo run -- status
+```
+
+Browse or search expectation ids:
+
+```powershell
+cargo run -- expectations
+cargo run -- expectations --search git
+cargo run -- expectations --status accepted
 ```
 
 Connect Git work to the latest Susumu artifact:
@@ -234,6 +244,7 @@ For unconnected commits, `git connect` also prints a `next:` section. If it can 
 When a commit is valid work but Susumu refuses to guess which expectation it supports, link it explicitly:
 
 ```powershell
+cargo run -- expectations --search docs
 cargo run -- git link abc123 e_susumu_docs_teach_daily_workflow
 cargo run -- git link abc123 e_susumu_docs_teach_daily_workflow --kind documentation --detail "Documentation now teaches the daily workflow first."
 ```

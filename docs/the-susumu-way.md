@@ -12,6 +12,7 @@ Use these commands most of the time:
 cargo run -- review
 cargo run -- status
 cargo run -- git --since main
+cargo run -- expectations --search git
 cargo run -- review
 cargo run -- open
 ```
@@ -22,6 +23,7 @@ Installed globally, that becomes:
 susumu review
 susumu status
 susumu git --since main
+susumu expectations --search git
 susumu review
 susumu open
 ```
@@ -71,6 +73,7 @@ The first command connects commits to expectations and exports work records. The
 If Susumu cannot safely infer which expectation a commit supports, link it explicitly:
 
 ```powershell
+susumu expectations --search docs
 susumu git link abc123 e_susumu_docs_teach_daily_workflow --kind documentation
 susumu review
 ```

@@ -101,6 +101,9 @@ enum Command {
     /// Show the current Susumu project status.
     Status(StatusArgs),
 
+    /// Browse and search expectation ids for reviews, Git links, and verification.
+    Expectations(ExpectationsArgs),
+
     /// Author expectation sidecar records.
     Expectation {
         #[command(subcommand)]
@@ -524,6 +527,33 @@ struct StatusArgs {
 
     /// Maximum review items to print.
     #[arg(long, default_value_t = 10)]
+    max_items: usize,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct ExpectationsArgs {
+    /// Directory to scan, or an existing .susu artifact to inspect.
+    #[arg(default_value = ".")]
+    target: PathBuf,
+
+    /// Read expectations from a specific sidecar or artifact instead of scanning/loading target.
+    #[arg(short, long, value_name = "FILE")]
+    file: Option<PathBuf>,
+
+    /// Search expectation id, title, detail, source, target, subject, or support status.
+    #[arg(short, long)]
+    search: Option<String>,
+
+    /// Filter by expectation status: proposed, accepted, or superseded.
+    #[arg(long)]
+    status: Option<ExpectationStatusArg>,
+
+    /// Maximum expectations to print.
+    #[arg(long, default_value_t = 50)]
     max_items: usize,
 
     /// Emit machine-readable JSON.
@@ -1224,6 +1254,7 @@ fn run_command(command: Command) -> Result<()> {
         }
         Command::Open(args) => open_shortcut(&args),
         Command::Status(args) => status_shortcut(&args),
+        Command::Expectations(args) => expectations_shortcut(&args),
         Command::Expectation { command } => match command {
             ExpectationCommand::Add(args) => add_expectation(args),
             ExpectationCommand::List(args) => list_expectations(&args),
@@ -1323,6 +1354,227 @@ fn status_shortcut(args: &StatusArgs) -> Result<()> {
         max_items: args.max_items,
         json: args.json,
     })
+}
+
+#[derive(Debug, Serialize)]
+struct ExpectationsJson {
+    source: String,
+    total: usize,
+    shown: usize,
+    search: Option<String>,
+    status: Option<String>,
+    expectations: Vec<ExpectationBrowseRow>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ExpectationBrowseRow {
+    id: String,
+    title: String,
+    detail: String,
+    target: String,
+    subject: Option<String>,
+    status: String,
+    source: String,
+    support_status: Option<String>,
+    target_observed: Option<bool>,
+    verification: Option<ExpectationVerificationSupport>,
+    work: Option<usize>,
+    decisions: Option<usize>,
+    findings: Option<usize>,
+}
+
+fn expectations_shortcut(args: &ExpectationsArgs) -> Result<()> {
+    let (source, rows) = expectation_browse_rows(args)?;
+    let status = args.status.clone().map(ExpectationStatus::from);
+    let filtered = filter_expectation_rows(
+        rows,
+        args.search.as_deref(),
+        status.as_ref().map(ToString::to_string).as_deref(),
+    );
+    let shown = filtered
+        .iter()
+        .take(args.max_items)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&ExpectationsJson {
+                source,
+                total: filtered.len(),
+                shown: shown.len(),
+                search: args.search.clone(),
+                status: status.map(|value| value.to_string()),
+                expectations: shown,
+            })
+            .context("could not serialize expectations")?
+        );
+    } else {
+        print_expectations_shortcut(
+            &source,
+            &filtered,
+            &shown,
+            args.search.as_deref(),
+            status.as_ref(),
+        );
+    }
+    Ok(())
+}
+
+fn expectation_browse_rows(args: &ExpectationsArgs) -> Result<(String, Vec<ExpectationBrowseRow>)> {
+    if let Some(file) = &args.file {
+        let expectations = read_expectations_file(file)?;
+        return Ok((
+            file.display().to_string(),
+            expectations
+                .iter()
+                .map(|expectation| expectation_browse_row(expectation, None))
+                .collect(),
+        ));
+    }
+
+    let paths = daily_review_paths(&args.target, Path::new(".susumu"));
+    let work = paths.work.exists().then_some(paths.work);
+    let analysis = load_analysis(&args.target, None, None, None, work.as_ref(), false)?;
+    let support = expectation_support(&analysis)
+        .into_iter()
+        .map(|item| (item.expectation_id.clone(), item))
+        .collect::<BTreeMap<_, _>>();
+    Ok((
+        args.target.display().to_string(),
+        analysis
+            .expectations
+            .iter()
+            .map(|expectation| expectation_browse_row(expectation, support.get(&expectation.id)))
+            .collect(),
+    ))
+}
+
+fn expectation_browse_row(
+    expectation: &Expectation,
+    support: Option<&ExpectationSupport>,
+) -> ExpectationBrowseRow {
+    ExpectationBrowseRow {
+        id: expectation.id.clone(),
+        title: expectation.title.clone(),
+        detail: expectation.detail.clone(),
+        target: expectation.target.to_string(),
+        subject: expectation.subject.clone(),
+        status: expectation.status.to_string(),
+        source: expectation.source.clone(),
+        support_status: support.map(|support| support.support_status.clone()),
+        target_observed: support.map(|support| support.target_observed),
+        verification: support.map(|support| support.verification.clone()),
+        work: support.map(|support| support.work),
+        decisions: support.map(|support| support.decisions),
+        findings: support.map(|support| support.findings),
+    }
+}
+
+fn filter_expectation_rows(
+    mut rows: Vec<ExpectationBrowseRow>,
+    search: Option<&str>,
+    status: Option<&str>,
+) -> Vec<ExpectationBrowseRow> {
+    if let Some(status) = status {
+        rows.retain(|row| row.status == status);
+    }
+    if let Some(search) = search.map(str::trim).filter(|search| !search.is_empty()) {
+        let search = search.to_ascii_lowercase();
+        rows.retain(|row| expectation_row_matches(row, &search));
+    }
+    rows.sort_by(|left, right| {
+        left.status
+            .cmp(&right.status)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    rows
+}
+
+fn expectation_row_matches(row: &ExpectationBrowseRow, search: &str) -> bool {
+    [
+        row.id.as_str(),
+        row.title.as_str(),
+        row.detail.as_str(),
+        row.target.as_str(),
+        row.subject.as_deref().unwrap_or("-"),
+        row.status.as_str(),
+        row.source.as_str(),
+        row.support_status.as_deref().unwrap_or(""),
+    ]
+    .iter()
+    .any(|value| value.to_ascii_lowercase().contains(search))
+}
+
+fn print_expectations_shortcut(
+    source: &str,
+    filtered: &[ExpectationBrowseRow],
+    shown: &[ExpectationBrowseRow],
+    search: Option<&str>,
+    status: Option<&ExpectationStatus>,
+) {
+    println!("Susumu expectations: {}", filtered.len());
+    println!("Source: {source}");
+    if let Some(search) = search.filter(|value| !value.trim().is_empty()) {
+        println!("Search: {search}");
+    }
+    if let Some(status) = status {
+        println!("Status: {status}");
+    }
+    if shown.is_empty() {
+        println!("No matching expectations.");
+        return;
+    }
+
+    let mut current_status = "";
+    for row in shown {
+        if row.status != current_status {
+            current_status = &row.status;
+            println!();
+            println!("{}", expectation_status_heading(current_status));
+        }
+        println!("  {}", row.id);
+        println!("    {}", row.title);
+        println!(
+            "    target={} subject={} source={}",
+            row.target,
+            row.subject.as_deref().unwrap_or("-"),
+            row.source
+        );
+        if let Some(support_status) = &row.support_status {
+            println!(
+                "    support={} observed={} verification={}/{}/{} work={} decisions={} findings={}",
+                support_status,
+                row.target_observed.unwrap_or(false),
+                row.verification
+                    .as_ref()
+                    .map_or(0, |verification| verification.passed),
+                row.verification
+                    .as_ref()
+                    .map_or(0, |verification| verification.failed),
+                row.verification
+                    .as_ref()
+                    .map_or(0, |verification| verification.inconclusive),
+                row.work.unwrap_or(0),
+                row.decisions.unwrap_or(0),
+                row.findings.unwrap_or(0)
+            );
+        }
+    }
+    if filtered.len() > shown.len() {
+        println!();
+        println!("... {} more expectations", filtered.len() - shown.len());
+    }
+}
+
+fn expectation_status_heading(status: &str) -> &'static str {
+    match status {
+        "accepted" => "Accepted",
+        "proposed" => "Proposed",
+        "superseded" => "Superseded",
+        _ => "Other",
+    }
 }
 
 fn git_shortcut(args: &GitShortcutArgs) -> Result<()> {
@@ -6266,6 +6518,73 @@ mod tests {
             Command::Git { command, .. } => assert!(command.is_none()),
             other => panic!("expected git shortcut, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn expectations_command_parses_search_status_and_json() {
+        let cli = Cli::try_parse_from([
+            "susumu",
+            "expectations",
+            "--search",
+            "git",
+            "--status",
+            "accepted",
+            "--json",
+        ])
+        .expect("parse expectations shortcut");
+
+        match cli.command.expect("command") {
+            Command::Expectations(args) => {
+                assert_eq!(args.search.as_deref(), Some("git"));
+                assert_eq!(
+                    args.status.map(ExpectationStatus::from),
+                    Some(ExpectationStatus::Accepted)
+                );
+                assert!(args.json);
+            }
+            other => panic!("expected expectations shortcut, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn expectation_rows_filter_by_search_and_status() {
+        let rows = vec![
+            ExpectationBrowseRow {
+                id: "e_git_links".to_owned(),
+                title: "Git links are easy".to_owned(),
+                detail: "Users can find expectation ids for git link.".to_owned(),
+                target: "project".to_owned(),
+                subject: None,
+                status: "accepted".to_owned(),
+                source: "human:test".to_owned(),
+                support_status: Some("partially_supported".to_owned()),
+                target_observed: Some(true),
+                verification: None,
+                work: Some(1),
+                decisions: Some(0),
+                findings: Some(0),
+            },
+            ExpectationBrowseRow {
+                id: "e_future".to_owned(),
+                title: "Future idea".to_owned(),
+                detail: "A proposed expectation.".to_owned(),
+                target: "project".to_owned(),
+                subject: None,
+                status: "proposed".to_owned(),
+                source: "human:test".to_owned(),
+                support_status: Some("needs_support".to_owned()),
+                target_observed: Some(true),
+                verification: None,
+                work: Some(0),
+                decisions: Some(0),
+                findings: Some(0),
+            },
+        ];
+
+        let filtered = filter_expectation_rows(rows, Some("git"), Some("accepted"));
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "e_git_links");
     }
 
     #[test]

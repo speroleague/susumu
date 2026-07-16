@@ -6,6 +6,8 @@ It sits between source control, specifications, reviews, and business decisions.
 
 The first release is local-first: a Rust scanner, terminal workbench, review packet generator, Git connector, and standalone web review surface. The core scan, check, review packet, and portal loop runs without AI keys. The long-term goal is shared project memory for engineers, AI agents, business stakeholders, and reviewers: what the system is, what it does, what is expected of it, what work addressed those expectations, and what people have decided or questioned.
 
+[View the live Susumu review portal.](https://speroleague.github.io/susumu/)
+
 ## The daily loop
 
 Rust 1.88 or newer is required.

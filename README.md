@@ -91,6 +91,12 @@ Connect Git work to the latest Susumu artifact:
 cargo run -- git --since main
 ```
 
+Explicitly link an ambiguous commit to an expectation:
+
+```powershell
+cargo run -- git link abc123 e_susumu_docs_teach_daily_workflow --kind documentation
+```
+
 Run the engineering TUI on the latest generated artifact:
 
 ```powershell
@@ -220,6 +226,15 @@ cargo run -- git connect --artifact project.susu --since main --export-work work
 ```
 
 `git connect` is read-only unless `--export-work` is supplied. It correlates commits with the current artifact by changed workflow files, explicit Susumu ids in commit messages, expectation targets, verification/decision targets, and existing work records with `evidence="commit:<sha>"`.
+
+When a commit is valid work but Susumu refuses to guess which expectation it supports, link it explicitly:
+
+```powershell
+cargo run -- git link abc123 e_susumu_docs_teach_daily_workflow
+cargo run -- git link abc123 e_susumu_docs_teach_daily_workflow --kind documentation --detail "Documentation now teaches the daily workflow first."
+```
+
+`git link` reads `.susumu/project.susu` by default, validates the expectation id, resolves the commit, and writes or updates `.susumu/work.susu`. It does not rewrite Git history.
 
 Compare the current artifact against code evidence from an older Git ref:
 

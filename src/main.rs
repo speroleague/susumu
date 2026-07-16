@@ -584,6 +584,9 @@ enum GitCommand {
     /// Connect commits to workflows, records, and expectations.
     Connect(GitConnectArgs),
 
+    /// Explicitly link one commit to one expectation as a work record.
+    Link(GitLinkArgs),
+
     /// Import commits as work records.
     Import(GitImportArgs),
 
@@ -910,6 +913,55 @@ struct GitShortcutArgs {
 }
 
 #[derive(Debug, Args)]
+struct GitLinkArgs {
+    /// Git repository to inspect.
+    #[arg(long, default_value = ".")]
+    repo: PathBuf,
+
+    /// Current .susu artifact containing the expectation.
+    #[arg(long, default_value = ".susumu/project.susu")]
+    artifact: PathBuf,
+
+    /// Work sidecar to update.
+    #[arg(short, long, default_value = ".susumu/work.susu")]
+    output: PathBuf,
+
+    /// Commit hash or ref to link.
+    commit: String,
+
+    /// Expectation id this commit supports.
+    expectation: String,
+
+    /// Provenance label for the linked work record.
+    #[arg(long, default_value = "human:git-link")]
+    source: String,
+
+    /// Kind: implementation, verification, documentation, review, or other.
+    #[arg(long, default_value = "implementation")]
+    kind: WorkKindArg,
+
+    /// Status: proposed, `in_progress`, completed, blocked, or superseded.
+    #[arg(long, default_value = "completed")]
+    status: WorkStatusArg,
+
+    /// Override the work record title. Defaults to the commit subject.
+    #[arg(long)]
+    title: Option<String>,
+
+    /// Add a note to the generated work detail.
+    #[arg(long)]
+    detail: Option<String>,
+
+    /// Emit compact .susu syntax.
+    #[arg(long)]
+    minify: bool,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
 struct GitImportArgs {
     /// Git repository to read.
     #[arg(long, default_value = ".")]
@@ -1196,6 +1248,7 @@ fn run_command(command: Command) -> Result<()> {
             if let Some(command) = command {
                 match command {
                     GitCommand::Connect(args) => git_connect(&args),
+                    GitCommand::Link(args) => git_link(&args),
                     GitCommand::Import(args) => import_git_work(&args),
                     GitCommand::Rewind(args) => git_rewind(&args),
                 }
@@ -4294,6 +4347,59 @@ fn git_connect(args: &GitConnectArgs) -> Result<()> {
     Ok(())
 }
 
+fn git_link(args: &GitLinkArgs) -> Result<()> {
+    let artifact = read_analysis_artifact(&args.artifact)?;
+    let expectation = artifact
+        .expectations
+        .iter()
+        .find(|expectation| expectation.id == args.expectation)
+        .with_context(|| {
+            format!(
+                "{} does not contain expectation {}",
+                args.artifact.display(),
+                args.expectation
+            )
+        })?;
+    let commit = git_commit_for_ref(&args.repo, &args.commit)?;
+    let work = work_from_git_link(&commit, expectation, args);
+    let mut works = if args.output.exists() {
+        read_work_sidecar(&args.output)?
+    } else {
+        Vec::new()
+    };
+    let id = work.id.clone();
+    merge_works(&mut works, vec![work.clone()]);
+    write_text_file(&args.output, &write_works(&works, args.minify)?)?;
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "output": args.output,
+                "record": {
+                    "id": work.id,
+                    "commit": commit.hash,
+                    "expectation": expectation.id,
+                    "target": work.target.to_string(),
+                    "subject": work.subject,
+                    "kind": work.kind.to_string(),
+                    "status": work.status.to_string(),
+                    "evidence": work.evidence,
+                    "title": work.title,
+                }
+            }))
+            .context("could not serialize git link report")?
+        );
+    } else {
+        println!("Susumu git link: {}", args.repo.display());
+        println!("Commit: {}  {}", short_hash(&commit.hash), commit.subject);
+        println!("Expectation: {}  {}", expectation.id, expectation.title);
+        println!("Work: {id} -> {}", args.output.display());
+    }
+
+    Ok(())
+}
+
 fn git_snapshot_dir(repo: &Path, revision: &str) -> Result<PathBuf> {
     let snapshot_dir =
         env::temp_dir().join(format!("susumu-rewind-{}", git_snapshot_id(repo, revision)));
@@ -4552,6 +4658,8 @@ struct GitConnectJson<'a> {
     records: &'a [GitConnection],
 }
 
+const GIT_LOG_FORMAT: &str = "%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1e";
+
 fn git_commits(args: &GitImportArgs) -> Result<Vec<GitCommit>> {
     git_commits_for(
         &args.repo,
@@ -4572,7 +4680,7 @@ fn git_commits_for(
         .arg("-C")
         .arg(repo)
         .arg("log")
-        .arg("--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1e");
+        .arg(format!("--format={GIT_LOG_FORMAT}"));
     if let Some(limit) = limit {
         command.arg("-n").arg(limit.to_string());
     }
@@ -4596,6 +4704,34 @@ fn git_commits_for(
         commit.changed_files = git_changed_files(repo, &commit.hash)?;
     }
     Ok(commits)
+}
+
+fn git_commit_for_ref(repo: &Path, revision: &str) -> Result<GitCommit> {
+    let output = ProcessCommand::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("log")
+        .arg("-n")
+        .arg("1")
+        .arg(format!("--format={GIT_LOG_FORMAT}"))
+        .arg(revision)
+        .output()
+        .with_context(|| format!("could not read commit {revision} in {}", repo.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "git log failed for commit {revision} in {}: {}",
+            repo.display(),
+            stderr.trim()
+        );
+    }
+    let stdout = String::from_utf8(output.stdout).context("git log output was not UTF-8")?;
+    let mut commits = parse_git_commits(&stdout);
+    let mut commit = commits
+        .pop()
+        .with_context(|| format!("could not find commit {revision} in {}", repo.display()))?;
+    commit.changed_files = git_changed_files(repo, &commit.hash)?;
+    Ok(commit)
 }
 
 fn git_changed_files(repo: &Path, commit_hash: &str) -> Result<Vec<String>> {
@@ -4980,6 +5116,21 @@ fn work_from_git_connection(
     }
 }
 
+fn work_from_git_link(commit: &GitCommit, expectation: &Expectation, args: &GitLinkArgs) -> Work {
+    Work {
+        id: git_work_id(&commit.hash),
+        target: expectation.target,
+        subject: expectation.subject.clone(),
+        expectation_id: Some(expectation.id.clone()),
+        kind: WorkKind::from(args.kind.clone()),
+        status: WorkStatus::from(args.status.clone()),
+        source: args.source.clone(),
+        evidence: Some(format!("commit:{}", commit.hash)),
+        title: args.title.clone().unwrap_or_else(|| commit.subject.clone()),
+        detail: git_link_work_detail(commit, expectation, args.detail.as_deref()),
+    }
+}
+
 fn work_target_from_connection(
     artifact: &ProjectAnalysis,
     connection: &GitConnection,
@@ -5026,6 +5177,34 @@ fn git_connect_work_detail(connection: &GitConnection) -> String {
             detail.push_str("\n- ");
             detail.push_str(path);
         }
+    }
+    detail
+}
+
+fn git_link_work_detail(
+    commit: &GitCommit,
+    expectation: &Expectation,
+    note: Option<&str>,
+) -> String {
+    let mut detail = format!(
+        "Generated by git link.\nCommit: {}\nAuthor: {} <{}>\nDate: {}\nExpectation: {} - {}",
+        commit.hash,
+        commit.author_name,
+        commit.author_email,
+        commit.author_date,
+        expectation.id,
+        expectation.title
+    );
+    if !commit.changed_files.is_empty() {
+        detail.push_str("\nChanged files:");
+        for path in &commit.changed_files {
+            detail.push_str("\n- ");
+            detail.push_str(path);
+        }
+    }
+    if let Some(note) = note.filter(|value| !value.trim().is_empty()) {
+        detail.push_str("\n\nNote:\n");
+        detail.push_str(note);
     }
     detail
 }
@@ -5443,6 +5622,10 @@ fn git_work_id(hash: &str) -> String {
     format!("wk_git_{short}")
 }
 
+fn short_hash(hash: &str) -> String {
+    hash.chars().take(8).collect()
+}
+
 fn git_work_detail(commit: &GitCommit, target_note: &str) -> String {
     let mut detail = format!(
         "Author: {} <{}>\nDate: {}\nCommit: {}\nTargeting: {}",
@@ -5836,6 +6019,77 @@ mod tests {
                 .map(|path| (*path).to_owned())
                 .collect(),
         }
+    }
+
+    #[test]
+    fn git_link_command_parses_commit_and_expectation() {
+        let cli = Cli::try_parse_from([
+            "susumu",
+            "git",
+            "link",
+            "abc123",
+            "e_checkout_sequence",
+            "--kind",
+            "documentation",
+        ])
+        .expect("parse git link");
+
+        match cli.command.expect("command") {
+            Command::Git {
+                command: Some(GitCommand::Link(args)),
+                ..
+            } => {
+                assert_eq!(args.commit, "abc123");
+                assert_eq!(args.expectation, "e_checkout_sequence");
+                assert_eq!(WorkKind::from(args.kind), WorkKind::Documentation);
+            }
+            other => panic!("expected git link command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn git_link_work_targets_explicit_expectation() {
+        let artifact = test_artifact();
+        let expectation = artifact
+            .expectations
+            .iter()
+            .find(|expectation| expectation.id == "e_checkout_sequence")
+            .expect("expectation");
+        let commit = test_commit(
+            "docs: explain checkout sequence",
+            "",
+            &["README.md", "docs/checkout.md"],
+        );
+
+        let work = work_from_git_link(
+            &commit,
+            expectation,
+            &GitLinkArgs {
+                repo: PathBuf::from("."),
+                artifact: PathBuf::from(".susumu/project.susu"),
+                output: PathBuf::from(".susumu/work.susu"),
+                commit: commit.hash.clone(),
+                expectation: expectation.id.clone(),
+                source: "human:git-link".to_owned(),
+                kind: WorkKindArg(WorkKind::Documentation),
+                status: WorkStatusArg(WorkStatus::Completed),
+                title: None,
+                detail: Some("Explicitly linked after review.".to_owned()),
+                minify: false,
+                json: false,
+            },
+        );
+
+        assert_eq!(work.id, "wk_git_f240cd96a07f2ea7");
+        assert_eq!(work.target, ExpectationTarget::Workflow);
+        assert_eq!(work.subject.as_deref(), Some("w_checkout"));
+        assert_eq!(work.expectation_id.as_deref(), Some("e_checkout_sequence"));
+        assert_eq!(work.kind, WorkKind::Documentation);
+        let expected_evidence = format!("commit:{}", commit.hash);
+        assert_eq!(work.evidence.as_deref(), Some(expected_evidence.as_str()));
+        assert!(work.detail.contains("Generated by git link."));
+        assert!(work.detail.contains("README.md"));
+        assert!(work.detail.contains("Explicitly linked after review."));
     }
 
     #[test]

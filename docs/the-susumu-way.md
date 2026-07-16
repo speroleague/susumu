@@ -68,6 +68,15 @@ susumu review
 
 The first command connects commits to expectations and exports work records. The second command folds that work back into the review packet.
 
+If Susumu cannot safely infer which expectation a commit supports, link it explicitly:
+
+```powershell
+susumu git link abc123 e_susumu_docs_teach_daily_workflow --kind documentation
+susumu review
+```
+
+This writes a work record without rewriting Git history.
+
 Before opening a pull request:
 
 ```powershell
@@ -87,8 +96,9 @@ A good agent loop is:
 2. Make the code or docs change.
 3. Use a conventional commit message.
 4. Run `susumu git --since <base>`.
-5. Run `susumu review`.
-6. Report which expectation the work supported and what still needs verification.
+5. If the commit is unconnected but the intent is known, run `susumu git link <commit> <expectation-id>`.
+6. Run `susumu review`.
+7. Report which expectation the work supported and what still needs verification.
 
 Agents should not claim an expectation is satisfied just because they changed code. Work supports an expectation. Verification checks it. Decisions record judgment about it.
 

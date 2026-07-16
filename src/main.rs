@@ -8081,6 +8081,145 @@ mod tests {
         assert_eq!(json["work_needing_verification"][0]["id"], "wk_checkout");
     }
 
+    fn write_portable_memory_sources(source_root: &Path) {
+        fs::create_dir_all(source_root.join("src")).expect("create source dir");
+        fs::write(
+            source_root.join("src").join("api.ts"),
+            "export function checkout() { return reserveInventory(); }\n",
+        )
+        .expect("write api source");
+        fs::write(
+            source_root.join("src").join("routes.php"),
+            "<?php function php_checkout() { return 'ok'; }\n",
+        )
+        .expect("write php source");
+    }
+
+    fn portable_memory_artifact(source_root: &Path) -> ProjectAnalysis {
+        let mut artifact = test_artifact();
+        artifact.root = source_root.display().to_string();
+        artifact.verifications.push(Verification {
+            id: "v_checkout".to_owned(),
+            expectation_id: "e_checkout_sequence".to_owned(),
+            status: VerificationStatus::Passed,
+            method: "cargo test checkout".to_owned(),
+            source: "ci:test".to_owned(),
+            evidence: Some("run:checkout".to_owned()),
+            basis: None,
+            detail: "Checkout behavior was verified.".to_owned(),
+        });
+        artifact.decisions.push(Decision {
+            id: "d_checkout".to_owned(),
+            target: ExpectationTarget::Workflow,
+            subject: Some("w_checkout".to_owned()),
+            status: DecisionStatus::Accepted,
+            source: "human:product".to_owned(),
+            basis: None,
+            title: "Keep checkout reservation first".to_owned(),
+            detail: "The business accepted reserve-before-charge as durable intent.".to_owned(),
+        });
+        artifact.works.push(Work {
+            id: "wk_checkout".to_owned(),
+            target: ExpectationTarget::Workflow,
+            subject: Some("w_checkout".to_owned()),
+            expectation_id: Some("e_checkout_sequence".to_owned()),
+            kind: WorkKind::Implementation,
+            status: WorkStatus::Completed,
+            source: "agent:test".to_owned(),
+            evidence: Some("commit:abc123".to_owned()),
+            title: "Implement checkout sequence".to_owned(),
+            detail: "Checkout implementation touched the workflow.".to_owned(),
+        });
+        refresh_derived_analysis(&mut artifact);
+        artifact
+    }
+
+    fn archive_project_memory(
+        artifact: &ProjectAnalysis,
+        archive_root: &Path,
+    ) -> (PathBuf, PathBuf) {
+        fs::create_dir_all(archive_root).expect("create archive dir");
+        let check = check_report(artifact, false);
+        let handoff = handoff_report(artifact, &check);
+        let packet = review_packet(
+            "source/project.susu".to_owned(),
+            123,
+            artifact,
+            &check,
+            &handoff,
+        );
+        let packet_json =
+            serde_json::to_string_pretty(&packet).expect("packet should serialize to JSON");
+        let archived_packet = archive_root.join("review.susu");
+        let archived_artifact = archive_root.join("project.susu");
+        fs::write(&archived_packet, packet_json).expect("write archived review packet");
+        fs::write(
+            &archived_artifact,
+            write_susu(artifact, false).expect("write artifact"),
+        )
+        .expect("write archived artifact");
+        (archived_packet, archived_artifact)
+    }
+
+    fn assert_portable_memory_records(
+        loaded_packet: &ReviewPacketStored,
+        loaded_artifact: &ProjectAnalysis,
+    ) {
+        assert_eq!(loaded_packet.artifact.files.len(), 2);
+        assert_eq!(loaded_packet.artifact.workflows.len(), 2);
+        assert_eq!(loaded_packet.artifact.expectations.len(), 1);
+        assert_eq!(loaded_packet.artifact.verifications.len(), 1);
+        assert_eq!(loaded_packet.artifact.decisions.len(), 1);
+        assert_eq!(loaded_packet.artifact.works.len(), 1);
+        assert!(
+            loaded_packet
+                .source_previews
+                .iter()
+                .any(|preview| preview.file_id == "f_api"
+                    && preview.path == "src/api.ts"
+                    && preview.lines.iter().any(|line| !line.tokens.is_empty()))
+        );
+        assert!(
+            loaded_packet
+                .expectation_support
+                .iter()
+                .any(|support| support.expectation_id == "e_checkout_sequence"
+                    && support.support_status == "verified")
+        );
+        assert_eq!(
+            loaded_artifact.expectations,
+            loaded_packet.artifact.expectations
+        );
+        assert_eq!(
+            loaded_artifact.verifications,
+            loaded_packet.artifact.verifications
+        );
+        assert_eq!(loaded_artifact.decisions, loaded_packet.artifact.decisions);
+        assert_eq!(loaded_artifact.works, loaded_packet.artifact.works);
+        assert!(
+            review_portal_html(loaded_packet)
+                .expect("render archived portal")
+                .contains("Checkout reserves inventory before charging")
+        );
+    }
+
+    #[test]
+    fn review_packet_and_artifact_are_portable_project_memory() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let source_root = temp.path().join("source");
+        let archive_root = temp.path().join("archive");
+        write_portable_memory_sources(&source_root);
+        let artifact = portable_memory_artifact(&source_root);
+        let (archived_packet, archived_artifact) = archive_project_memory(&artifact, &archive_root);
+
+        fs::remove_dir_all(source_root.join("src")).expect("remove original source files");
+
+        let loaded_packet = read_review_packet(&archived_packet).expect("read archived packet");
+        let loaded_artifact =
+            read_analysis_artifact(&archived_artifact).expect("read archived artifact");
+        assert_portable_memory_records(&loaded_packet, &loaded_artifact);
+    }
+
     fn stored_review_packet(
         input: &str,
         created: u64,

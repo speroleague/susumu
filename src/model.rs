@@ -260,6 +260,7 @@ pub enum WorkKind {
     Implementation,
     Verification,
     Documentation,
+    Infrastructure,
     Review,
     Other,
 }
@@ -270,6 +271,7 @@ impl fmt::Display for WorkKind {
             Self::Implementation => "implementation",
             Self::Verification => "verification",
             Self::Documentation => "documentation",
+            Self::Infrastructure => "infrastructure",
             Self::Review => "review",
             Self::Other => "other",
         })
@@ -284,6 +286,7 @@ impl std::str::FromStr for WorkKind {
             "implementation" => Ok(Self::Implementation),
             "verification" => Ok(Self::Verification),
             "documentation" => Ok(Self::Documentation),
+            "infrastructure" => Ok(Self::Infrastructure),
             "review" => Ok(Self::Review),
             "other" => Ok(Self::Other),
             _ => Err(format!("unknown work kind: {value}")),

@@ -175,7 +175,7 @@ Susumu validates decision links when artifacts are scanned or opened:
 
 ## Work
 
-Work records describe activity. They can say that a person implemented a feature, an AI agent changed a workflow, a reviewer inspected a path, an import found a related commit, or automation performed documentation work. They are activity history, not verification proof.
+Work records describe activity. They can say that a person implemented a feature, an AI agent changed a workflow, a reviewer inspected a path, an import found a related commit, automation performed documentation work, or CI/configuration infrastructure changed. They are activity history, not verification proof.
 
 ```susu
 work wk_checkout_agent target=workflow subject=w_8feec23b6a19d218 expectation=e_91bbd1 kind=implementation status=completed source="agent:codex" evidence="commit:abc123" title="Update checkout reservation" detail="Updated checkout so inventory reservation happens before payment capture.";
@@ -198,7 +198,7 @@ cargo run -- C:\path\to\project --expectations expectations.susu --verifications
 - `target` is `project`, `file`, `symbol`, or `workflow`.
 - `subject` is the target id, or `-` for project-wide work.
 - `expectation` is an optional expectation id that the work claims to address, or `-`.
-- `kind` is `implementation`, `verification`, `documentation`, `review`, or `other`.
+- `kind` is `implementation`, `verification`, `documentation`, `infrastructure`, `review`, or `other`.
 - `status` is `proposed`, `in_progress`, `completed`, `blocked`, or `superseded`.
 - `source` records provenance, such as `human:engineer`, `agent:codex`, `import:git`, or `automation:ci`.
 - `evidence` is an optional external or future `.susu` evidence id, such as a commit, PR, ticket, or agent run.

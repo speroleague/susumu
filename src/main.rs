@@ -904,7 +904,7 @@ struct AddWork {
     #[arg(long)]
     expectation: Option<String>,
 
-    /// Kind: implementation, verification, documentation, review, or other.
+    /// Kind: implementation, verification, documentation, infrastructure, review, or other.
     #[arg(long, default_value = "implementation")]
     kind: WorkKindArg,
 
@@ -1060,7 +1060,7 @@ struct GitLinkArgs {
     #[arg(long, default_value = "human:git-link")]
     source: String,
 
-    /// Kind: implementation, verification, documentation, review, or other.
+    /// Kind: implementation, verification, documentation, infrastructure, review, or other.
     #[arg(long, default_value = "implementation")]
     kind: WorkKindArg,
 
@@ -7068,6 +7068,42 @@ mod tests {
                 assert_eq!(args.commit, "abc123");
                 assert_eq!(args.expectation, "e_checkout_sequence");
                 assert_eq!(WorkKind::from(args.kind), WorkKind::Documentation);
+            }
+            other => panic!("expected git link command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn work_kind_accepts_infrastructure() {
+        let kind = "infrastructure"
+            .parse::<WorkKind>()
+            .expect("parse infrastructure kind");
+
+        assert_eq!(kind, WorkKind::Infrastructure);
+        assert_eq!(kind.to_string(), "infrastructure");
+    }
+
+    #[test]
+    fn git_link_command_parses_infrastructure_kind() {
+        let cli = Cli::try_parse_from([
+            "susumu",
+            "git",
+            "link",
+            "abc123",
+            "e_ci_artifacts",
+            "--kind",
+            "infrastructure",
+        ])
+        .expect("parse git link infrastructure kind");
+
+        match cli.command.expect("command") {
+            Command::Git {
+                command: Some(GitCommand::Link(args)),
+                ..
+            } => {
+                assert_eq!(args.commit, "abc123");
+                assert_eq!(args.expectation, "e_ci_artifacts");
+                assert_eq!(WorkKind::from(args.kind), WorkKind::Infrastructure);
             }
             other => panic!("expected git link command, got {other:?}"),
         }

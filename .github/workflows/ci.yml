@@ -39,6 +39,8 @@ jobs:
     name: Susumu self-review packet
     runs-on: ubuntu-latest
     needs: rust
+    env:
+      SUSUMU_ARTIFACT_DIR: target/susumu-review
 
     steps:
       - name: Check out repository
@@ -51,26 +53,44 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build Susumu self-review
-        run: >
-          cargo run --locked --
-          review build
-          .
-          --artifact-output target/susumu-self.susu
-          --output target/susumu-self.review.susu
-          --check-json target/susumu-check.json
-          --html target/susumu-self.review.html
+        run: |
+          mkdir -p "$SUSUMU_ARTIFACT_DIR"
+          cargo run --locked -- review build . \
+            --artifact-output "$SUSUMU_ARTIFACT_DIR/project.susu" \
+            --output "$SUSUMU_ARTIFACT_DIR/review.susu" \
+            --check-json "$SUSUMU_ARTIFACT_DIR/check.json" \
+            --html "$SUSUMU_ARTIFACT_DIR/review.html"
+
+      - name: Verify Susumu artifacts exist
+        run: |
+          test -s "$SUSUMU_ARTIFACT_DIR/project.susu"
+          test -s "$SUSUMU_ARTIFACT_DIR/check.json"
+          test -s "$SUSUMU_ARTIFACT_DIR/review.susu"
+          test -s "$SUSUMU_ARTIFACT_DIR/review.html"
 
       - name: Summarize Susumu review
         run: |
-          echo "Susumu self-review artifacts were generated." >> "$GITHUB_STEP_SUMMARY"
-          echo "Inspect susumu-check.json and susumu-self.review.html for review details." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Susumu self-review artifacts"
+            echo
+            echo "The pull request generated a portable Susumu review packet and portal."
+            echo
+            echo "| File | Purpose |"
+            echo "| --- | --- |"
+            echo "| project.susu | Current deterministic project evidence model |"
+            echo "| check.json | Machine-readable review/check output |"
+            echo "| review.susu | Portable review packet for humans and agents |"
+            echo "| review.html | Standalone stakeholder review portal |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Susumu review artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: susumu-review
+          name: susumu-review-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 14
           path: |
-            target/susumu-self.susu
-            target/susumu-check.json
-            target/susumu-self.review.susu
-            target/susumu-self.review.html
+            target/susumu-review/project.susu
+            target/susumu-review/check.json
+            target/susumu-review/review.susu
+            target/susumu-review/review.html

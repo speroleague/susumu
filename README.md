@@ -351,9 +351,16 @@ Inside the TUI, use `1` through `9`, `0`, or `Tab` to change views, `j`/`k` or t
 
 This repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`.
 
-The `Rust checks` job runs formatting, tests, and Clippy as hard gates. The `Susumu self-review packet` job builds the repository's own `.susu` artifact, automatically loading `expectations.susu` and `verifications.susu`, writes `check --json`, creates a `.review.susu` packet, exports the standalone HTML portal, and uploads those files as workflow artifacts.
+The `Rust checks` job runs formatting, tests, and Clippy as hard gates. The `Susumu self-review packet` job builds the repository's own `.susu` artifact, automatically loading `expectations.susu` and `verifications.susu`, writes machine-readable `check.json`, creates a `review.susu` packet, exports the standalone `review.html` portal, verifies those files exist, and uploads them as a retained workflow artifact named `susumu-review-<run-id>`.
 
-The self-review `check --json` step records its exit code but does not fail the job, because review findings are useful output for the packet. In a production repository, use `cargo run -- status --strict`, `cargo run -- check project.susu --strict`, or `cargo run -- diff old.susu new.susu --fail-on-stale` when the review signal should block a pull request.
+Uploaded PR artifacts include:
+
+- `project.susu` - the current deterministic project evidence model.
+- `check.json` - machine-readable review/check output.
+- `review.susu` - the portable review packet for humans and agents.
+- `review.html` - the standalone stakeholder review portal.
+
+The self-review job records review findings in `check.json` but does not fail just because the packet contains warnings, because those findings are useful output for the review artifact. In a production repository, use `cargo run -- status --strict`, `cargo run -- check project.susu --strict`, or `cargo run -- diff old.susu new.susu --fail-on-stale` when the review signal should block a pull request.
 
 ## A `.susu` artifact
 

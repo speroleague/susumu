@@ -7733,6 +7733,27 @@ mod tests {
     }
 
     #[test]
+    fn ci_workflow_uploads_susumu_review_artifacts() {
+        let workflow = include_str!("../.github/workflows/ci.yml");
+
+        assert!(workflow.contains("pull_request:"));
+        assert!(workflow.contains("Susumu self-review packet"));
+        assert!(workflow.contains("cargo run --locked -- review build ."));
+        assert!(workflow.contains("--artifact-output \"$SUSUMU_ARTIFACT_DIR/project.susu\""));
+        assert!(workflow.contains("--check-json \"$SUSUMU_ARTIFACT_DIR/check.json\""));
+        assert!(workflow.contains("--output \"$SUSUMU_ARTIFACT_DIR/review.susu\""));
+        assert!(workflow.contains("--html \"$SUSUMU_ARTIFACT_DIR/review.html\""));
+        assert!(workflow.contains("Verify Susumu artifacts exist"));
+        assert!(workflow.contains("actions/upload-artifact@v4"));
+        assert!(workflow.contains("if-no-files-found: error"));
+        assert!(workflow.contains("retention-days: 14"));
+        assert!(workflow.contains("target/susumu-review/project.susu"));
+        assert!(workflow.contains("target/susumu-review/check.json"));
+        assert!(workflow.contains("target/susumu-review/review.susu"));
+        assert!(workflow.contains("target/susumu-review/review.html"));
+    }
+
+    #[test]
     fn review_portal_html_embeds_packet_safely() {
         let mut artifact = test_artifact();
         artifact.project_name = "fixture </script>".to_owned();

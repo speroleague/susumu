@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     env, fs,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
@@ -25,6 +25,7 @@ use susumu::{
 mod checks;
 mod cli_values;
 mod expectation_readiness;
+mod git_connect;
 mod handoff;
 mod review_packet;
 mod review_types;
@@ -35,6 +36,11 @@ use cli_values::{
     GitTargetDepthArg, VerificationStatusArg, WorkKindArg, WorkStatusArg,
 };
 use expectation_readiness::expectation_support;
+use git_connect::{
+    GitConnectReport, GitConnectedRecord, GitConnection, build_git_connect_report, contains_token,
+    matched_artifact_file_ids, missing_expectation_work_records,
+    single_language_matched_expectation,
+};
 use handoff::{
     handoff_report, print_handoff_json, print_handoff_records, print_handoff_report,
     print_handoff_workflows, print_string_section,
@@ -3947,52 +3953,11 @@ struct GitImportRecordJson<'a> {
     changed_files: &'a [String],
 }
 
-#[derive(Debug)]
-struct GitConnectReport {
-    records: Vec<GitConnection>,
-    connected: usize,
-    needs_record: usize,
-    unconnected: usize,
-}
-
 #[derive(Debug, Serialize)]
 struct GitConnectExport {
     path: String,
     written: usize,
     source: String,
-}
-
-#[derive(Debug, Serialize)]
-struct GitConnection {
-    commit: String,
-    short_commit: String,
-    author: String,
-    date: String,
-    title: String,
-    status: String,
-    reasons: Vec<String>,
-    changed_files: Vec<String>,
-    workflows: Vec<GitConnectedRecord>,
-    expectations: Vec<GitConnectedRecord>,
-    verifications: Vec<GitConnectedRecord>,
-    decisions: Vec<GitConnectedRecord>,
-    works: Vec<GitConnectedRecord>,
-    suggestions: Vec<GitSuggestion>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct GitConnectedRecord {
-    id: String,
-    title: String,
-    reason: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct GitSuggestion {
-    expectation_id: String,
-    title: String,
-    score: usize,
-    command: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -4142,373 +4107,6 @@ fn parse_git_commits(source: &str) -> Vec<GitCommit> {
             })
         })
         .collect()
-}
-
-fn build_git_connect_report(artifact: &ProjectAnalysis, commits: &[GitCommit]) -> GitConnectReport {
-    let records = commits
-        .iter()
-        .map(|commit| git_connection(artifact, commit))
-        .collect::<Vec<_>>();
-    let connected = records
-        .iter()
-        .filter(|record| record.status == "connected")
-        .count();
-    let needs_record = records
-        .iter()
-        .filter(|record| record.status == "needs_record")
-        .count();
-    let unconnected = records
-        .iter()
-        .filter(|record| record.status == "unconnected")
-        .count();
-    GitConnectReport {
-        records,
-        connected,
-        needs_record,
-        unconnected,
-    }
-}
-
-fn git_connection(artifact: &ProjectAnalysis, commit: &GitCommit) -> GitConnection {
-    let text = format!("{}\n{}", commit.subject, commit.body);
-    let matched_file_ids = matched_artifact_file_ids(artifact, &commit.changed_files);
-    let workflows = connected_workflows(artifact, &text, &matched_file_ids);
-    let workflow_ids = workflows
-        .iter()
-        .map(|record| record.id.clone())
-        .collect::<BTreeSet<_>>();
-    let expectations = connected_expectations(artifact, &text, &matched_file_ids, &workflow_ids);
-    let expectation_ids = expectations
-        .iter()
-        .map(|record| record.id.clone())
-        .collect::<BTreeSet<_>>();
-    let verifications = connected_verifications(artifact, &text, &expectation_ids);
-    let decisions = connected_decisions(artifact, &text, &matched_file_ids, &workflow_ids);
-    let works = connected_works(artifact, &text, &commit.hash);
-    let mut reasons = Vec::new();
-    if !workflows.is_empty() {
-        reasons.push(format!("{} workflow link(s)", workflows.len()));
-    }
-    if !expectations.is_empty() {
-        reasons.push(format!("{} expectation link(s)", expectations.len()));
-    }
-    if !verifications.is_empty() {
-        reasons.push(format!("{} verification link(s)", verifications.len()));
-    }
-    if !decisions.is_empty() {
-        reasons.push(format!("{} decision link(s)", decisions.len()));
-    }
-    if !works.is_empty() {
-        reasons.push(format!("{} work record link(s)", works.len()));
-    }
-
-    let missing_expectation_work =
-        missing_expectation_work_records(artifact, &commit.hash, &expectations);
-    let has_record = if expectations.is_empty() {
-        !works.is_empty()
-    } else {
-        missing_expectation_work.is_empty()
-    };
-    let has_context = !workflows.is_empty()
-        || !expectations.is_empty()
-        || !verifications.is_empty()
-        || !decisions.is_empty();
-    let status = if has_record {
-        "connected"
-    } else if has_context {
-        "needs_record"
-    } else {
-        "unconnected"
-    }
-    .to_owned();
-
-    if reasons.is_empty() {
-        reasons.push("no Susumu records or workflow files matched".to_owned());
-    } else if !missing_expectation_work.is_empty() {
-        reasons.push(format!(
-            "{} expectation work record(s) missing",
-            missing_expectation_work.len()
-        ));
-    } else if !has_record {
-        reasons.push("no work record references this commit".to_owned());
-    }
-    let suggestions = if status == "unconnected" {
-        git_link_suggestions(artifact, commit)
-    } else {
-        Vec::new()
-    };
-
-    GitConnection {
-        commit: commit.hash.clone(),
-        short_commit: commit.hash.chars().take(8).collect(),
-        author: format!("{} <{}>", commit.author_name, commit.author_email),
-        date: commit.author_date.clone(),
-        title: commit.subject.clone(),
-        status,
-        reasons,
-        changed_files: commit.changed_files.clone(),
-        workflows,
-        expectations,
-        verifications,
-        decisions,
-        works,
-        suggestions,
-    }
-}
-
-fn git_link_suggestions(artifact: &ProjectAnalysis, commit: &GitCommit) -> Vec<GitSuggestion> {
-    suggested_expectations(artifact, &format!("{}\n{}", commit.subject, commit.body))
-        .into_iter()
-        .map(|candidate| GitSuggestion {
-            command: format!(
-                "susumu git link {} {}",
-                short_hash(&commit.hash),
-                candidate.id
-            ),
-            expectation_id: candidate.id,
-            title: candidate.title,
-            score: candidate.score,
-        })
-        .collect()
-}
-
-#[derive(Debug)]
-struct SuggestedExpectation {
-    id: String,
-    title: String,
-    score: usize,
-}
-
-fn suggested_expectations(
-    artifact: &ProjectAnalysis,
-    searchable: &str,
-) -> Vec<SuggestedExpectation> {
-    let searchable_tokens = expectation_language_tokens(searchable);
-    if searchable_tokens.is_empty() {
-        return Vec::new();
-    }
-    let mut matches = artifact
-        .expectations
-        .iter()
-        .filter_map(|expectation| {
-            let mut expectation_text = expectation.title.clone();
-            expectation_text.push(' ');
-            expectation_text.push_str(&expectation.detail);
-            let expectation_tokens = expectation_language_tokens(&expectation_text);
-            let overlap = expectation_tokens.intersection(&searchable_tokens).count();
-            (overlap >= 2).then(|| SuggestedExpectation {
-                id: expectation.id.clone(),
-                title: expectation.title.clone(),
-                score: overlap,
-            })
-        })
-        .collect::<Vec<_>>();
-    matches.sort_by(|left, right| {
-        right
-            .score
-            .cmp(&left.score)
-            .then_with(|| left.id.cmp(&right.id))
-    });
-    matches.truncate(3);
-    matches
-}
-
-fn connected_workflows(
-    artifact: &ProjectAnalysis,
-    text: &str,
-    file_ids: &[String],
-) -> Vec<GitConnectedRecord> {
-    let mut records = artifact
-        .workflows
-        .iter()
-        .filter_map(|workflow| {
-            let explicit = contains_token(text, &workflow.id);
-            let file_match = file_ids.iter().any(|file_id| file_id == &workflow.file_id);
-            (explicit || file_match).then(|| GitConnectedRecord {
-                id: workflow.id.clone(),
-                title: format!("{} ({})", workflow.trigger, workflow.framework),
-                reason: if explicit {
-                    "commit text mentions workflow id".to_owned()
-                } else {
-                    "commit changed workflow file".to_owned()
-                },
-            })
-        })
-        .collect::<Vec<_>>();
-    sort_connected_records(&mut records);
-    records
-}
-
-fn connected_expectations(
-    artifact: &ProjectAnalysis,
-    text: &str,
-    file_ids: &[String],
-    workflow_ids: &BTreeSet<String>,
-) -> Vec<GitConnectedRecord> {
-    let language_match = single_language_matched_expectation(artifact, text);
-    let mut records = artifact
-        .expectations
-        .iter()
-        .filter_map(|expectation| {
-            let explicit = contains_token(text, &expectation.id);
-            let reason = if explicit {
-                Some("commit text mentions expectation id")
-            } else if language_match.as_deref() == Some(expectation.id.as_str()) {
-                Some("commit text matches expectation language")
-            } else {
-                match (expectation.target, expectation.subject.as_deref()) {
-                    (ExpectationTarget::Workflow, Some(subject))
-                        if workflow_ids.contains(subject) =>
-                    {
-                        Some("expectation targets matched workflow")
-                    }
-                    (ExpectationTarget::File, Some(subject))
-                        if file_ids.iter().any(|file_id| file_id == subject) =>
-                    {
-                        Some("expectation targets changed file")
-                    }
-                    _ => None,
-                }
-            }?;
-            Some(GitConnectedRecord {
-                id: expectation.id.clone(),
-                title: expectation.title.clone(),
-                reason: reason.to_owned(),
-            })
-        })
-        .collect::<Vec<_>>();
-    sort_connected_records(&mut records);
-    records
-}
-
-fn connected_verifications(
-    artifact: &ProjectAnalysis,
-    text: &str,
-    expectation_ids: &BTreeSet<String>,
-) -> Vec<GitConnectedRecord> {
-    let mut records = artifact
-        .verifications
-        .iter()
-        .filter_map(|verification| {
-            let explicit = contains_token(text, &verification.id);
-            let expectation_match = expectation_ids.contains(&verification.expectation_id);
-            (explicit || expectation_match).then(|| GitConnectedRecord {
-                id: verification.id.clone(),
-                title: expectation_title(artifact, &verification.expectation_id),
-                reason: if explicit {
-                    "commit text mentions verification id".to_owned()
-                } else {
-                    "verification checks matched expectation".to_owned()
-                },
-            })
-        })
-        .collect::<Vec<_>>();
-    sort_connected_records(&mut records);
-    records
-}
-
-fn connected_decisions(
-    artifact: &ProjectAnalysis,
-    text: &str,
-    file_ids: &[String],
-    workflow_ids: &BTreeSet<String>,
-) -> Vec<GitConnectedRecord> {
-    let mut records = artifact
-        .decisions
-        .iter()
-        .filter_map(|decision| {
-            let explicit = contains_token(text, &decision.id);
-            let reason = if explicit {
-                Some("commit text mentions decision id")
-            } else {
-                match (decision.target, decision.subject.as_deref()) {
-                    (ExpectationTarget::Workflow, Some(subject))
-                        if workflow_ids.contains(subject) =>
-                    {
-                        Some("decision targets matched workflow")
-                    }
-                    (ExpectationTarget::File, Some(subject))
-                        if file_ids.iter().any(|file_id| file_id == subject) =>
-                    {
-                        Some("decision targets changed file")
-                    }
-                    _ => None,
-                }
-            }?;
-            Some(GitConnectedRecord {
-                id: decision.id.clone(),
-                title: decision.title.clone(),
-                reason: reason.to_owned(),
-            })
-        })
-        .collect::<Vec<_>>();
-    sort_connected_records(&mut records);
-    records
-}
-
-fn connected_works(
-    artifact: &ProjectAnalysis,
-    text: &str,
-    commit_hash: &str,
-) -> Vec<GitConnectedRecord> {
-    let mut records = artifact
-        .works
-        .iter()
-        .filter_map(|work| {
-            let explicit = contains_token(text, &work.id);
-            let evidence = work
-                .evidence
-                .as_deref()
-                .and_then(commit_evidence_hash)
-                .is_some_and(|hash| commit_hash_matches(commit_hash, hash));
-            (explicit || evidence).then(|| GitConnectedRecord {
-                id: work.id.clone(),
-                title: work.title.clone(),
-                reason: if explicit {
-                    "commit text mentions work id".to_owned()
-                } else {
-                    "work evidence references commit".to_owned()
-                },
-            })
-        })
-        .collect::<Vec<_>>();
-    sort_connected_records(&mut records);
-    records
-}
-
-fn missing_expectation_work_records(
-    artifact: &ProjectAnalysis,
-    commit_hash: &str,
-    expectations: &[GitConnectedRecord],
-) -> Vec<GitConnectedRecord> {
-    expectations
-        .iter()
-        .filter(|expectation| {
-            !artifact.works.iter().any(|work| {
-                work.expectation_id.as_deref() == Some(expectation.id.as_str())
-                    && work
-                        .evidence
-                        .as_deref()
-                        .and_then(commit_evidence_hash)
-                        .is_some_and(|hash| commit_hash_matches(commit_hash, hash))
-            })
-        })
-        .cloned()
-        .collect()
-}
-
-fn commit_evidence_hash(evidence: &str) -> Option<&str> {
-    evidence
-        .strip_prefix("commit:")
-        .filter(|hash| !hash.is_empty())
-}
-
-fn commit_hash_matches(commit_hash: &str, evidence_hash: &str) -> bool {
-    commit_hash.starts_with(evidence_hash) || evidence_hash.starts_with(commit_hash)
-}
-
-fn sort_connected_records(records: &mut [GitConnectedRecord]) {
-    records.sort_by(|left, right| left.id.cmp(&right.id));
 }
 
 fn export_git_connect_work(
@@ -4950,101 +4548,6 @@ fn explicitly_linked_git_expectations(
         .collect::<Vec<_>>()
 }
 
-fn single_language_matched_expectation(
-    artifact: &ProjectAnalysis,
-    searchable: &str,
-) -> Option<String> {
-    let searchable_tokens = expectation_language_tokens(searchable);
-    let mut matches = artifact
-        .expectations
-        .iter()
-        .filter_map(|expectation| {
-            let mut expectation_text = expectation.title.clone();
-            expectation_text.push(' ');
-            expectation_text.push_str(&expectation.detail);
-            let expectation_tokens = expectation_language_tokens(&expectation_text);
-            let overlap = expectation_tokens.intersection(&searchable_tokens).count();
-            (overlap >= 2).then(|| (expectation.id.clone(), overlap))
-        })
-        .collect::<Vec<_>>();
-    matches.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
-    let (id, score) = matches.first()?;
-    if *score < 2 {
-        return None;
-    }
-    if matches
-        .get(1)
-        .is_some_and(|(_, next_score)| next_score >= score)
-    {
-        return None;
-    }
-    Some(id.clone())
-}
-
-fn expectation_language_tokens(text: &str) -> BTreeSet<String> {
-    text.split(is_token_boundary)
-        .filter_map(normalize_expectation_language_token)
-        .collect()
-}
-
-fn normalize_expectation_language_token(token: &str) -> Option<String> {
-    let mut token = token.to_ascii_lowercase();
-    if token.len() < 3 || expectation_language_stop_word(&token) {
-        return None;
-    }
-    for suffix in ["ing", "ed", "s"] {
-        if token.len() > suffix.len() + 2 && token.ends_with(suffix) {
-            token.truncate(token.len() - suffix.len());
-            break;
-        }
-    }
-    if token.len() < 3 || expectation_language_stop_word(&token) {
-        None
-    } else {
-        Some(token)
-    }
-}
-
-fn expectation_language_stop_word(token: &str) -> bool {
-    matches!(
-        token,
-        "about"
-            | "able"
-            | "after"
-            | "before"
-            | "code"
-            | "current"
-            | "detail"
-            | "from"
-            | "have"
-            | "into"
-            | "project"
-            | "record"
-            | "records"
-            | "repository"
-            | "should"
-            | "show"
-            | "susumu"
-            | "that"
-            | "their"
-            | "when"
-            | "which"
-            | "with"
-            | "workflow"
-            | "workflows"
-    )
-}
-
-fn contains_token(haystack: &str, needle: &str) -> bool {
-    haystack
-        .split(is_token_boundary)
-        .any(|token| token == needle)
-}
-
-const fn is_token_boundary(character: char) -> bool {
-    !(character.is_ascii_alphanumeric() || character == '_')
-}
-
 fn git_work_target(commit: &GitCommit, context: &GitImportContext<'_>) -> GitWorkTarget {
     let Some(artifact) = context.artifact else {
         return project_git_target("No artifact supplied; imported as project-wide work.");
@@ -5085,21 +4588,6 @@ fn project_git_target(note: &str) -> GitWorkTarget {
         subject: None,
         note: note.to_owned(),
     }
-}
-
-fn matched_artifact_file_ids(artifact: &ProjectAnalysis, changed_files: &[String]) -> Vec<String> {
-    let mut matched = artifact
-        .files
-        .iter()
-        .filter(|file| {
-            let artifact_path = normalize_git_path(&file.path);
-            changed_files.iter().any(|path| path == &artifact_path)
-        })
-        .map(|file| file.id.clone())
-        .collect::<Vec<_>>();
-    matched.sort();
-    matched.dedup();
-    matched
 }
 
 fn single_workflow_for_files(artifact: &ProjectAnalysis, file_ids: &[String]) -> Option<String> {
@@ -7174,7 +6662,10 @@ mod tests {
             },
         ];
 
-        let suggestions = suggested_expectations(&artifact, "docs: guide daily workflow commands");
+        let suggestions = crate::git_connect::suggested_expectations(
+            &artifact,
+            "docs: guide daily workflow commands",
+        );
 
         assert_eq!(suggestions.len(), 3);
         assert_eq!(suggestions[0].id, "e_docs");

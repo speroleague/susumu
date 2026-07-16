@@ -6952,7 +6952,7 @@ fn merge_works(existing: &mut Vec<Work>, imported: Vec<Work>) {
 mod tests {
     use super::*;
     use susumu::model::{
-        Confidence, Language, Location, SCHEMA_VERSION, SourceFile, Workflow, WorkflowKind,
+        Confidence, Finding, Language, Location, SCHEMA_VERSION, SourceFile, Workflow, WorkflowKind,
     };
 
     fn test_artifact() -> ProjectAnalysis {
@@ -7611,6 +7611,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn expectation_support_counts_expectation_specific_work_only_once() {
         let mut artifact = test_artifact();
         artifact.expectations = vec![
@@ -7645,6 +7646,67 @@ mod tests {
             title: "Support first expectation".to_owned(),
             detail: "Only the explicitly linked expectation should count this work.".to_owned(),
         });
+        artifact.verifications.push(Verification {
+            id: "v_one_passed".to_owned(),
+            expectation_id: "e_project_one".to_owned(),
+            status: VerificationStatus::Passed,
+            method: "cargo test".to_owned(),
+            source: "ci:test".to_owned(),
+            evidence: Some("run:1".to_owned()),
+            basis: None,
+            detail: "Passed.".to_owned(),
+        });
+        artifact.verifications.push(Verification {
+            id: "v_one_failed".to_owned(),
+            expectation_id: "e_project_one".to_owned(),
+            status: VerificationStatus::Failed,
+            method: "manual review".to_owned(),
+            source: "human:test".to_owned(),
+            evidence: Some("review:1".to_owned()),
+            basis: None,
+            detail: "Failed.".to_owned(),
+        });
+        artifact.verifications.push(Verification {
+            id: "v_one_inconclusive".to_owned(),
+            expectation_id: "e_project_one".to_owned(),
+            status: VerificationStatus::Inconclusive,
+            method: "log review".to_owned(),
+            source: "human:test".to_owned(),
+            evidence: None,
+            basis: None,
+            detail: "Inconclusive.".to_owned(),
+        });
+        artifact.decisions.push(Decision {
+            id: "d_project".to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            status: DecisionStatus::Accepted,
+            source: "human:test".to_owned(),
+            basis: None,
+            title: "Accept project direction".to_owned(),
+            detail: "Project-wide decision context should count for project expectations."
+                .to_owned(),
+        });
+        artifact.expectations.push(Expectation {
+            id: "e_workflow_gap".to_owned(),
+            target: ExpectationTarget::Workflow,
+            subject: Some("w_checkout".to_owned()),
+            status: ExpectationStatus::Accepted,
+            source: "human:test".to_owned(),
+            title: "Workflow support includes findings".to_owned(),
+            detail: "Findings tied to the workflow should appear in expectation support."
+                .to_owned(),
+        });
+        artifact.findings.push(Finding {
+            rule_id: "SUS999".to_owned(),
+            source: "test".to_owned(),
+            severity: Severity::Warning,
+            title: "Workflow finding".to_owned(),
+            detail: "A workflow finding should be counted.".to_owned(),
+            file_id: Some("f_api".to_owned()),
+            subject: Some("w_checkout".to_owned()),
+            location: Some(test_location()),
+        });
 
         let support = expectation_support(&artifact);
         let first = support
@@ -7655,11 +7717,54 @@ mod tests {
             .iter()
             .find(|item| item.expectation_id == "e_project_two")
             .expect("second support");
+        let workflow = support
+            .iter()
+            .find(|item| item.expectation_id == "e_workflow_gap")
+            .expect("workflow support");
 
+        assert!(first.target_observed);
+        assert_eq!(first.verification.passed, 1);
+        assert_eq!(first.verification.failed, 1);
+        assert_eq!(first.verification.inconclusive, 1);
         assert_eq!(first.work, 1);
-        assert_eq!(first.support_status, "partially_supported");
+        assert_eq!(first.decisions, 1);
+        assert_eq!(first.findings, 0);
+        assert_eq!(first.support_status, "failed_verification");
+        assert!(
+            first
+                .reasons
+                .iter()
+                .any(|reason| reason == "target observed")
+        );
+        assert!(
+            first
+                .reasons
+                .iter()
+                .any(|reason| reason == "1 failed verification record(s)")
+        );
+        assert!(
+            first
+                .reasons
+                .iter()
+                .any(|reason| reason == "1 linked work record(s)")
+        );
+        assert!(
+            first
+                .reasons
+                .iter()
+                .any(|reason| reason == "1 linked decision record(s)")
+        );
         assert_eq!(second.work, 0);
-        assert_eq!(second.support_status, "needs_support");
+        assert_eq!(second.decisions, 1);
+        assert_eq!(second.support_status, "partially_supported");
+        assert_eq!(workflow.findings, 1);
+        assert_eq!(workflow.support_status, "partially_supported");
+        assert!(
+            workflow
+                .reasons
+                .iter()
+                .any(|reason| reason == "1 linked finding(s)")
+        );
     }
 
     #[test]

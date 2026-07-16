@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use susumu::{
     analysis::{anchor_decision_bases, anchor_verification_bases, refresh_derived_analysis},
@@ -31,10 +31,19 @@ use syntect::{
 };
 
 mod cli_values;
+mod review_types;
 
 use cli_values::{
     DecisionStatusArg, ExpectationStatusArg, ExpectationTargetArg, GitTargetDepth,
     GitTargetDepthArg, VerificationStatusArg, WorkKindArg, WorkStatusArg,
+};
+use review_types::{
+    CheckEvidenceJson, CheckItem, CheckItemJson, CheckJson, CheckProjectJson, CheckRecordsJson,
+    CheckReport, CheckResultJson, CheckReviewJson, CheckSeverity, ExpectationReadiness,
+    ExpectationSupport, ExpectationVerificationSupport, HandoffJson, HandoffRecord, HandoffReport,
+    HandoffWorkflow, READINESS_BUCKETS, ReviewItemStored, ReviewPacketJson, ReviewPacketStored,
+    ReviewSourceJson, ReviewSourceLine, ReviewSourcePreview, ReviewSourceToken,
+    check_result_reason, check_severity_label,
 };
 
 #[derive(Debug, Parser)]
@@ -3327,306 +3336,6 @@ fn print_freshness_section(items: &[CheckItem], max_items: usize) {
     println!();
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum CheckSeverity {
-    Attention,
-    Warning,
-    Critical,
-}
-
-#[derive(Debug)]
-struct CheckItem {
-    severity: CheckSeverity,
-    title: String,
-    detail: String,
-    source: String,
-}
-
-#[derive(Debug)]
-struct CheckReport {
-    items: Vec<CheckItem>,
-    critical: usize,
-    warning: usize,
-    attention: usize,
-    strict: bool,
-    failed: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct CheckJson<'a> {
-    project: CheckProjectJson<'a>,
-    evidence: CheckEvidenceJson,
-    records: CheckRecordsJson,
-    review: CheckReviewJson,
-    result: CheckResultJson<'a>,
-    items: Vec<CheckItemJson<'a>>,
-}
-
-#[derive(Debug, Serialize)]
-struct CheckProjectJson<'a> {
-    name: &'a str,
-    root: &'a str,
-    generated_unix_seconds: u64,
-}
-
-#[derive(Debug, Serialize)]
-struct CheckEvidenceJson {
-    files: usize,
-    workflows: usize,
-    flows: usize,
-    findings: usize,
-}
-
-#[derive(Debug, Serialize)]
-struct CheckRecordsJson {
-    expectations: usize,
-    verifications: usize,
-    decisions: usize,
-    work: usize,
-}
-
-#[derive(Debug, Serialize)]
-struct CheckReviewJson {
-    critical: usize,
-    warning: usize,
-    attention: usize,
-}
-
-#[derive(Debug, Serialize)]
-struct CheckResultJson<'a> {
-    status: &'a str,
-    failed: bool,
-    strict: bool,
-    reason: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct CheckItemJson<'a> {
-    severity: &'a str,
-    title: &'a str,
-    detail: &'a str,
-    source: &'a str,
-}
-
-#[derive(Debug)]
-struct HandoffReport {
-    top_workflows: Vec<HandoffWorkflow>,
-    expectations_without_verification: Vec<HandoffRecord>,
-    work_needing_verification: Vec<HandoffRecord>,
-    caveats: Vec<String>,
-    next_actions: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct HandoffWorkflow {
-    id: String,
-    trigger: String,
-    framework: String,
-    score: u32,
-    expectations: usize,
-    verifications: usize,
-    work: usize,
-    detail: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct HandoffRecord {
-    id: String,
-    title: String,
-    target: String,
-    subject: Option<String>,
-    source: String,
-    reason: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ExpectationSupport {
-    expectation_id: String,
-    title: String,
-    target: String,
-    subject: Option<String>,
-    target_observed: bool,
-    verification: ExpectationVerificationSupport,
-    work: usize,
-    decisions: usize,
-    findings: usize,
-    support_status: String,
-    reasons: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ExpectationVerificationSupport {
-    passed: usize,
-    failed: usize,
-    inconclusive: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ExpectationReadiness {
-    expectation_id: String,
-    title: String,
-    target: String,
-    subject: Option<String>,
-    bucket: String,
-    label: String,
-    support_status: String,
-    next_action: String,
-}
-
-const READINESS_BUCKETS: [(&str, &str); 5] = [
-    ("failed_verification", "Failed verification"),
-    ("missing_target", "Missing target"),
-    ("needs_verification", "Has work, needs verification"),
-    ("needs_work", "No linked work yet"),
-    ("verified", "Verified"),
-];
-
-#[derive(Debug, Serialize)]
-struct HandoffJson<'a> {
-    project: CheckProjectJson<'a>,
-    evidence: CheckEvidenceJson,
-    records: CheckRecordsJson,
-    review: CheckReviewJson,
-    result: CheckResultJson<'a>,
-    top_workflows: &'a [HandoffWorkflow],
-    review_items: Vec<CheckItemJson<'a>>,
-    expectations_without_verification: &'a [HandoffRecord],
-    work_needing_verification: &'a [HandoffRecord],
-    caveats: &'a [String],
-    next_actions: &'a [String],
-}
-
-#[derive(Debug, Serialize)]
-struct ReviewPacketJson<'a> {
-    schema_version: &'static str,
-    created_unix_seconds: u64,
-    source: ReviewSourceJson,
-    project: CheckProjectJson<'a>,
-    evidence: CheckEvidenceJson,
-    records: CheckRecordsJson,
-    review: CheckReviewJson,
-    result: CheckResultJson<'a>,
-    top_workflows: &'a [HandoffWorkflow],
-    review_items: Vec<CheckItemJson<'a>>,
-    source_previews: Vec<ReviewSourcePreview>,
-    expectation_support: Vec<ExpectationSupport>,
-    expectation_readiness: Vec<ExpectationReadiness>,
-    expectations_without_verification: &'a [HandoffRecord],
-    work_needing_verification: &'a [HandoffRecord],
-    caveats: &'a [String],
-    next_actions: &'a [String],
-    artifact: &'a ProjectAnalysis,
-}
-
-#[derive(Debug, Serialize)]
-struct ReviewSourceJson {
-    input: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewPacketStored {
-    schema_version: String,
-    created_unix_seconds: u64,
-    source: ReviewSourceStored,
-    project: ReviewProjectStored,
-    evidence: ReviewEvidenceStored,
-    records: ReviewRecordsStored,
-    review: ReviewCountsStored,
-    result: ReviewResultStored,
-    top_workflows: Vec<HandoffWorkflow>,
-    review_items: Vec<ReviewItemStored>,
-    #[serde(default)]
-    source_previews: Vec<ReviewSourcePreview>,
-    #[serde(default)]
-    expectation_support: Vec<ExpectationSupport>,
-    #[serde(default)]
-    expectation_readiness: Vec<ExpectationReadiness>,
-    expectations_without_verification: Vec<HandoffRecord>,
-    work_needing_verification: Vec<HandoffRecord>,
-    caveats: Vec<String>,
-    next_actions: Vec<String>,
-    artifact: ProjectAnalysis,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewSourceStored {
-    input: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewProjectStored {
-    name: String,
-    root: String,
-    generated_unix_seconds: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewEvidenceStored {
-    files: usize,
-    workflows: usize,
-    flows: usize,
-    findings: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewRecordsStored {
-    expectations: usize,
-    verifications: usize,
-    decisions: usize,
-    work: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewCountsStored {
-    critical: usize,
-    warning: usize,
-    attention: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewResultStored {
-    status: String,
-    failed: bool,
-    strict: bool,
-    reason: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewItemStored {
-    severity: String,
-    title: String,
-    detail: String,
-    source: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewSourcePreview {
-    file_id: String,
-    path: String,
-    language: String,
-    start_line: usize,
-    end_line: usize,
-    highlight_start: usize,
-    highlight_end: usize,
-    lines: Vec<ReviewSourceLine>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewSourceLine {
-    number: usize,
-    text: String,
-    #[serde(default)]
-    html: String,
-    #[serde(default)]
-    tokens: Vec<ReviewSourceToken>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct ReviewSourceToken {
-    text: String,
-    color: String,
-}
-
 #[derive(Debug)]
 struct ReviewDiffReport {
     artifact: DiffReport,
@@ -4727,28 +4436,6 @@ fn current_unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs())
-}
-
-const fn check_result_reason(report: &CheckReport) -> &'static str {
-    if report.failed {
-        if report.critical > 0 {
-            "critical review items present"
-        } else {
-            "strict mode treats warnings as blockers"
-        }
-    } else if report.warning > 0 || report.attention > 0 {
-        "passed with review items"
-    } else {
-        "passed"
-    }
-}
-
-const fn check_severity_label(severity: CheckSeverity) -> &'static str {
-    match severity {
-        CheckSeverity::Critical => "critical",
-        CheckSeverity::Warning => "warning",
-        CheckSeverity::Attention => "attention",
-    }
 }
 
 fn expectation_title(analysis: &ProjectAnalysis, id: &str) -> String {

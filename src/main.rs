@@ -17,7 +17,8 @@ use susumu::{
     analysis::{anchor_decision_bases, anchor_verification_bases, refresh_derived_analysis},
     model::{
         Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget, Language,
-        ProjectAnalysis, Severity, Verification, VerificationStatus, Work, WorkKind, WorkStatus,
+        Location, ProjectAnalysis, Severity, Verification, VerificationStatus, Work, WorkKind,
+        WorkStatus,
     },
     parse_decisions, parse_expectations, parse_susu, parse_verifications, parse_works,
     scan_project, tui, write_decisions, write_expectations, write_susu, write_verifications,
@@ -2421,22 +2422,31 @@ const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const list = (items, render, empty='Nothing here yet.') => items && items.length ? `<div class="list">${items.map(render).join('')}</div>` : `<div class="empty">${empty}</div>`;
 const severity = (s) => s === 'critical' ? 'critical' : s === 'warning' ? 'warning' : 'attention';
-function item(title, body, meta='', tags=''){return `<article class="item">${tags}<h3>${esc(title)}</h3>${meta?`<div class="meta">${meta}</div>`:''}<div class="detail">${esc(body)}</div></article>`}
+function item(title, body, meta='', tags='', extra=''){return `<article class="item">${tags}<h3>${esc(title)}</h3>${meta?`<div class="meta">${meta}</div>`:''}<div class="detail">${esc(body)}</div>${extra}</article>`}
 let selectedWorkflowId = null;
 let selectedExpectationId = null;
 const tabs = [
  ['overview','Overview'],
+ ['readiness','Readiness'],
  ['review','Review'],
  ['workflows','Top workflows'],
  ['traceability','Traceability'],
  ['source','Source'],
  ['records','Records'],
+ ['dirty','Dirty/stale'],
  ['artifact','Artifact'],
  ['actions','Next actions']
 ];
 function section(id,title,html){return `<section class="section" id="section-${id}"><div class="card"><h2>${title}</h2>${html}</div></section>`}
 function tokenHtml(line){return line.tokens&&line.tokens.length?line.tokens.map(t=>`<span style="color:${esc(t.color)}">${esc(t.text)}</span>`).join(''):esc(line.text)}
-function codePreview(p){return `<article class="item"><h3>${esc(p.path)}</h3><div class="meta">${esc(p.language)} &middot; lines ${p.start_line}-${p.end_line} &middot; highlight ${p.highlight_start}-${p.highlight_end}</div><div class="code">${(p.lines||[]).map(line=>`<div class="code-line ${line.number>=p.highlight_start&&line.number<=p.highlight_end?'mark':''}"><span class="ln">${line.number}</span><span class="src">${tokenHtml(line)}</span></div>`).join('')}</div></article>`}
+function codePreviewBlock(p){return `<div class="code">${(p.lines||[]).map(line=>`<div class="code-line ${line.number>=p.highlight_start&&line.number<=p.highlight_end?'mark':''}"><span class="ln">${line.number}</span><span class="src">${tokenHtml(line)}</span></div>`).join('')}</div>`}
+function codePreview(p){return `<article class="item"><h3>${esc(p.path)}</h3><div class="meta">${esc(p.language)} &middot; lines ${p.start_line}-${p.end_line} &middot; highlight ${p.highlight_start}-${p.highlight_end}</div>${codePreviewBlock(p)}</article>`}
+function fileById(id){return (packet.artifact.files||[]).find(f=>f.id===id)}
+function symbolById(id){return (packet.artifact.symbols||[]).find(s=>s.id===id)}
+function previewForLocation(fileId,location){if(!fileId)return null;const previews=packet.source_previews||[];if(location){const exact=previews.find(p=>p.file_id===fileId&&p.highlight_start===location.start_line&&p.highlight_end===location.end_line);if(exact)return exact;}return previews.find(p=>p.file_id===fileId)||null}
+function targetPreview(target,subject){if(!subject)return null;if(target==='workflow'){const w=workflowById(subject);return w?previewForLocation(w.file_id,w.location):null;}if(target==='symbol'){const s=symbolById(subject);return s?previewForLocation(s.file_id,s.location):null;}if(target==='file')return previewForLocation(subject,null);return null}
+function sourcePreviewExtra(p){return p?`<div style="margin-top:12px">${codePreviewBlock(p)}</div>`:''}
+function sourceMetaForPreview(p){return p?` &middot; source=${esc(p.path)}:${p.highlight_start}`:''}
 function workflows(){return packet.artifact.workflows||[]}
 function workflowById(id){return workflows().find(w=>w.id===id)}
 function workflowSummary(id){return (packet.top_workflows||[]).find(w=>w.id===id)}
@@ -2444,10 +2454,13 @@ function workflowExpectations(id){return (packet.artifact.expectations||[]).filt
 function workflowVerifications(id){const ids=new Set(workflowExpectations(id).map(e=>e.id));return (packet.artifact.verifications||[]).filter(v=>ids.has(v.expectation_id))}
 function workflowDecisions(id){return (packet.artifact.decisions||[]).filter(d=>d.target==='workflow'&&d.subject===id)}
 function workflowWork(id){const ids=new Set(workflowExpectations(id).map(e=>e.id));return (packet.artifact.works||[]).filter(w=>(w.target==='workflow'&&w.subject===id)||(w.expectation_id&&ids.has(w.expectation_id)))}
-function workflowPreview(id){const w=workflowById(id);return w?(packet.source_previews||[]).find(p=>p.file_id===w.file_id):null}
+function workflowPreview(id){const w=workflowById(id);return w?previewForLocation(w.file_id,w.location):null}
 function workflowCard(w){const summary=workflowSummary(w.id)||{score:0,detail:'Workflow detected from scanner evidence.',expectations:workflowExpectations(w.id).length,verifications:workflowVerifications(w.id).length,work:workflowWork(w.id).length};return `<article class="item clickable ${w.id===selectedWorkflowId?'selected':''}" data-workflow-id="${esc(w.id)}"><div class="workflow-score">${summary.score}</div><h3>${esc(w.trigger)}</h3><div class="meta">${esc(w.id)} &middot; ${esc(w.framework)} &middot; expectations=${summary.expectations} &middot; verifications=${summary.verifications} &middot; work=${summary.work}</div><div class="detail">${esc(summary.detail)}</div></article>`}
 function miniList(items,render,empty){return items&&items.length?`<div class="mini">${items.map(render).join('')}</div>`:`<div class="empty">${empty}</div>`}
-function workflowDetail(id){const w=workflowById(id);if(!w)return `<div class="empty">Select a workflow to inspect its evidence.</div>`;const summary=workflowSummary(id);const preview=workflowPreview(id);return `<div class="item"><h3>${esc(w.trigger)}</h3><div class="meta">${esc(w.id)} &middot; ${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}</div><div class="detail">${esc(summary?.detail||'Workflow detected from scanner evidence.')}</div></div><h3>Linked expectations</h3>${miniList(workflowExpectations(id),e=>item(e.title,e.detail,`${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)}`),'No linked expectations.')}<h3>Linked verifications</h3>${miniList(workflowVerifications(id),v=>item(`${v.status} verification`,v.detail,`${esc(v.id)} &middot; method=${esc(v.method)} &middot; evidence=${esc(v.evidence??'-')}`),'No linked verifications.')}<h3>Linked decisions</h3>${miniList(workflowDecisions(id),d=>item(d.title,d.detail,`${esc(d.id)} &middot; ${esc(d.status)} &middot; source=${esc(d.source)}`),'No linked decisions.')}<h3>Linked work</h3>${miniList(workflowWork(id),w=>item(w.title,w.detail,`${esc(w.id)} &middot; ${esc(w.kind)} &middot; ${esc(w.status)} &middot; evidence=${esc(w.evidence??'-')}`),'No linked work.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this workflow.</div>'}`}
+function verificationItem(v){const e=expectationById(v.expectation_id);const p=e?targetPreview(e.target,e.subject):null;return item(`${v.status} verification`,v.detail,`${esc(v.id)} &middot; method=${esc(v.method)} &middot; evidence=${esc(v.evidence??'-')} &middot; basis=${esc(v.basis??'-')}${sourceMetaForPreview(p)}`,'',sourcePreviewExtra(p))}
+function decisionItem(d){const p=targetPreview(d.target,d.subject);return item(d.title,d.detail,`${esc(d.id)} &middot; ${esc(d.status)} &middot; source=${esc(d.source)} &middot; basis=${esc(d.basis??'-')}${sourceMetaForPreview(p)}`,'',sourcePreviewExtra(p))}
+function workItem(w){const p=targetPreview(w.target,w.subject);return item(w.title,w.detail,`${esc(w.id)} &middot; ${esc(w.kind)} &middot; ${esc(w.status)} &middot; evidence=${esc(w.evidence??'-')}${sourceMetaForPreview(p)}`,'',sourcePreviewExtra(p))}
+function workflowDetail(id){const w=workflowById(id);if(!w)return `<div class="empty">Select a workflow to inspect its evidence.</div>`;const summary=workflowSummary(id);const preview=workflowPreview(id);return `<div class="item"><h3>${esc(w.trigger)}</h3><div class="meta">${esc(w.id)} &middot; ${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}</div><div class="detail">${esc(summary?.detail||'Workflow detected from scanner evidence.')}</div></div><h3>Linked expectations</h3>${miniList(workflowExpectations(id),e=>item(e.title,e.detail,`${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)}`),'No linked expectations.')}<h3>Linked verifications</h3>${miniList(workflowVerifications(id),verificationItem,'No linked verifications.')}<h3>Linked decisions</h3>${miniList(workflowDecisions(id),decisionItem,'No linked decisions.')}<h3>Linked work</h3>${miniList(workflowWork(id),workItem,'No linked work.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this workflow.</div>'}`}
 function workflowsSection(){const first=workflows()[0]?.id;selectedWorkflowId=selectedWorkflowId||first;return `<div class="workflow-layout"><div>${list(workflows(),workflowCard,'No workflows detected.')}</div><aside class="detail-pane" id="workflowDetail">${workflowDetail(selectedWorkflowId)}</aside></div>`}
 function expectations(){return packet.artifact.expectations||[]}
 function expectationById(id){return expectations().find(e=>e.id===id)}
@@ -2463,8 +2476,17 @@ function expectationNextAction(e,s){if(!s)return 'Rebuild the review packet so S
 function ladderStep(label,value,tone,detail=''){return `<div class="ladder-step ${tone}"><span class="ladder-label">${esc(label)}</span><strong>${esc(value)}</strong>${detail?`<small>${esc(detail)}</small>`:''}</div>`}
 function expectationLadder(e,s){if(!s)return '<div class="empty">No evidence ladder embedded for this expectation.</div>';const total=verificationTotal(s);const verificationDetail=`passed=${s.verification.passed}, failed=${s.verification.failed}, inconclusive=${s.verification.inconclusive}`;return `<div class="ladder" data-evidence-ladder="${esc(e.id)}">${ladderStep('Target observation',s.target_observed?'Target observed':'Target missing',s.target_observed?'good':'bad',`${s.target}${s.subject?':'+s.subject:''}`)}${ladderStep('Work support',s.work>0?`${s.work} linked work record(s)`:'No linked work yet',s.work>0?'good':'warn','Work says what changed for this expectation.')}${ladderStep('Verification evidence',total>0?`${total} verification record(s)`:'No verification yet',s.verification.failed>0?'bad':s.verification.passed>0?'good':'warn',verificationDetail)}${ladderStep('Decision context',s.decisions>0?`${s.decisions} decision record(s)`:'No decision context yet',s.decisions>0?'good':'warn','Decisions record judgment, exceptions, and business context.')}${ladderStep('Review status',s.support_status,s.verification.failed>0||!s.target_observed?'bad':s.verification.passed>0?'good':'warn',(s.reasons||[]).join('; '))}</div><article class="item next-action"><h3>Suggested next action</h3><div class="detail">${esc(expectationNextAction(e,s))}</div></article>`}
 function expectationCard(e){const s=expectationSupport(e.id);return `<article class="item clickable ${e.id===selectedExpectationId?'selected':''}" data-expectation-id="${esc(e.id)}"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; ${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''} &middot; ${supportMeta(s)}</div><div class="detail">${esc(e.detail)}</div></article>`}
-function expectationDetail(id){const e=expectationById(id);if(!e)return `<div class="empty">Select an expectation to inspect its traceability.</div>`;const workflow=expectationWorkflow(e);const preview=workflow?workflowPreview(workflow.id):null;const s=expectationSupport(id);return `<div class="item"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)} &middot; target=${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''}</div><div class="detail">${esc(e.detail)}</div></div><h3>Evidence ladder</h3>${expectationLadder(e,s)}<h3>Support summary</h3><div class="item"><h3>${esc(s?.support_status||'unknown')}</h3><div class="meta">${supportMeta(s)}</div></div>${supportReasons(s)}<h3>Workflow context</h3>${workflow?miniList([workflow],w=>item(w.trigger,`${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}`,w.id),'No workflow context.'): '<div class="empty">This expectation is not attached to a workflow.</div>'}<h3>Verifications</h3>${miniList(expectationVerifications(id),v=>item(`${v.status} verification`,v.detail,`${esc(v.id)} &middot; method=${esc(v.method)} &middot; evidence=${esc(v.evidence??'-')} &middot; basis=${esc(v.basis??'-')}`),'No verification records.')}<h3>Work records</h3>${miniList(expectationWork(id),w=>item(w.title,w.detail,`${esc(w.id)} &middot; ${esc(w.kind)} &middot; ${esc(w.status)} &middot; evidence=${esc(w.evidence??'-')}`),'No work records.')}<h3>Decisions on same target</h3>${miniList(expectationDecisions(e),d=>item(d.title,d.detail,`${esc(d.id)} &middot; ${esc(d.status)} &middot; source=${esc(d.source)} &middot; basis=${esc(d.basis??'-')}`),'No decisions on this target.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this expectation.</div>'}`}
+function expectationDetail(id){const e=expectationById(id);if(!e)return `<div class="empty">Select an expectation to inspect its traceability.</div>`;const workflow=expectationWorkflow(e);const preview=workflow?workflowPreview(workflow.id):targetPreview(e.target,e.subject);const s=expectationSupport(id);return `<div class="item"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)} &middot; target=${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''}</div><div class="detail">${esc(e.detail)}</div></div><h3>Evidence ladder</h3>${expectationLadder(e,s)}<h3>Support summary</h3><div class="item"><h3>${esc(s?.support_status||'unknown')}</h3><div class="meta">${supportMeta(s)}</div></div>${supportReasons(s)}<h3>Workflow context</h3>${workflow?miniList([workflow],w=>item(w.trigger,`${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}`,w.id),'No workflow context.'): '<div class="empty">This expectation is not attached to a workflow.</div>'}<h3>Verifications</h3>${miniList(expectationVerifications(id),verificationItem,'No verification records.')}<h3>Work records</h3>${miniList(expectationWork(id),workItem,'No work records.')}<h3>Decisions on same target</h3>${miniList(expectationDecisions(e),decisionItem,'No decisions on this target.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this expectation.</div>'}`}
+function readinessBucket(s){if(!s)return 'Unknown';if(s.verification.failed>0)return 'Failed verification';if(!s.target_observed)return 'Missing target';if(s.verification.passed>0)return 'Verified';if(s.work>0)return 'Has work, needs verification';return 'No linked work yet'}
+function readinessTone(bucket){return bucket==='Verified'?'good':bucket==='Failed verification'||bucket==='Missing target'?'bad':'warn'}
+function readinessRow(e){const s=expectationSupport(e.id);const bucket=readinessBucket(s);return item(e.title,expectationNextAction(e,s),`${esc(e.id)} &middot; ${esc(bucket)} &middot; ${supportMeta(s)}`,`<span class="tag ${readinessTone(bucket)==='good'?'passed':readinessTone(bucket)==='bad'?'critical':'warning'}">${esc(bucket)}</span>`)}
+function readinessSection(){const order=['Failed verification','Missing target','Has work, needs verification','No linked work yet','Verified','Unknown'];const rows=expectations().map(e=>({e,bucket:readinessBucket(expectationSupport(e.id))}));const metrics=order.map(bucket=>`<div class="metric"><b>${rows.filter(r=>r.bucket===bucket).length}</b><span>${esc(bucket)}</span></div>`).join('');return `<div class="grid">${metrics}</div><div class="list" style="margin-top:16px">${order.map(bucket=>{const items=rows.filter(r=>r.bucket===bucket).map(r=>readinessRow(r.e)).join('');return items?`<div><h3>${esc(bucket)}</h3><div class="mini">${items}</div></div>`:''}).join('')||'<div class="empty">No expectations authored yet.</div>'}</div>`}
 function traceabilitySection(){const first=expectations()[0]?.id;selectedExpectationId=selectedExpectationId||first;return `<div class="workflow-layout"><div>${list(expectations(),expectationCard,'No expectations authored yet.')}</div><aside class="detail-pane" id="expectationDetail">${expectationDetail(selectedExpectationId)}</aside></div>`}
+function dirtyFinding(f){return ['SUS023','SUS033'].includes(f.rule_id)}
+function staleFinding(f){return ['SUS011','SUS021','SUS031','SUS041','SUS043'].includes(f.rule_id)}
+function findingPreview(f){return previewForLocation(f.file_id,f.location)}
+function findingCard(f){const p=findingPreview(f);return item(`${f.rule_id}: ${f.title}`,f.detail,`source=${esc(f.source)} &middot; subject=${esc(f.subject??'-')}${sourceMetaForPreview(p)}`,`<span class="tag ${severity(f.severity)}">${esc(f.severity)}</span>` ,sourcePreviewExtra(p))}
+function dirtySection(){const findings=packet.artifact.findings||[];const dirty=findings.filter(dirtyFinding);const stale=findings.filter(staleFinding);return `<div class="cols"><div><h3>Dirty evidence</h3>${list(dirty,findingCard,'No changed verification or decision evidence detected.')}</div><div><h3>Stale or missing record targets</h3>${list(stale,findingCard,'No stale record targets detected.')}</div></div>`}
 function render(){
  $('projectName').textContent = packet.project.name;
  $('projectSub').textContent = packet.project.root;
@@ -2487,11 +2509,13 @@ function render(){
     <div class="metric"><b>${packet.records.decisions}</b><span>decisions</span></div>
     <div class="metric"><b>${packet.records.work}</b><span>work records</span></div>
   </div><div class="cols" style="margin-top:16px"><div>${list(packet.caveats,a=>item('Caveat',a))}</div><div>${list(packet.next_actions,a=>item('Suggested action',a))}</div></div>`),
+  section('readiness','Expectation readiness board', readinessSection()),
   section('review','Needs review', list(packet.review_items, r => item(r.title, r.detail, `source=${esc(r.source)}`, `<span class="tag ${severity(r.severity)}">${esc(r.severity)}</span>`), 'No review items derived.')),
   section('workflows','Workflow evidence', workflowsSection()),
   section('traceability','Expectation traceability', traceabilitySection()),
   section('source','Source previews', list(packet.source_previews, codePreview, 'No source snippets were embedded. Create the review packet from a local project or artifact with readable source files.')),
   section('records','Records requiring follow-up', `<div class="cols"><div><h3>Expectations without verification</h3>${list(packet.expectations_without_verification, r => item(r.title, r.reason, `${esc(r.id)} &middot; ${esc(r.target)} &middot; source=${esc(r.source)}`), 'All expectations have verification records.')}</div><div><h3>Work needing verification</h3>${list(packet.work_needing_verification, r => item(r.title, r.reason, `${esc(r.id)} &middot; ${esc(r.target)} &middot; source=${esc(r.source)}`), 'No work records need verification.')}</div></div>`),
+  section('dirty','Dirty and stale evidence', dirtySection()),
   section('artifact','Embedded artifact', `<div class="cols"><div><h3>Files</h3>${list(packet.artifact.files, f => item(f.path, `${f.language} &middot; ${f.lines} lines &middot; ${f.bytes} bytes`, f.id), 'No files.')}</div><div><h3>Workflows</h3>${list(packet.artifact.workflows, w => item(w.trigger, `${w.framework} &middot; handler=${w.handler ?? '-'} &middot; confidence=${w.confidence}`, w.id), 'No workflows.')}</div></div>`),
   section('actions','Next actions', list(packet.next_actions, a=>item('Action',a), 'No next actions.'))
  ].join('');
@@ -4121,53 +4145,79 @@ fn review_source_previews(analysis: &ProjectAnalysis) -> Vec<ReviewSourcePreview
     let mut previews = Vec::new();
     let mut seen = BTreeSet::new();
     for workflow in &analysis.workflows {
-        if !seen.insert(workflow.file_id.clone()) {
-            continue;
-        }
-        let Some(file) = analysis
-            .files
-            .iter()
-            .find(|file| file.id == workflow.file_id)
+        push_review_source_preview(
+            analysis,
+            &mut previews,
+            &mut seen,
+            &workflow.file_id,
+            &workflow.location,
+        );
+    }
+    for finding in &analysis.findings {
+        let (Some(file_id), Some(location)) =
+            (finding.file_id.as_deref(), finding.location.as_ref())
         else {
             continue;
         };
-        let path = Path::new(&analysis.root).join(&file.path);
-        let Ok(source) = fs::read_to_string(&path) else {
-            continue;
-        };
-        let source_lines = source.lines().collect::<Vec<_>>();
-        let line_count = source_lines.len().max(1);
-        let start = workflow.location.start_line.saturating_sub(6).max(1);
-        let end = (workflow.location.end_line + 10).min(line_count);
-        let mut highlighter = HighlightLines::new(
-            syntax_for_review_language(review_syntax_set(), file.language),
-            review_syntax_theme(),
-        );
-        let lines = (start..=end)
-            .map(|number| {
-                let text = source_lines.get(number - 1).copied().unwrap_or_default();
-                let tokens = highlighted_review_line_tokens(&mut highlighter, text);
-                ReviewSourceLine {
-                    number,
-                    text: text.to_owned(),
-                    html: review_tokens_to_html(&tokens),
-                    tokens,
-                }
-            })
-            .collect::<Vec<_>>();
-        previews.push(ReviewSourcePreview {
-            file_id: file.id.clone(),
-            path: file.path.clone(),
-            language: file.language.to_string(),
-            start_line: start,
-            end_line: end,
-            highlight_start: workflow.location.start_line,
-            highlight_end: workflow.location.end_line,
-            lines,
-        });
+        push_review_source_preview(analysis, &mut previews, &mut seen, file_id, location);
     }
-    previews.sort_by(|left, right| left.path.cmp(&right.path));
+    previews.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.highlight_start.cmp(&right.highlight_start))
+            .then_with(|| left.highlight_end.cmp(&right.highlight_end))
+    });
     previews
+}
+
+fn push_review_source_preview(
+    analysis: &ProjectAnalysis,
+    previews: &mut Vec<ReviewSourcePreview>,
+    seen: &mut BTreeSet<String>,
+    file_id: &str,
+    location: &Location,
+) {
+    let key = format!("{}:{}:{}", file_id, location.start_line, location.end_line);
+    if !seen.insert(key) {
+        return;
+    }
+    let Some(file) = analysis.files.iter().find(|file| file.id == file_id) else {
+        return;
+    };
+    let path = Path::new(&analysis.root).join(&file.path);
+    let Ok(source) = fs::read_to_string(&path) else {
+        return;
+    };
+    let source_lines = source.lines().collect::<Vec<_>>();
+    let line_count = source_lines.len().max(1);
+    let start = location.start_line.saturating_sub(6).max(1);
+    let end = (location.end_line + 10).min(line_count);
+    let mut highlighter = HighlightLines::new(
+        syntax_for_review_language(review_syntax_set(), file.language),
+        review_syntax_theme(),
+    );
+    let lines = (start..=end)
+        .map(|number| {
+            let text = source_lines.get(number - 1).copied().unwrap_or_default();
+            let tokens = highlighted_review_line_tokens(&mut highlighter, text);
+            ReviewSourceLine {
+                number,
+                text: text.to_owned(),
+                html: review_tokens_to_html(&tokens),
+                tokens,
+            }
+        })
+        .collect::<Vec<_>>();
+    previews.push(ReviewSourcePreview {
+        file_id: file.id.clone(),
+        path: file.path.clone(),
+        language: file.language.to_string(),
+        start_line: start,
+        end_line: end,
+        highlight_start: location.start_line,
+        highlight_end: location.end_line,
+        lines,
+    });
 }
 
 fn expectation_support(analysis: &ProjectAnalysis) -> Vec<ExpectationSupport> {
@@ -7122,6 +7172,8 @@ mod tests {
         assert!(html.contains("<\\/script>"));
         assert!(html.contains("Support summary"));
         assert!(html.contains("Evidence ladder"));
+        assert!(html.contains("Expectation readiness board"));
+        assert!(html.contains("Dirty and stale evidence"));
         assert!(html.contains("data-evidence-ladder"));
         assert!(html.contains("Record verification with susumu verify"));
         assert!(html.contains("POST /checkout"));
@@ -7141,26 +7193,48 @@ mod tests {
         let mut artifact = test_artifact();
         artifact.root = temp.path().display().to_string();
         refresh_derived_analysis(&mut artifact);
+        artifact.findings.push(susumu::model::Finding {
+            rule_id: "SUS023".to_owned(),
+            source: "susumu:derived".to_owned(),
+            severity: Severity::Warning,
+            title: "Verification evidence changed".to_owned(),
+            detail: "Evidence changed near checkout.".to_owned(),
+            file_id: Some("f_api".to_owned()),
+            subject: Some("v_checkout".to_owned()),
+            location: Some(Location {
+                start_line: 2,
+                start_column: 3,
+                end_line: 2,
+                end_column: 15,
+            }),
+        });
 
         let previews = review_source_previews(&artifact);
 
-        assert_eq!(previews.len(), 1);
-        assert_eq!(previews[0].path, "src/api.ts");
+        assert!(previews.len() >= 2);
+        assert!(previews.iter().any(|preview| preview.path == "src/api.ts"
+            && preview.highlight_start == 2
+            && preview.highlight_end == 2));
         assert!(
-            previews[0]
-                .lines
+            previews
                 .iter()
+                .flat_map(|preview| &preview.lines)
                 .any(|line| line.text.contains("checkout"))
         );
-        assert!(previews[0].lines.iter().any(|line| {
-            line.tokens
-                .iter()
-                .any(|token| token.text.contains("checkout"))
-        }));
         assert!(
-            previews[0]
-                .lines
+            previews
                 .iter()
+                .flat_map(|preview| &preview.lines)
+                .any(|line| {
+                    line.tokens
+                        .iter()
+                        .any(|token| token.text.contains("checkout"))
+                })
+        );
+        assert!(
+            previews
+                .iter()
+                .flat_map(|preview| &preview.lines)
                 .flat_map(|line| &line.tokens)
                 .all(|token| token.color.starts_with('#'))
         );
@@ -7191,11 +7265,14 @@ mod tests {
         assert!(html.contains("Workflow evidence"));
         assert!(html.contains("data-workflow-id"));
         assert!(html.contains("Linked expectations"));
+        assert!(html.contains("Expectation readiness board"));
+        assert!(html.contains("Has work, needs verification"));
         assert!(html.contains("Expectation traceability"));
         assert!(html.contains("Evidence ladder"));
         assert!(html.contains("Suggested next action"));
         assert!(html.contains("data-expectation-id"));
         assert!(html.contains("data-evidence-ladder"));
+        assert!(html.contains("Dirty and stale evidence"));
         assert!(html.contains("Decisions on same target"));
     }
 

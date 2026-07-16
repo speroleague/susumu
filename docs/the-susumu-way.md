@@ -45,6 +45,8 @@ The most important one is `expectations.susu`. Start there. A project does not n
 
 The easy `susumu review` path automatically loads `expectations.susu` and `verifications.susu` from the project directory when they exist.
 
+Projects can also add `susumu.toml` for portal branding. The `[portal]` section can set a title and soft color values such as `background`, `panel`, `text`, `muted`, `line`, and `accent`. This changes the generated HTML shell, not the `.susu` evidence model.
+
 ## Which files Susumu writes
 
 The easy workflow writes generated files under `.susumu/`:

@@ -2326,7 +2326,11 @@ fn write_review_build_html(args: &ReviewBuildArgs, packet_json: &str) -> Result<
     };
     let stored_packet: ReviewPacketStored =
         serde_json::from_str(packet_json).context("could not read built review packet")?;
-    write_text_file(html_output, &review_portal_html(&stored_packet)?)
+    let config = load_portal_config_for_target(&args.target)?;
+    write_text_file(
+        html_output,
+        &review_portal_html_with_config(&stored_packet, &config)?,
+    )
 }
 
 fn print_review_build_summary(args: &ReviewBuildArgs, state: &ReviewBuildState) -> Result<()> {
@@ -2408,7 +2412,8 @@ fn diff_reviews(args: &ReviewDiffArgs) -> Result<()> {
 
 fn serve_review(args: &ReviewServeArgs) -> Result<()> {
     let packet = read_review_packet(&args.packet)?;
-    let html = review_portal_html(&packet)?;
+    let config = load_portal_config_for_packet(&packet, &args.packet)?;
+    let html = review_portal_html_with_config(&packet, &config)?;
     let packet_json =
         serde_json::to_string_pretty(&packet).context("could not serialize review packet")?;
     let listener =
@@ -2439,7 +2444,8 @@ fn serve_review(args: &ReviewServeArgs) -> Result<()> {
 
 fn export_review_html(args: &ReviewExportHtmlArgs) -> Result<()> {
     let packet = read_review_packet(&args.packet)?;
-    let html = review_portal_html(&packet)?;
+    let config = load_portal_config_for_packet(&packet, &args.packet)?;
+    let html = review_portal_html_with_config(&packet, &config)?;
     fs::write(&args.output, html)
         .with_context(|| format!("could not write {}", args.output.display()))?;
     println!("wrote review portal {}", args.output.display());
@@ -2460,6 +2466,14 @@ fn read_review_packet(path: &PathBuf) -> Result<ReviewPacketStored> {
     }
     refresh_derived_analysis(&mut packet.artifact);
     Ok(packet)
+}
+
+const PORTAL_CONFIG_FILE: &str = "susumu.toml";
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct PortalConfig {
+    title: Option<String>,
+    css_vars: BTreeMap<String, String>,
 }
 
 fn handle_review_request(mut stream: TcpStream, html: &str, packet_json: &str) -> Result<()> {
@@ -2527,11 +2541,169 @@ fn write_http_head(
         .context("could not write HTTP response head")
 }
 
+fn load_portal_config_for_target(target: &Path) -> Result<PortalConfig> {
+    let config_path = if target.is_dir() {
+        target.join(PORTAL_CONFIG_FILE)
+    } else {
+        target
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(PORTAL_CONFIG_FILE)
+    };
+    read_portal_config(&config_path)
+}
+
+fn load_portal_config_for_packet(
+    packet: &ReviewPacketStored,
+    packet_path: &Path,
+) -> Result<PortalConfig> {
+    let project_root = PathBuf::from(&packet.project.root);
+    let config_path = if project_root.is_dir() {
+        project_root.join(PORTAL_CONFIG_FILE)
+    } else {
+        packet_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(PORTAL_CONFIG_FILE)
+    };
+    read_portal_config(&config_path)
+}
+
+fn read_portal_config(path: &Path) -> Result<PortalConfig> {
+    if !path.exists() {
+        return Ok(PortalConfig::default());
+    }
+    let source =
+        fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
+    parse_portal_config(&source).with_context(|| format!("could not parse {}", path.display()))
+}
+
+fn parse_portal_config(source: &str) -> Result<PortalConfig> {
+    let mut config = PortalConfig::default();
+    let mut in_portal = false;
+    for (line_index, raw_line) in source.lines().enumerate() {
+        let line_number = line_index + 1;
+        let line = strip_toml_comment(raw_line).trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_portal = line == "[portal]";
+            continue;
+        }
+        if !in_portal {
+            continue;
+        }
+        let (key, raw_value) = line
+            .split_once('=')
+            .with_context(|| format!("portal config line {line_number} must use key = value"))?;
+        let key = key.trim();
+        let value = parse_portal_config_value(raw_value.trim())
+            .with_context(|| format!("invalid portal config value on line {line_number}"))?;
+        apply_portal_config_value(&mut config, key, value)
+            .with_context(|| format!("invalid portal config key `{key}` on line {line_number}"))?;
+    }
+    Ok(config)
+}
+
+fn strip_toml_comment(line: &str) -> &str {
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, character) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' if quote == Some('"') => escaped = true,
+            '"' | '\'' if quote == Some(character) => quote = None,
+            '"' | '\'' if quote.is_none() => quote = Some(character),
+            '#' if quote.is_none() => return &line[..index],
+            _ => {}
+        }
+    }
+    line
+}
+
+fn parse_portal_config_value(raw: &str) -> Result<String> {
+    if raw.starts_with('"') {
+        return serde_json::from_str(raw).context("double-quoted values must be valid strings");
+    }
+    if raw.starts_with('\'') && raw.ends_with('\'') && raw.len() >= 2 {
+        return Ok(raw[1..raw.len() - 1].to_owned());
+    }
+    Ok(raw.to_owned())
+}
+
+fn apply_portal_config_value(config: &mut PortalConfig, key: &str, value: String) -> Result<()> {
+    match key {
+        "title" => {
+            config.title = (!value.trim().is_empty()).then_some(value);
+        }
+        "background" | "bg" => config.set_color("--bg", &value)?,
+        "panel" => config.set_color("--panel", &value)?,
+        "panel2" => config.set_color("--panel2", &value)?,
+        "text" => config.set_color("--text", &value)?,
+        "muted" => config.set_color("--muted", &value)?,
+        "line" => config.set_color("--line", &value)?,
+        "accent" => config.set_color("--accent", &value)?,
+        "accent2" => config.set_color("--accent2", &value)?,
+        "bad" => config.set_color("--bad", &value)?,
+        "warn" => config.set_color("--warn", &value)?,
+        "ok" => config.set_color("--ok", &value)?,
+        _ => bail!("supported keys are title and portal color names"),
+    }
+    Ok(())
+}
+
+impl PortalConfig {
+    fn set_color(&mut self, css_var: &str, value: &str) -> Result<()> {
+        if !is_hex_color(value) {
+            bail!("portal colors must be #rgb or #rrggbb hex values");
+        }
+        self.css_vars.insert(css_var.to_owned(), value.to_owned());
+        Ok(())
+    }
+}
+
+fn is_hex_color(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix('#') else {
+        return false;
+    };
+    matches!(hex.len(), 3 | 6) && hex.chars().all(|character| character.is_ascii_hexdigit())
+}
+
+fn portal_config_style(config: &PortalConfig) -> String {
+    if config.css_vars.is_empty() {
+        return String::new();
+    }
+    let declarations = config
+        .css_vars
+        .iter()
+        .map(|(key, value)| format!("{key}:{value}"))
+        .collect::<Vec<_>>()
+        .join(";");
+    format!(":root{{{declarations}}}")
+}
+
+#[cfg(test)]
 fn review_portal_html(packet: &ReviewPacketStored) -> Result<String> {
+    review_portal_html_with_config(packet, &PortalConfig::default())
+}
+
+fn review_portal_html_with_config(
+    packet: &ReviewPacketStored,
+    config: &PortalConfig,
+) -> Result<String> {
     let packet_json = serde_json::to_string(packet)
         .context("could not serialize packet for review portal")?
         .replace("</", "<\\/");
+    let portal_title = config.title.as_deref().unwrap_or("Susumu Review");
+    let portal_eyebrow = config.title.as_deref().unwrap_or("Susumu review packet");
     Ok(review_portal_template()
+        .replace("__SUSUMU_PORTAL_TITLE__", &html_escape(portal_title))
+        .replace("__SUSUMU_PORTAL_EYEBROW__", &html_escape(portal_eyebrow))
+        .replace("__SUSUMU_PORTAL_THEME__", &portal_config_style(config))
         .replace(
             "__SUSUMU_REVIEW_TITLE__",
             &html_escape(&packet.project.name),
@@ -2554,15 +2726,16 @@ fn review_portal_template() -> &'static str {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Susumu Review &middot; __SUSUMU_REVIEW_TITLE__</title>
+<title>__SUSUMU_PORTAL_TITLE__ &middot; __SUSUMU_REVIEW_TITLE__</title>
 <style>
 :root{color-scheme:dark;--bg:#11131a;--panel:#1a1f2b;--panel2:#202638;--text:#e8e2d7;--muted:#aaa292;--line:#363b49;--accent:#9eb7a0;--accent2:#aaa2bf;--bad:#cc8e8a;--warn:#c8aa72;--ok:#91ad86}
+__SUSUMU_PORTAL_THEME__
 *{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 20% -10%,#282f3f 0,#11131a 38%),var(--bg);color:var(--text)}
 .shell{max-width:1220px;margin:0 auto;padding:40px 22px 70px}.hero{display:grid;grid-template-columns:1.4fr .8fr;gap:20px;align-items:stretch}.card{min-width:0;max-width:100%;overflow:hidden;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.02));border:1px solid var(--line);border-radius:24px;box-shadow:0 24px 70px rgba(0,0,0,.22);padding:24px;backdrop-filter:blur(12px)}
 .eyebrow{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}h1{font-size:clamp(34px,6vw,68px);line-height:.94;margin:12px 0}.sub{color:var(--muted);font-size:16px;line-height:1.6}.pill{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:7px 11px;color:var(--muted);font-size:13px;margin:4px 4px 0 0}.pill strong{color:var(--text)}
 .result{font-size:28px;font-weight:850}.failed{color:var(--bad)}.passed{color:var(--ok)}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}.metric{background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:18px;padding:16px}.metric b{display:block;font-size:28px}.metric span{color:var(--muted);font-size:13px}
 .toolbar{position:sticky;top:0;z-index:3;margin:26px -8px 20px;padding:10px 8px;background:linear-gradient(180deg,rgba(17,19,26,.98),rgba(17,19,26,.78));backdrop-filter:blur(12px)}button{appearance:none;border:1px solid var(--line);border-radius:999px;background:#1b2130;color:var(--text);padding:10px 14px;margin:4px;cursor:pointer;transition:.18s ease}button:hover,button.active{border-color:var(--accent);box-shadow:0 0 0 3px rgba(158,183,160,.12);transform:translateY(-1px)}
-.section{display:none;animation:rise .28s ease}.section.active{display:block}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}h2{font-size:28px;margin:0 0 14px}.list{display:grid;gap:12px;min-width:0}.item{min-width:0;overflow-wrap:anywhere;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.03);padding:16px}.item.clickable{cursor:pointer;transition:.18s ease}.item.clickable:hover,.item.selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(158,183,160,.11);transform:translateY(-1px)}.item h3{margin:0 0 8px;font-size:17px}.meta{color:var(--muted);font-size:13px;line-height:1.5}.detail{color:#d5ccbd;line-height:1.55}.tag{display:inline-block;border-radius:999px;padding:4px 9px;margin-right:6px;font-size:12px;background:#252b3b;color:#ddd6ca}.critical{background:rgba(204,142,138,.15);color:#ead0cc}.warning{background:rgba(200,170,114,.14);color:#eadab8}.attention{background:rgba(170,162,191,.15);color:#ded8e8}.workflow-score{font-size:24px;color:var(--accent);font-weight:850}.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}.workflow-layout{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(0,1.2fr);gap:16px;align-items:start;min-width:0;max-width:100%}.workflow-layout>*{min-width:0}.detail-pane{position:sticky;top:98px;align-self:start;min-width:0;max-width:100%;overflow:hidden}.traceability-layout{height:calc(100vh - 180px);min-height:540px;align-items:stretch}.traceability-list,.traceability-detail{min-width:0;max-width:100%;min-height:0;overflow:auto;overscroll-behavior:contain;padding-right:6px}.traceability-detail{position:static;align-self:stretch}.mini{display:grid;gap:8px;min-width:0}.mini .item{padding:12px}.ladder{display:grid;gap:10px;margin:10px 0 16px}.ladder-step{position:relative;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.03);padding:13px 14px 13px 46px}.ladder-step:before{content:'';position:absolute;left:17px;top:18px;width:12px;height:12px;border-radius:999px;background:var(--muted);box-shadow:0 0 0 5px rgba(170,162,146,.09)}.ladder-step:after{content:'';position:absolute;left:22px;top:36px;bottom:-18px;width:2px;background:var(--line)}.ladder-step:last-child:after{display:none}.ladder-step.good{border-color:rgba(145,173,134,.45)}.ladder-step.good:before{background:var(--ok);box-shadow:0 0 0 5px rgba(145,173,134,.12)}.ladder-step.warn{border-color:rgba(200,170,114,.48)}.ladder-step.warn:before{background:var(--warn);box-shadow:0 0 0 5px rgba(200,170,114,.12)}.ladder-step.bad{border-color:rgba(204,142,138,.5)}.ladder-step.bad:before{background:var(--bad);box-shadow:0 0 0 5px rgba(204,142,138,.12)}.ladder-label{display:block;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.ladder-step strong{display:block;margin-top:3px}.ladder-step small{display:block;color:#d5ccbd;line-height:1.45;margin-top:4px}.next-action{border-color:rgba(158,183,160,.45);background:linear-gradient(135deg,rgba(158,183,160,.12),rgba(170,162,191,.08))}.search{width:100%;border:1px solid var(--line);border-radius:16px;background:#171b26;color:var(--text);padding:13px 15px;margin:0 0 14px}.empty{color:var(--muted);border:1px dashed var(--line);border-radius:18px;padding:22px;text-align:center}.code{max-width:100%;overflow:auto;background:#131821;border:1px solid #32394a;border-radius:16px;padding:12px;font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}.code-line{display:grid;grid-template-columns:64px minmax(0,1fr);min-width:max-content}.code-line.mark{background:rgba(158,183,160,.09);border-left:3px solid var(--accent)}.ln{color:#777f8f;text-align:right;padding-right:14px;user-select:none}.src{white-space:pre}
+.section{display:none;animation:rise .28s ease}.section.active{display:block}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}h2{font-size:28px;margin:0 0 14px}.list{display:grid;gap:12px;min-width:0}.item{min-width:0;overflow-wrap:anywhere;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.03);padding:16px}.item.clickable{cursor:pointer;transition:.18s ease}.item.clickable:hover,.item.selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(158,183,160,.11);transform:translateY(-1px)}.item h3{margin:0 0 8px;font-size:17px}.meta{color:var(--muted);font-size:13px;line-height:1.5}.detail{color:#d5ccbd;line-height:1.55}.tag{display:inline-block;border-radius:999px;padding:4px 9px;margin-right:6px;font-size:12px;background:#252b3b;color:#ddd6ca}.critical{background:rgba(204,142,138,.15);color:#ead0cc}.warning{background:rgba(200,170,114,.14);color:#eadab8}.attention{background:rgba(170,162,191,.15);color:#ded8e8}.workflow-score{font-size:24px;color:var(--accent);font-weight:850}.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}.workflow-layout{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(0,1.2fr);gap:16px;align-items:start;min-width:0;max-width:100%}.workflow-layout>*{min-width:0}.detail-pane{position:sticky;top:98px;align-self:start;min-width:0;max-width:100%;overflow:hidden}.traceability-layout{height:calc(100vh - 180px);min-height:540px;align-items:stretch}.traceability-list,.traceability-detail{min-width:0;max-width:100%;min-height:0;overflow:auto;overscroll-behavior:contain;padding:8px 6px 0 0}.traceability-detail{position:static;align-self:stretch}.mini{display:grid;gap:8px;min-width:0}.mini .item{padding:12px}.ladder{display:grid;gap:10px;margin:10px 0 16px}.ladder-step{position:relative;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.03);padding:13px 14px 13px 46px}.ladder-step:before{content:'';position:absolute;left:17px;top:18px;width:12px;height:12px;border-radius:999px;background:var(--muted);box-shadow:0 0 0 5px rgba(170,162,146,.09)}.ladder-step:after{content:'';position:absolute;left:22px;top:36px;bottom:-18px;width:2px;background:var(--line)}.ladder-step:last-child:after{display:none}.ladder-step.good{border-color:rgba(145,173,134,.45)}.ladder-step.good:before{background:var(--ok);box-shadow:0 0 0 5px rgba(145,173,134,.12)}.ladder-step.warn{border-color:rgba(200,170,114,.48)}.ladder-step.warn:before{background:var(--warn);box-shadow:0 0 0 5px rgba(200,170,114,.12)}.ladder-step.bad{border-color:rgba(204,142,138,.5)}.ladder-step.bad:before{background:var(--bad);box-shadow:0 0 0 5px rgba(204,142,138,.12)}.ladder-label{display:block;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.ladder-step strong{display:block;margin-top:3px}.ladder-step small{display:block;color:#d5ccbd;line-height:1.45;margin-top:4px}.next-action{border-color:rgba(158,183,160,.45);background:linear-gradient(135deg,rgba(158,183,160,.12),rgba(170,162,191,.08))}.search{width:100%;border:1px solid var(--line);border-radius:16px;background:#171b26;color:var(--text);padding:13px 15px;margin:0 0 14px}.empty{color:var(--muted);border:1px dashed var(--line);border-radius:18px;padding:22px;text-align:center}.code{max-width:100%;overflow:auto;background:#131821;border:1px solid #32394a;border-radius:16px;padding:12px;font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}.code-line{display:grid;grid-template-columns:64px minmax(0,1fr);min-width:max-content}.code-line.mark{background:rgba(158,183,160,.09);border-left:3px solid var(--accent)}.ln{color:#777f8f;text-align:right;padding-right:14px;user-select:none}.src{white-space:pre}
 @media(max-width:850px){.hero,.cols,.workflow-layout{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}.detail-pane{position:static}.traceability-layout{height:auto;min-height:0}.traceability-list,.traceability-detail{overflow:visible;padding-right:0}}
 </style>
 </head>
@@ -2570,7 +2743,7 @@ fn review_portal_template() -> &'static str {
 <div class="shell">
   <header class="hero">
     <div class="card">
-      <div class="eyebrow">Susumu review packet</div>
+      <div class="eyebrow">__SUSUMU_PORTAL_EYEBROW__</div>
       <h1 id="projectName"></h1>
       <p class="sub" id="projectSub"></p>
       <div id="pills"></div>
@@ -2651,7 +2824,7 @@ function expectationNextAction(e,s){if(!s)return 'Rebuild the review packet so S
 function ladderStep(label,value,tone,detail=''){return `<div class="ladder-step ${tone}"><span class="ladder-label">${esc(label)}</span><strong>${esc(value)}</strong>${detail?`<small>${esc(detail)}</small>`:''}</div>`}
 function expectationLadder(e,s){if(!s)return '<div class="empty">No evidence ladder embedded for this expectation.</div>';const total=verificationTotal(s);const verificationDetail=`passed=${s.verification.passed}, failed=${s.verification.failed}, inconclusive=${s.verification.inconclusive}`;return `<div class="ladder" data-evidence-ladder="${esc(e.id)}">${ladderStep('Target observation',s.target_observed?'Target observed':'Target missing',s.target_observed?'good':'bad',`${s.target}${s.subject?':'+s.subject:''}`)}${ladderStep('Work support',s.work>0?`${s.work} linked work record(s)`:'No linked work yet',s.work>0?'good':'warn','Work says what changed for this expectation.')}${ladderStep('Verification evidence',total>0?`${total} verification record(s)`:'No verification yet',s.verification.failed>0?'bad':s.verification.passed>0?'good':'warn',verificationDetail)}${ladderStep('Decision context',s.decisions>0?`${s.decisions} decision record(s)`:'No decision context yet',s.decisions>0?'good':'warn','Decisions record judgment, exceptions, and business context.')}${ladderStep('Review status',s.support_status,s.verification.failed>0||!s.target_observed?'bad':s.verification.passed>0?'good':'warn',(s.reasons||[]).join('; '))}</div><article class="item next-action"><h3>Suggested next action</h3><div class="detail">${esc(expectationNextAction(e,s))}</div></article>`}
 function expectationCard(e){const s=expectationSupport(e.id);return `<article class="item clickable ${e.id===selectedExpectationId?'selected':''}" data-expectation-id="${esc(e.id)}"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; ${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''} &middot; ${supportMeta(s)}</div><div class="detail">${esc(e.detail)}</div></article>`}
-function expectationDetail(id){const e=expectationById(id);if(!e)return `<div class="empty">Select an expectation to inspect its traceability.</div>`;const workflow=expectationWorkflow(e);const preview=workflow?workflowPreview(workflow.id):targetPreview(e.target,e.subject);const s=expectationSupport(id);return `<div class="item"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)} &middot; target=${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''}</div><div class="detail">${esc(e.detail)}</div></div><h3>Evidence ladder</h3>${expectationLadder(e,s)}<h3>Support summary</h3><div class="item"><h3>${esc(s?.support_status||'unknown')}</h3><div class="meta">${supportMeta(s)}</div></div>${supportReasons(s)}<h3>Workflow context</h3>${workflow?miniList([workflow],w=>item(w.trigger,`${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}`,w.id),'No workflow context.'): '<div class="empty">This expectation is not attached to a workflow.</div>'}<h3>Verifications</h3>${miniList(expectationVerifications(id),verificationItem,'No verification records.')}<h3>Work records</h3>${miniList(expectationWork(id),workItem,'No work records.')}<h3>Decisions on same target</h3>${miniList(expectationDecisions(e),decisionItem,'No decisions on this target.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this expectation.</div>'}`}
+function expectationDetail(id){const e=expectationById(id);if(!e)return `<div class="empty">Select an expectation to inspect its traceability.</div>`;const workflow=expectationWorkflow(e);const preview=workflow?workflowPreview(workflow.id):targetPreview(e.target,e.subject);const s=expectationSupport(id);return `<div class="item"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)} &middot; target=${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''}</div><div class="detail">${esc(e.detail)}</div></div><h3>Evidence ladder</h3>${expectationLadder(e,s)}<h3>Support summary</h3><div class="item"><h3>${esc(s?.support_status||'unknown')}</h3><div class="meta">${supportMeta(s)}</div></div><h3>Support reasons</h3>${supportReasons(s)}<h3>Workflow context</h3>${workflow?miniList([workflow],w=>item(w.trigger,`${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}`,w.id),'No workflow context.'): '<div class="empty">This expectation is not attached to a workflow.</div>'}<h3>Verifications</h3>${miniList(expectationVerifications(id),verificationItem,'No verification records.')}<h3>Work records</h3>${miniList(expectationWork(id),workItem,'No work records.')}<h3>Decisions on same target</h3>${miniList(expectationDecisions(e),decisionItem,'No decisions on this target.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this expectation.</div>'}`}
 function readinessBucket(s){if(!s)return 'Unknown';if(s.verification.failed>0)return 'Failed verification';if(!s.target_observed)return 'Missing target';if(s.verification.passed>0)return 'Verified';if(s.work>0)return 'Has work, needs verification';return 'No linked work yet'}
 function readinessTone(bucket){return bucket==='Verified'?'good':bucket==='Failed verification'||bucket==='Missing target'?'bad':'warn'}
 function readinessItems(){const stored=packet.expectation_readiness||[];if(stored.length)return stored.map(r=>({id:r.expectation_id,title:r.title,label:r.label,next_action:r.next_action}));return expectations().map(e=>{const s=expectationSupport(e.id);return {id:e.id,title:e.title,label:readinessBucket(s),next_action:expectationNextAction(e,s)}})}
@@ -5561,6 +5734,11 @@ mod tests {
             "verification v_review expectation=e_review status=passed method=\"manual smoke test\" source=\"human:test\" evidence=\"local:review\" detail=\"The daily review command wrote convention-based outputs.\";\n",
         )
         .expect("write verifications sidecar");
+        fs::write(
+            temp.path().join(PORTAL_CONFIG_FILE),
+            "[portal]\ntitle = \"Daily Memory\"\naccent = \"#778899\"\n",
+        )
+        .expect("write portal config");
 
         review_shortcut(&ReviewShortcutArgs {
             target: temp.path().to_path_buf(),
@@ -5613,11 +5791,9 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(&check_path).expect("read check json"))
                 .expect("check json should parse");
         assert_eq!(check_json["project"]["name"], artifact.project_name);
-        assert!(
-            fs::read_to_string(&html_path)
-                .expect("read html portal")
-                .contains("Susumu Review")
-        );
+        let html = fs::read_to_string(&html_path).expect("read html portal");
+        assert!(html.contains("Daily Memory &middot;"));
+        assert!(html.contains(":root{--accent:#778899}"));
     }
 
     #[test]
@@ -6371,6 +6547,67 @@ mod tests {
     }
 
     #[test]
+    fn portal_config_parses_branding_section() {
+        let config = parse_portal_config(
+            r##"
+            [ignored]
+            accent = "#ffffff"
+
+            [portal]
+            title = "Acme Project Memory"
+            background = "#101820"
+            accent = "#abc"
+            ok = "#a1b2c3" # muted success
+            "##,
+        )
+        .expect("parse portal config");
+
+        assert_eq!(config.title.as_deref(), Some("Acme Project Memory"));
+        assert_eq!(
+            config.css_vars.get("--bg").map(String::as_str),
+            Some("#101820")
+        );
+        assert_eq!(
+            config.css_vars.get("--accent").map(String::as_str),
+            Some("#abc")
+        );
+        assert_eq!(
+            config.css_vars.get("--ok").map(String::as_str),
+            Some("#a1b2c3")
+        );
+        assert!(parse_portal_config("[portal]\naccent = \"red\"\n").is_err());
+    }
+
+    #[test]
+    fn exported_review_html_loads_portal_config_from_project_root() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            temp.path().join(PORTAL_CONFIG_FILE),
+            "[portal]\ntitle = \"Acme Memory\"\naccent = \"#445566\"\nbackground = \"#101820\"\n",
+        )
+        .expect("write portal config");
+        let mut artifact = test_artifact();
+        artifact.root = temp.path().display().to_string();
+        refresh_derived_analysis(&mut artifact);
+        let packet = stored_review_packet("fixture.review.susu", 1, &artifact);
+        let packet_json = serde_json::to_string_pretty(&packet).expect("packet serializes");
+        let packet_path = temp.path().join("fixture.review.susu");
+        let html_path = temp.path().join("fixture-review.html");
+        fs::write(&packet_path, packet_json).expect("write packet");
+
+        export_review_html(&ReviewExportHtmlArgs {
+            packet: packet_path,
+            output: html_path.clone(),
+        })
+        .expect("export succeeds");
+
+        let html = fs::read_to_string(html_path).expect("read html");
+        assert!(html.contains("Acme Memory &middot; fixture"));
+        assert!(html.contains("<div class=\"eyebrow\">Acme Memory</div>"));
+        assert!(html.contains(":root{--accent:#445566;--bg:#101820}"));
+    }
+
+    #[test]
     fn review_portal_html_embeds_packet_safely() {
         let mut artifact = test_artifact();
         artifact.project_name = "fixture </script>".to_owned();
@@ -6392,6 +6629,8 @@ mod tests {
         assert!(html.contains("traceability-list"));
         assert!(html.contains("traceability-detail"));
         assert!(html.contains("overscroll-behavior:contain"));
+        assert!(html.contains("padding:8px 6px 0 0"));
+        assert!(html.contains("Support reasons"));
         assert!(html.contains(".workflow-layout>*{min-width:0}"));
         assert!(html.contains(".detail-pane{position:sticky;top:98px;align-self:start;min-width:0;max-width:100%;overflow:hidden}"));
         assert!(html.contains("--accent:#9eb7a0"));
@@ -6462,11 +6701,16 @@ mod tests {
 
     #[test]
     fn export_review_html_writes_standalone_portal() {
+        let temp = tempfile::tempdir().expect("tempdir");
         let mut artifact = test_artifact();
+        artifact.root = temp
+            .path()
+            .join("project-without-config")
+            .display()
+            .to_string();
         refresh_derived_analysis(&mut artifact);
         let packet = stored_review_packet("fixture.review.susu", 1, &artifact);
         let packet_json = serde_json::to_string_pretty(&packet).expect("packet serializes");
-        let temp = tempfile::tempdir().expect("tempdir");
         let packet_path = temp.path().join("fixture.review.susu");
         let html_path = temp.path().join("fixture-review.html");
         fs::write(&packet_path, packet_json).expect("write packet");

@@ -1,0 +1,13 @@
+[portal]
+title = "Susumu Project Memory"
+background = "#11131a"
+panel = "#1a1f2b"
+panel2 = "#202638"
+text = "#e8e2d7"
+muted = "#aaa292"
+line = "#363b49"
+accent = "#9eb7a0"
+accent2 = "#aaa2bf"
+bad = "#cc8e8a"
+warn = "#c8aa72"
+ok = "#91ad86"

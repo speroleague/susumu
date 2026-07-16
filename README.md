@@ -54,6 +54,21 @@ By convention:
 
 Keep authored intent in normal source control. Keep generated `.susumu/` files local unless you intentionally publish or attach them.
 
+Brand the generated portal with `susumu.toml` in the project root:
+
+```toml
+[portal]
+title = "My Project Memory"
+background = "#11131a"
+panel = "#1a1f2b"
+text = "#e8e2d7"
+muted = "#aaa292"
+line = "#363b49"
+accent = "#9eb7a0"
+```
+
+`review`, `review --serve`, `open`, and `review export-html` load this file automatically when it is present. The config only changes the portal shell; `.susu` review packets remain portable evidence.
+
 For the philosophy and team workflow, read [The Susumu Way](docs/the-susumu-way.md).
 
 ## Common commands

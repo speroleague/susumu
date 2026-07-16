@@ -17,8 +17,7 @@ use susumu::{
     analysis::{anchor_decision_bases, anchor_verification_bases, refresh_derived_analysis},
     model::{
         Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget, Language,
-        Location, ProjectAnalysis, Severity, Verification, VerificationStatus, Work, WorkKind,
-        WorkStatus,
+        Location, ProjectAnalysis, Verification, VerificationStatus, Work, WorkKind, WorkStatus,
     },
     parse_decisions, parse_expectations, parse_susu, parse_verifications, parse_works,
     scan_project, tui, write_decisions, write_expectations, write_susu, write_verifications,
@@ -30,20 +29,22 @@ use syntect::{
     parsing::{SyntaxReference, SyntaxSet},
 };
 
+mod checks;
 mod cli_values;
 mod review_types;
 
+use checks::{check_item_jsons, check_json, check_report, print_check_json, print_check_report};
 use cli_values::{
     DecisionStatusArg, ExpectationStatusArg, ExpectationTargetArg, GitTargetDepth,
     GitTargetDepthArg, VerificationStatusArg, WorkKindArg, WorkStatusArg,
 };
 use review_types::{
-    CheckEvidenceJson, CheckItem, CheckItemJson, CheckJson, CheckProjectJson, CheckRecordsJson,
-    CheckReport, CheckResultJson, CheckReviewJson, CheckSeverity, ExpectationReadiness,
-    ExpectationSupport, ExpectationVerificationSupport, HandoffJson, HandoffRecord, HandoffReport,
-    HandoffWorkflow, READINESS_BUCKETS, ReviewItemStored, ReviewPacketJson, ReviewPacketStored,
-    ReviewSourceJson, ReviewSourceLine, ReviewSourcePreview, ReviewSourceToken,
-    check_result_reason, check_severity_label,
+    CheckEvidenceJson, CheckItem, CheckItemJson, CheckProjectJson, CheckRecordsJson, CheckReport,
+    CheckResultJson, CheckReviewJson, CheckSeverity, ExpectationReadiness, ExpectationSupport,
+    ExpectationVerificationSupport, HandoffJson, HandoffRecord, HandoffReport, HandoffWorkflow,
+    READINESS_BUCKETS, ReviewItemStored, ReviewPacketJson, ReviewPacketStored, ReviewSourceJson,
+    ReviewSourceLine, ReviewSourcePreview, ReviewSourceToken, check_result_reason,
+    check_severity_label,
 };
 
 #[derive(Debug, Parser)]
@@ -3344,244 +3345,6 @@ struct ReviewDiffReport {
     top_workflows: ChangeSummary,
 }
 
-fn check_report(analysis: &ProjectAnalysis, strict: bool) -> CheckReport {
-    let mut items = check_items(analysis);
-    items.sort_by(|left, right| {
-        right
-            .severity
-            .cmp(&left.severity)
-            .then_with(|| left.title.cmp(&right.title))
-    });
-    let critical = items
-        .iter()
-        .filter(|item| item.severity == CheckSeverity::Critical)
-        .count();
-    let warning = items
-        .iter()
-        .filter(|item| item.severity == CheckSeverity::Warning)
-        .count();
-    let attention = items
-        .iter()
-        .filter(|item| item.severity == CheckSeverity::Attention)
-        .count();
-    let failed = critical > 0 || (strict && warning > 0);
-    CheckReport {
-        items,
-        critical,
-        warning,
-        attention,
-        strict,
-        failed,
-    }
-}
-
-fn check_items(analysis: &ProjectAnalysis) -> Vec<CheckItem> {
-    let mut items = Vec::new();
-    add_finding_check_items(analysis, &mut items);
-    add_verification_check_items(analysis, &mut items);
-    add_work_check_items(analysis, &mut items);
-    add_workflow_gap_check_items(analysis, &mut items);
-    items
-}
-
-fn add_finding_check_items(analysis: &ProjectAnalysis, items: &mut Vec<CheckItem>) {
-    for finding in &analysis.findings {
-        let severity = match finding.severity {
-            Severity::Error => CheckSeverity::Critical,
-            Severity::Warning => CheckSeverity::Warning,
-            Severity::Info if matches!(finding.rule_id.as_str(), "SUS023" | "SUS033") => {
-                CheckSeverity::Warning
-            }
-            Severity::Info => continue,
-        };
-        items.push(CheckItem {
-            severity,
-            title: format!("{}: {}", finding.rule_id, finding.title),
-            detail: finding.detail.clone(),
-            source: finding.source.clone(),
-        });
-    }
-}
-
-fn add_verification_check_items(analysis: &ProjectAnalysis, items: &mut Vec<CheckItem>) {
-    for verification in &analysis.verifications {
-        let severity = match verification.status {
-            VerificationStatus::Failed => CheckSeverity::Critical,
-            VerificationStatus::Inconclusive => CheckSeverity::Warning,
-            VerificationStatus::Passed => continue,
-        };
-        items.push(CheckItem {
-            severity,
-            title: format!(
-                "{} verification: {}",
-                verification.status,
-                expectation_title(analysis, &verification.expectation_id)
-            ),
-            detail: format!(
-                "{} method={} evidence={} basis={}",
-                verification.detail,
-                verification.method,
-                verification.evidence.as_deref().unwrap_or("-"),
-                verification.basis.as_deref().unwrap_or("-")
-            ),
-            source: verification.source.clone(),
-        });
-    }
-}
-
-fn add_work_check_items(analysis: &ProjectAnalysis, items: &mut Vec<CheckItem>) {
-    for work in &analysis.works {
-        if work.status != WorkStatus::Blocked {
-            continue;
-        }
-        items.push(CheckItem {
-            severity: CheckSeverity::Warning,
-            title: format!("blocked work: {}", work.title),
-            detail: format!(
-                "{} evidence={} expectation={}",
-                work.detail,
-                work.evidence.as_deref().unwrap_or("-"),
-                work.expectation_id.as_deref().unwrap_or("-")
-            ),
-            source: work.source.clone(),
-        });
-    }
-}
-
-fn add_workflow_gap_check_items(analysis: &ProjectAnalysis, items: &mut Vec<CheckItem>) {
-    for workflow in &analysis.workflows {
-        let Some(entry_symbol) = workflow.entry_symbol.as_deref() else {
-            continue;
-        };
-        let gaps = analysis
-            .flows
-            .iter()
-            .filter(|flow| flow.from == entry_symbol && flow.to.is_none())
-            .count();
-        if gaps == 0 {
-            continue;
-        }
-        let label = if gaps == 1 { "edge" } else { "edges" };
-        items.push(CheckItem {
-            severity: CheckSeverity::Attention,
-            title: format!("{} has unresolved call {label}", workflow.trigger),
-            detail: format!(
-                "{} has {gaps} unresolved outgoing call {label}. This may be framework, library, generated, or dynamic behavior.",
-                workflow.trigger
-            ),
-            source: "susumu:derived".to_owned(),
-        });
-    }
-}
-
-fn print_check_report(analysis: &ProjectAnalysis, report: &CheckReport, max_items: usize) {
-    println!("Susumu check: {}", analysis.project_name);
-    println!("Root: {}", analysis.root);
-    println!();
-    println!("Evidence:");
-    println!("  files: {}", analysis.files.len());
-    println!("  workflows: {}", analysis.workflows.len());
-    println!("  flows: {}", analysis.flows.len());
-    println!("  findings: {}", analysis.findings.len());
-    println!();
-    println!("Records:");
-    println!("  expectations: {}", analysis.expectations.len());
-    println!("  verifications: {}", analysis.verifications.len());
-    println!("  decisions: {}", analysis.decisions.len());
-    println!("  work: {}", analysis.works.len());
-    println!();
-    println!("Review:");
-    println!("  critical: {}", report.critical);
-    println!("  warning: {}", report.warning);
-    println!("  attention: {}", report.attention);
-    println!();
-
-    if report.items.is_empty() {
-        println!("No review items.");
-    } else {
-        println!("Top review items:");
-        for item in report.items.iter().take(max_items) {
-            println!("  [{}] {}", check_severity_label(item.severity), item.title);
-            println!("      source={}", item.source);
-            println!("      {}", item.detail);
-        }
-        if report.items.len() > max_items {
-            println!("  ... {} more", report.items.len() - max_items);
-        }
-    }
-
-    println!();
-    if report.failed {
-        if report.critical > 0 {
-            println!("Result: failed (critical review items present)");
-        } else {
-            println!("Result: failed (--strict treats warnings as blockers)");
-        }
-    } else if report.warning > 0 || report.attention > 0 {
-        println!("Result: passed with review items");
-    } else {
-        println!("Result: passed");
-    }
-    if report.strict {
-        println!("Mode: strict");
-    }
-}
-
-fn print_check_json(analysis: &ProjectAnalysis, report: &CheckReport) -> Result<()> {
-    let output = check_json(analysis, report);
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&output).context("could not serialize check report")?
-    );
-    Ok(())
-}
-
-fn check_json<'a>(analysis: &'a ProjectAnalysis, report: &'a CheckReport) -> CheckJson<'a> {
-    CheckJson {
-        project: CheckProjectJson {
-            name: &analysis.project_name,
-            root: &analysis.root,
-            generated_unix_seconds: analysis.generated_unix_seconds,
-        },
-        evidence: CheckEvidenceJson {
-            files: analysis.files.len(),
-            workflows: analysis.workflows.len(),
-            flows: analysis.flows.len(),
-            findings: analysis.findings.len(),
-        },
-        records: CheckRecordsJson {
-            expectations: analysis.expectations.len(),
-            verifications: analysis.verifications.len(),
-            decisions: analysis.decisions.len(),
-            work: analysis.works.len(),
-        },
-        review: CheckReviewJson {
-            critical: report.critical,
-            warning: report.warning,
-            attention: report.attention,
-        },
-        result: CheckResultJson {
-            status: if report.failed { "failed" } else { "passed" },
-            failed: report.failed,
-            strict: report.strict,
-            reason: check_result_reason(report),
-        },
-        items: check_item_jsons(&report.items),
-    }
-}
-
-fn check_item_jsons(items: &[CheckItem]) -> Vec<CheckItemJson<'_>> {
-    items
-        .iter()
-        .map(|item| CheckItemJson {
-            severity: check_severity_label(item.severity),
-            title: &item.title,
-            detail: &item.detail,
-            source: &item.source,
-        })
-        .collect()
-}
-
 fn handoff_report(analysis: &ProjectAnalysis, check: &CheckReport) -> HandoffReport {
     let top_workflows = handoff_top_workflows(analysis);
     let expectations_without_verification = handoff_expectations_without_verification(analysis);
@@ -6515,7 +6278,8 @@ fn merge_works(existing: &mut Vec<Work>, imported: Vec<Work>) {
 mod tests {
     use super::*;
     use susumu::model::{
-        Confidence, Finding, Language, Location, SCHEMA_VERSION, SourceFile, Workflow, WorkflowKind,
+        Confidence, Finding, Language, Location, SCHEMA_VERSION, Severity, SourceFile, Workflow,
+        WorkflowKind,
     };
 
     fn test_artifact() -> ProjectAnalysis {

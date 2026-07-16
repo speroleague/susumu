@@ -4521,6 +4521,7 @@ fn connected_expectations(
     file_ids: &[String],
     workflow_ids: &BTreeSet<String>,
 ) -> Vec<GitConnectedRecord> {
+    let language_match = single_language_matched_expectation(artifact, text);
     let mut records = artifact
         .expectations
         .iter()
@@ -4528,6 +4529,8 @@ fn connected_expectations(
             let explicit = contains_token(text, &expectation.id);
             let reason = if explicit {
                 Some("commit text mentions expectation id")
+            } else if language_match.as_deref() == Some(expectation.id.as_str()) {
+                Some("commit text matches expectation language")
             } else {
                 match (expectation.target, expectation.subject.as_deref()) {
                     (ExpectationTarget::Workflow, Some(subject))
@@ -4974,19 +4977,117 @@ fn linked_git_expectation(
 ) -> Option<GitExpectationLink> {
     let artifact = artifact?;
     let searchable = format!("{}\n{}", commit.subject, commit.body);
-    let mut matches = artifact
+    let mut matches = explicitly_linked_git_expectations(artifact, &searchable);
+    if matches.is_empty()
+        && let Some(expectation_id) = single_language_matched_expectation(artifact, &searchable)
+        && let Some(expectation) = artifact
+            .expectations
+            .iter()
+            .find(|expectation| expectation.id == expectation_id)
+    {
+        matches.push(GitExpectationLink {
+            id: expectation.id.clone(),
+            target: expectation.target,
+            subject: expectation.subject.clone(),
+        });
+    }
+    matches.sort_by(|left, right| left.id.cmp(&right.id));
+    matches.dedup_by(|left, right| left.id == right.id);
+    (matches.len() == 1).then(|| matches.remove(0))
+}
+
+fn explicitly_linked_git_expectations(
+    artifact: &ProjectAnalysis,
+    searchable: &str,
+) -> Vec<GitExpectationLink> {
+    artifact
         .expectations
         .iter()
-        .filter(|expectation| contains_token(&searchable, &expectation.id))
+        .filter(|expectation| contains_token(searchable, &expectation.id))
         .map(|expectation| GitExpectationLink {
             id: expectation.id.clone(),
             target: expectation.target,
             subject: expectation.subject.clone(),
         })
+        .collect::<Vec<_>>()
+}
+
+fn single_language_matched_expectation(
+    artifact: &ProjectAnalysis,
+    searchable: &str,
+) -> Option<String> {
+    let searchable_tokens = expectation_language_tokens(searchable);
+    let mut matches = artifact
+        .expectations
+        .iter()
+        .filter_map(|expectation| {
+            let mut expectation_text = expectation.title.clone();
+            expectation_text.push(' ');
+            expectation_text.push_str(&expectation.detail);
+            let expectation_tokens = expectation_language_tokens(&expectation_text);
+            let overlap = expectation_tokens.intersection(&searchable_tokens).count();
+            (overlap >= 2).then(|| (expectation.id.clone(), overlap))
+        })
         .collect::<Vec<_>>();
-    matches.sort_by(|left, right| left.id.cmp(&right.id));
-    matches.dedup_by(|left, right| left.id == right.id);
-    (matches.len() == 1).then(|| matches.remove(0))
+    matches.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    let [(id, score)] = matches.as_slice() else {
+        return None;
+    };
+    (*score >= 2).then(|| id.clone())
+}
+
+fn expectation_language_tokens(text: &str) -> BTreeSet<String> {
+    text.split(is_token_boundary)
+        .filter_map(normalize_expectation_language_token)
+        .collect()
+}
+
+fn normalize_expectation_language_token(token: &str) -> Option<String> {
+    let mut token = token.to_ascii_lowercase();
+    if token.len() < 3 || expectation_language_stop_word(&token) {
+        return None;
+    }
+    for suffix in ["ing", "ed", "s"] {
+        if token.len() > suffix.len() + 2 && token.ends_with(suffix) {
+            token.truncate(token.len() - suffix.len());
+            break;
+        }
+    }
+    if token.len() < 3 || expectation_language_stop_word(&token) {
+        None
+    } else {
+        Some(token)
+    }
+}
+
+fn expectation_language_stop_word(token: &str) -> bool {
+    matches!(
+        token,
+        "about"
+            | "able"
+            | "after"
+            | "before"
+            | "code"
+            | "current"
+            | "detail"
+            | "from"
+            | "have"
+            | "into"
+            | "project"
+            | "record"
+            | "records"
+            | "repository"
+            | "should"
+            | "show"
+            | "susumu"
+            | "that"
+            | "their"
+            | "when"
+            | "which"
+            | "with"
+            | "workflow"
+            | "workflows"
+    )
 }
 
 fn contains_token(haystack: &str, needle: &str) -> bool {
@@ -5838,6 +5939,63 @@ mod tests {
             work.evidence.as_deref(),
             Some("commit:f240cd96a07f2ea7b14cc1932c58914ed0871575")
         );
+    }
+
+    #[test]
+    fn git_connect_export_links_project_expectation_from_language_match() {
+        let mut artifact = test_artifact();
+        artifact.expectations = vec![Expectation {
+            id: "e_git_work_support".to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            status: ExpectationStatus::Accepted,
+            source: "human:maintainer".to_owned(),
+            title: "Git work can support project expectations".to_owned(),
+            detail: "Local Git commits should become work support for project expectations."
+                .to_owned(),
+        }];
+        let commit = test_commit(
+            "feat: connect git work to project expectations",
+            "",
+            &["src/main.rs"],
+        );
+        let report = build_git_connect_report(&artifact, &[commit]);
+
+        assert_eq!(report.needs_record, 1);
+        assert_eq!(report.records[0].expectations[0].id, "e_git_work_support");
+
+        let work = work_from_git_connection(&artifact, &report.records[0], "import:test");
+
+        assert_eq!(work.target, ExpectationTarget::Project);
+        assert_eq!(work.subject, None);
+        assert_eq!(work.expectation_id.as_deref(), Some("e_git_work_support"));
+    }
+
+    #[test]
+    fn git_import_links_project_expectation_from_language_match() {
+        let mut artifact = test_artifact();
+        artifact.expectations = vec![Expectation {
+            id: "e_git_work_support".to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            status: ExpectationStatus::Accepted,
+            source: "human:maintainer".to_owned(),
+            title: "Git work can support project expectations".to_owned(),
+            detail: "Local Git commits should become work support for project expectations."
+                .to_owned(),
+        }];
+        let commit = test_commit(
+            "feat: connect git work to project expectations",
+            "",
+            &["src/main.rs"],
+        );
+
+        let linked = linked_git_expectation(&commit, Some(&artifact))
+            .expect("language match should link exactly one expectation");
+
+        assert_eq!(linked.id, "e_git_work_support");
+        assert_eq!(linked.target, ExpectationTarget::Project);
+        assert_eq!(linked.subject, None);
     }
 
     #[test]

@@ -217,6 +217,13 @@ cargo run -- review create project.susu --json
 
 Review packets include expectation support summaries. These summaries show whether each expectation's target is currently observed and which verification, work, decision, or finding records are linked. They do not prove the expectation is satisfied; they show what evidence currently supports or fails to support review.
 
+To let real Git history support expectations, export work records from commits and include them in the next review build:
+
+```powershell
+cargo run -- git connect --artifact .\target\susumu-self.susu --since origin/main --export-work .\target\susumu-work.susu
+cargo run -- review build . --work .\target\susumu-work.susu --artifact-output .\target\susumu-self.susu --output .\target\susumu-self.review.susu --check-json .\target\susumu-self-check.json --html .\target\susumu-self.review.html
+```
+
 `review create` packages an existing artifact or project together with the handoff summary, check result, review items, top workflows, caveats, next actions, and portable syntax-highlighted source snippets when the source files are readable. The packet uses JSON with `schema_version="susumu.review.v1"`, so it can be attached to pull requests, stored as a release decision snapshot, passed to an AI agent, or opened later by a TUI/web review surface. Creating a packet does not fail just because review issues are present; those issues are captured inside the packet.
 
 Open or compare review packets later:

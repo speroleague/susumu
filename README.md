@@ -215,6 +215,8 @@ cargo run -- review create project.susu --json
 
 `review build` is the day-to-day command for initialized projects. It scans the project, automatically loads `expectations.susu` when present, writes the current `.susu` artifact, creates the review packet, can write `check --json`, and can export the standalone HTML portal. Add `--serve` to open the local portal after building, or `--fail-on-check` when CI should fail after outputs are written.
 
+Review packets include expectation support summaries. These summaries show whether each expectation's target is currently observed and which verification, work, decision, or finding records are linked. They do not prove the expectation is satisfied; they show what evidence currently supports or fails to support review.
+
 `review create` packages an existing artifact or project together with the handoff summary, check result, review items, top workflows, caveats, next actions, and portable syntax-highlighted source snippets when the source files are readable. The packet uses JSON with `schema_version="susumu.review.v1"`, so it can be attached to pull requests, stored as a release decision snapshot, passed to an AI agent, or opened later by a TUI/web review surface. Creating a packet does not fail just because review issues are present; those issues are captured inside the packet.
 
 Open or compare review packets later:

@@ -1717,8 +1717,11 @@ function expectationWorkflow(e){return e&&e.target==='workflow'?workflowById(e.s
 function expectationVerifications(id){return (packet.artifact.verifications||[]).filter(v=>v.expectation_id===id)}
 function expectationWork(id){return (packet.artifact.works||[]).filter(w=>w.expectation_id===id)}
 function expectationDecisions(e){if(!e)return[];return (packet.artifact.decisions||[]).filter(d=>d.target===e.target&&(d.subject??null)===(e.subject??null))}
-function expectationCard(e){const verifications=expectationVerifications(e.id);const work=expectationWork(e.id);return `<article class="item clickable ${e.id===selectedExpectationId?'selected':''}" data-expectation-id="${esc(e.id)}"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; ${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''} &middot; verifications=${verifications.length} &middot; work=${work.length}</div><div class="detail">${esc(e.detail)}</div></article>`}
-function expectationDetail(id){const e=expectationById(id);if(!e)return `<div class="empty">Select an expectation to inspect its traceability.</div>`;const workflow=expectationWorkflow(e);const preview=workflow?workflowPreview(workflow.id):null;return `<div class="item"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)} &middot; target=${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''}</div><div class="detail">${esc(e.detail)}</div></div><h3>Workflow context</h3>${workflow?miniList([workflow],w=>item(w.trigger,`${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}`,w.id),'No workflow context.'): '<div class="empty">This expectation is not attached to a workflow.</div>'}<h3>Verifications</h3>${miniList(expectationVerifications(id),v=>item(`${v.status} verification`,v.detail,`${esc(v.id)} &middot; method=${esc(v.method)} &middot; evidence=${esc(v.evidence??'-')} &middot; basis=${esc(v.basis??'-')}`),'No verification records.')}<h3>Work records</h3>${miniList(expectationWork(id),w=>item(w.title,w.detail,`${esc(w.id)} &middot; ${esc(w.kind)} &middot; ${esc(w.status)} &middot; evidence=${esc(w.evidence??'-')}`),'No work records.')}<h3>Decisions on same target</h3>${miniList(expectationDecisions(e),d=>item(d.title,d.detail,`${esc(d.id)} &middot; ${esc(d.status)} &middot; source=${esc(d.source)} &middot; basis=${esc(d.basis??'-')}`),'No decisions on this target.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this expectation.</div>'}`}
+function expectationSupport(id){return (packet.expectation_support||[]).find(s=>s.expectation_id===id)}
+function supportMeta(s){return s?`${esc(s.support_status)} &middot; target=${s.target_observed?'observed':'missing'} &middot; verifications=${s.verification.passed}/${s.verification.failed}/${s.verification.inconclusive} &middot; work=${s.work} &middot; decisions=${s.decisions}`:'support=unknown'}
+function supportReasons(s){return s?miniList(s.reasons||[],r=>item(r,'','support reason'),'No support reasons recorded.'): '<div class="empty">No support summary embedded.</div>'}
+function expectationCard(e){const s=expectationSupport(e.id);return `<article class="item clickable ${e.id===selectedExpectationId?'selected':''}" data-expectation-id="${esc(e.id)}"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; ${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''} &middot; ${supportMeta(s)}</div><div class="detail">${esc(e.detail)}</div></article>`}
+function expectationDetail(id){const e=expectationById(id);if(!e)return `<div class="empty">Select an expectation to inspect its traceability.</div>`;const workflow=expectationWorkflow(e);const preview=workflow?workflowPreview(workflow.id):null;const s=expectationSupport(id);return `<div class="item"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)} &middot; target=${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''}</div><div class="detail">${esc(e.detail)}</div></div><h3>Support summary</h3><div class="item"><h3>${esc(s?.support_status||'unknown')}</h3><div class="meta">${supportMeta(s)}</div></div>${supportReasons(s)}<h3>Workflow context</h3>${workflow?miniList([workflow],w=>item(w.trigger,`${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}`,w.id),'No workflow context.'): '<div class="empty">This expectation is not attached to a workflow.</div>'}<h3>Verifications</h3>${miniList(expectationVerifications(id),v=>item(`${v.status} verification`,v.detail,`${esc(v.id)} &middot; method=${esc(v.method)} &middot; evidence=${esc(v.evidence??'-')} &middot; basis=${esc(v.basis??'-')}`),'No verification records.')}<h3>Work records</h3>${miniList(expectationWork(id),w=>item(w.title,w.detail,`${esc(w.id)} &middot; ${esc(w.kind)} &middot; ${esc(w.status)} &middot; evidence=${esc(w.evidence??'-')}`),'No work records.')}<h3>Decisions on same target</h3>${miniList(expectationDecisions(e),d=>item(d.title,d.detail,`${esc(d.id)} &middot; ${esc(d.status)} &middot; source=${esc(d.source)} &middot; basis=${esc(d.basis??'-')}`),'No decisions on this target.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this expectation.</div>'}`}
 function traceabilitySection(){const first=expectations()[0]?.id;selectedExpectationId=selectedExpectationId||first;return `<div class="workflow-layout"><div>${list(expectations(),expectationCard,'No expectations authored yet.')}</div><aside class="detail-pane" id="expectationDetail">${expectationDetail(selectedExpectationId)}</aside></div>`}
 function render(){
  $('projectName').textContent = packet.project.name;
@@ -1838,6 +1841,7 @@ fn print_review_packet(packet: &ReviewPacketStored, max_items: usize) {
     println!();
     print_handoff_workflows(&packet.top_workflows, max_items);
     print_stored_review_items(&packet.review_items, max_items);
+    print_expectation_support(&packet.expectation_support, max_items);
     print_handoff_records(
         "Expectations without verification",
         &packet.expectations_without_verification,
@@ -1850,6 +1854,42 @@ fn print_review_packet(packet: &ReviewPacketStored, max_items: usize) {
     );
     print_string_section("Caveats", &packet.caveats, max_items);
     print_string_section("Suggested next actions", &packet.next_actions, max_items);
+}
+
+fn print_expectation_support(items: &[ExpectationSupport], max_items: usize) {
+    println!();
+    println!("Expectation support");
+    if items.is_empty() {
+        println!("  none");
+        return;
+    }
+    for item in items.iter().take(max_items) {
+        println!(
+            "  - {} [{}] target={}{}",
+            item.title,
+            item.support_status,
+            item.target,
+            item.subject
+                .as_ref()
+                .map_or_else(String::new, |subject| format!(":{subject}"))
+        );
+        println!(
+            "    observed={} verifications={}/{}/{} work={} decisions={} findings={}",
+            item.target_observed,
+            item.verification.passed,
+            item.verification.failed,
+            item.verification.inconclusive,
+            item.work,
+            item.decisions,
+            item.findings
+        );
+        for reason in item.reasons.iter().take(3) {
+            println!("    reason: {reason}");
+        }
+    }
+    if items.len() > max_items {
+        println!("  ... {} more", items.len() - max_items);
+    }
 }
 
 fn print_stored_review_items(items: &[ReviewItemStored], max_items: usize) {
@@ -2502,6 +2542,28 @@ struct HandoffRecord {
     reason: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ExpectationSupport {
+    expectation_id: String,
+    title: String,
+    target: String,
+    subject: Option<String>,
+    target_observed: bool,
+    verification: ExpectationVerificationSupport,
+    work: usize,
+    decisions: usize,
+    findings: usize,
+    support_status: String,
+    reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ExpectationVerificationSupport {
+    passed: usize,
+    failed: usize,
+    inconclusive: usize,
+}
+
 #[derive(Debug, Serialize)]
 struct HandoffJson<'a> {
     project: CheckProjectJson<'a>,
@@ -2530,6 +2592,7 @@ struct ReviewPacketJson<'a> {
     top_workflows: &'a [HandoffWorkflow],
     review_items: Vec<CheckItemJson<'a>>,
     source_previews: Vec<ReviewSourcePreview>,
+    expectation_support: Vec<ExpectationSupport>,
     expectations_without_verification: &'a [HandoffRecord],
     work_needing_verification: &'a [HandoffRecord],
     caveats: &'a [String],
@@ -2556,6 +2619,8 @@ struct ReviewPacketStored {
     review_items: Vec<ReviewItemStored>,
     #[serde(default)]
     source_previews: Vec<ReviewSourcePreview>,
+    #[serde(default)]
+    expectation_support: Vec<ExpectationSupport>,
     expectations_without_verification: Vec<HandoffRecord>,
     work_needing_verification: Vec<HandoffRecord>,
     caveats: Vec<String>,
@@ -3301,6 +3366,7 @@ fn review_packet<'a>(
         top_workflows: &handoff.top_workflows,
         review_items: check_item_jsons(&check.items),
         source_previews: review_source_previews(analysis),
+        expectation_support: expectation_support(analysis),
         expectations_without_verification: &handoff.expectations_without_verification,
         work_needing_verification: &handoff.work_needing_verification,
         caveats: &handoff.caveats,
@@ -3360,6 +3426,187 @@ fn review_source_previews(analysis: &ProjectAnalysis) -> Vec<ReviewSourcePreview
     }
     previews.sort_by(|left, right| left.path.cmp(&right.path));
     previews
+}
+
+fn expectation_support(analysis: &ProjectAnalysis) -> Vec<ExpectationSupport> {
+    let mut support = analysis
+        .expectations
+        .iter()
+        .map(|expectation| {
+            let target_observed = expectation_target_observed(analysis, expectation);
+            let verification = expectation_verification_support(analysis, &expectation.id);
+            let work = expectation_work_support_count(analysis, expectation);
+            let decisions = expectation_decision_support_count(analysis, expectation);
+            let findings = expectation_finding_support_count(analysis, expectation);
+            let (support_status, reasons) = expectation_support_status(
+                expectation,
+                target_observed,
+                &verification,
+                work,
+                decisions,
+                findings,
+            );
+            ExpectationSupport {
+                expectation_id: expectation.id.clone(),
+                title: expectation.title.clone(),
+                target: expectation.target.to_string(),
+                subject: expectation.subject.clone(),
+                target_observed,
+                verification,
+                work,
+                decisions,
+                findings,
+                support_status,
+                reasons,
+            }
+        })
+        .collect::<Vec<_>>();
+    support.sort_by(|left, right| left.expectation_id.cmp(&right.expectation_id));
+    support
+}
+
+fn expectation_target_observed(analysis: &ProjectAnalysis, expectation: &Expectation) -> bool {
+    match expectation.target {
+        ExpectationTarget::Project => expectation.subject.is_none(),
+        ExpectationTarget::File => expectation
+            .subject
+            .as_deref()
+            .is_some_and(|id| analysis.files.iter().any(|file| file.id == id)),
+        ExpectationTarget::Symbol => expectation
+            .subject
+            .as_deref()
+            .is_some_and(|id| analysis.symbols.iter().any(|symbol| symbol.id == id)),
+        ExpectationTarget::Workflow => expectation
+            .subject
+            .as_deref()
+            .is_some_and(|id| analysis.workflows.iter().any(|workflow| workflow.id == id)),
+    }
+}
+
+fn expectation_verification_support(
+    analysis: &ProjectAnalysis,
+    expectation_id: &str,
+) -> ExpectationVerificationSupport {
+    let mut support = ExpectationVerificationSupport {
+        passed: 0,
+        failed: 0,
+        inconclusive: 0,
+    };
+    for verification in analysis
+        .verifications
+        .iter()
+        .filter(|verification| verification.expectation_id == expectation_id)
+    {
+        match verification.status {
+            VerificationStatus::Passed => support.passed += 1,
+            VerificationStatus::Failed => support.failed += 1,
+            VerificationStatus::Inconclusive => support.inconclusive += 1,
+        }
+    }
+    support
+}
+
+fn expectation_work_support_count(analysis: &ProjectAnalysis, expectation: &Expectation) -> usize {
+    analysis
+        .works
+        .iter()
+        .filter(|work| {
+            work.expectation_id.as_deref() == Some(expectation.id.as_str())
+                || (work.target == expectation.target && work.subject == expectation.subject)
+        })
+        .count()
+}
+
+fn expectation_decision_support_count(
+    analysis: &ProjectAnalysis,
+    expectation: &Expectation,
+) -> usize {
+    analysis
+        .decisions
+        .iter()
+        .filter(|decision| {
+            decision.target == expectation.target && decision.subject == expectation.subject
+        })
+        .count()
+}
+
+fn expectation_finding_support_count(
+    analysis: &ProjectAnalysis,
+    expectation: &Expectation,
+) -> usize {
+    analysis
+        .findings
+        .iter()
+        .filter(|finding| {
+            expectation
+                .subject
+                .as_deref()
+                .is_some_and(|subject| finding.subject.as_deref() == Some(subject))
+        })
+        .count()
+}
+
+fn expectation_support_status(
+    expectation: &Expectation,
+    target_observed: bool,
+    verification: &ExpectationVerificationSupport,
+    work: usize,
+    decisions: usize,
+    findings: usize,
+) -> (String, Vec<String>) {
+    let mut reasons = Vec::new();
+    if target_observed {
+        reasons.push("target observed".to_owned());
+    } else {
+        reasons.push("target not observed".to_owned());
+    }
+    if verification.passed > 0 {
+        reasons.push(format!(
+            "{} passed verification record(s)",
+            verification.passed
+        ));
+    }
+    if verification.failed > 0 {
+        reasons.push(format!(
+            "{} failed verification record(s)",
+            verification.failed
+        ));
+    }
+    if verification.inconclusive > 0 {
+        reasons.push(format!(
+            "{} inconclusive verification record(s)",
+            verification.inconclusive
+        ));
+    }
+    if work > 0 {
+        reasons.push(format!("{work} linked work record(s)"));
+    }
+    if decisions > 0 {
+        reasons.push(format!("{decisions} linked decision record(s)"));
+    }
+    if findings > 0 {
+        reasons.push(format!("{findings} linked finding(s)"));
+    }
+    if verification.passed + verification.failed + verification.inconclusive == 0 {
+        reasons.push("no verification records linked".to_owned());
+    }
+
+    let status = if matches!(expectation.status, ExpectationStatus::Superseded) {
+        "superseded"
+    } else if !target_observed {
+        "missing_target"
+    } else if verification.failed > 0 {
+        "failed_verification"
+    } else if verification.passed > 0 {
+        "verified"
+    } else if verification.inconclusive > 0 {
+        "inconclusive"
+    } else if work + decisions + findings > 0 {
+        "partially_supported"
+    } else {
+        "needs_support"
+    };
+    (status.to_owned(), reasons)
 }
 
 fn highlighted_review_line_tokens(
@@ -5368,6 +5615,16 @@ mod tests {
             json["expectations_without_verification"][0]["id"],
             "e_checkout_sequence"
         );
+        assert_eq!(
+            json["expectation_support"][0]["expectation_id"],
+            "e_checkout_sequence"
+        );
+        assert_eq!(
+            json["expectation_support"][0]["support_status"],
+            "partially_supported"
+        );
+        assert_eq!(json["expectation_support"][0]["target_observed"], true);
+        assert_eq!(json["expectation_support"][0]["work"], 1);
         assert_eq!(json["work_needing_verification"][0]["id"], "wk_checkout");
     }
 
@@ -5395,6 +5652,7 @@ mod tests {
         assert!(html.contains("Susumu Review"));
         assert!(html.contains("fixture &lt;/script&gt;"));
         assert!(html.contains("<\\/script>"));
+        assert!(html.contains("Support summary"));
         assert!(html.contains("POST /checkout"));
         assert!(html.contains("const packet = "));
     }

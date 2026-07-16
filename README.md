@@ -96,6 +96,8 @@ Show expectation readiness from the latest packet:
 
 ```powershell
 cargo run -- readiness
+cargo run -- readiness --bucket needs_verification
+cargo run -- readiness --search git
 cargo run -- readiness --json
 ```
 

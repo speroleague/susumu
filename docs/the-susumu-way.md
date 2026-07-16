@@ -77,6 +77,14 @@ susumu readiness
 
 The first command connects commits to expectations and exports work records. The second command folds that work back into the review packet. The third command shows expectation readiness counts and next actions from that packet.
 
+When the queue gets long, narrow it before you decide what to do next:
+
+```powershell
+susumu readiness --bucket needs_verification
+susumu readiness --search git
+susumu readiness --json --bucket failed_verification
+```
+
 If one commit clearly supports multiple expectations, Susumu writes separate work records so each expectation gets its own reviewable support.
 
 If Susumu cannot safely infer which expectation a commit supports, link it explicitly:
@@ -114,7 +122,7 @@ A good agent loop is:
 5. If the commit is unconnected but the intent is known, run `susumu git link <commit> <expectation-id>`.
 6. Run `susumu verify <expectation-id> --passed --method "<check>"` when a check has actually been performed.
 7. Run `susumu review`.
-8. Run `susumu readiness --json` when an agent or CI needs the readiness queue.
+8. Run `susumu readiness --json` when an agent or CI needs the readiness queue, or add `--bucket`/`--search` when it only needs one slice.
 9. Report which expectation the work supported and what still needs verification.
 
 Agents should not claim an expectation is satisfied just because they changed code. Work supports an expectation. Verification checks it. Decisions record judgment about it.

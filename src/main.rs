@@ -4369,6 +4369,9 @@ fn safe_snapshot_path(root: &Path, git_path: &str) -> Result<PathBuf> {
     if normalized.is_empty() {
         bail!("Git snapshot path cannot be empty");
     }
+    if looks_like_windows_absolute_path(&normalized) {
+        bail!("refusing unsafe Git snapshot path: {git_path}");
+    }
 
     let mut output = root.to_path_buf();
     for component in Path::new(&normalized).components() {
@@ -4381,6 +4384,11 @@ fn safe_snapshot_path(root: &Path, git_path: &str) -> Result<PathBuf> {
         }
     }
     Ok(output)
+}
+
+fn looks_like_windows_absolute_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && bytes[2] == b'/'
 }
 
 fn git_snapshot_id(repo: &Path, revision: &str) -> String {
@@ -6492,5 +6500,6 @@ mod tests {
         assert!(safe_snapshot_path(Path::new("snapshot"), "../secret.rs").is_err());
         assert!(safe_snapshot_path(Path::new("snapshot"), "/secret.rs").is_err());
         assert!(safe_snapshot_path(Path::new("snapshot"), "C:/secret.rs").is_err());
+        assert!(safe_snapshot_path(Path::new("snapshot"), "c:/secret.rs").is_err());
     }
 }

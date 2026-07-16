@@ -3511,8 +3511,11 @@ fn expectation_work_support_count(analysis: &ProjectAnalysis, expectation: &Expe
         .works
         .iter()
         .filter(|work| {
-            work.expectation_id.as_deref() == Some(expectation.id.as_str())
-                || (work.target == expectation.target && work.subject == expectation.subject)
+            if let Some(expectation_id) = work.expectation_id.as_deref() {
+                expectation_id == expectation.id
+            } else {
+                work.target == expectation.target && work.subject == expectation.subject
+            }
         })
         .count()
 }
@@ -5030,10 +5033,17 @@ fn single_language_matched_expectation(
         })
         .collect::<Vec<_>>();
     matches.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
-    let [(id, score)] = matches.as_slice() else {
+    let (id, score) = matches.first()?;
+    if *score < 2 {
         return None;
-    };
-    (*score >= 2).then(|| id.clone())
+    }
+    if matches
+        .get(1)
+        .is_some_and(|(_, next_score)| next_score >= score)
+    {
+        return None;
+    }
+    Some(id.clone())
 }
 
 fn expectation_language_tokens(text: &str) -> BTreeSet<String> {
@@ -5602,6 +5612,58 @@ mod tests {
     }
 
     #[test]
+    fn expectation_support_counts_expectation_specific_work_only_once() {
+        let mut artifact = test_artifact();
+        artifact.expectations = vec![
+            Expectation {
+                id: "e_project_one".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:test".to_owned(),
+                title: "First project expectation".to_owned(),
+                detail: "First expectation.".to_owned(),
+            },
+            Expectation {
+                id: "e_project_two".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:test".to_owned(),
+                title: "Second project expectation".to_owned(),
+                detail: "Second expectation.".to_owned(),
+            },
+        ];
+        artifact.works.push(Work {
+            id: "wk_one".to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            expectation_id: Some("e_project_one".to_owned()),
+            kind: WorkKind::Implementation,
+            status: WorkStatus::Completed,
+            source: "import:test".to_owned(),
+            evidence: Some("commit:abc123".to_owned()),
+            title: "Support first expectation".to_owned(),
+            detail: "Only the explicitly linked expectation should count this work.".to_owned(),
+        });
+
+        let support = expectation_support(&artifact);
+        let first = support
+            .iter()
+            .find(|item| item.expectation_id == "e_project_one")
+            .expect("first support");
+        let second = support
+            .iter()
+            .find(|item| item.expectation_id == "e_project_two")
+            .expect("second support");
+
+        assert_eq!(first.work, 1);
+        assert_eq!(first.support_status, "partially_supported");
+        assert_eq!(second.work, 0);
+        assert_eq!(second.support_status, "needs_support");
+    }
+
+    #[test]
     fn review_build_writes_artifact_packet_check_and_html() {
         let temp = tempfile::tempdir().expect("tempdir");
         fs::write(
@@ -5944,16 +6006,27 @@ mod tests {
     #[test]
     fn git_connect_export_links_project_expectation_from_language_match() {
         let mut artifact = test_artifact();
-        artifact.expectations = vec![Expectation {
-            id: "e_git_work_support".to_owned(),
-            target: ExpectationTarget::Project,
-            subject: None,
-            status: ExpectationStatus::Accepted,
-            source: "human:maintainer".to_owned(),
-            title: "Git work can support project expectations".to_owned(),
-            detail: "Local Git commits should become work support for project expectations."
-                .to_owned(),
-        }];
+        artifact.expectations = vec![
+            Expectation {
+                id: "e_expectation_support".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:maintainer".to_owned(),
+                title: "Expectations show supporting evidence".to_owned(),
+                detail: "Review packets should show support for expectations.".to_owned(),
+            },
+            Expectation {
+                id: "e_git_work_support".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:maintainer".to_owned(),
+                title: "Git work can support project expectations".to_owned(),
+                detail: "Local Git commits should become work support for project expectations."
+                    .to_owned(),
+            },
+        ];
         let commit = test_commit(
             "feat: connect git work to project expectations",
             "",
@@ -5974,16 +6047,27 @@ mod tests {
     #[test]
     fn git_import_links_project_expectation_from_language_match() {
         let mut artifact = test_artifact();
-        artifact.expectations = vec![Expectation {
-            id: "e_git_work_support".to_owned(),
-            target: ExpectationTarget::Project,
-            subject: None,
-            status: ExpectationStatus::Accepted,
-            source: "human:maintainer".to_owned(),
-            title: "Git work can support project expectations".to_owned(),
-            detail: "Local Git commits should become work support for project expectations."
-                .to_owned(),
-        }];
+        artifact.expectations = vec![
+            Expectation {
+                id: "e_expectation_support".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:maintainer".to_owned(),
+                title: "Expectations show supporting evidence".to_owned(),
+                detail: "Review packets should show support for expectations.".to_owned(),
+            },
+            Expectation {
+                id: "e_git_work_support".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:maintainer".to_owned(),
+                title: "Git work can support project expectations".to_owned(),
+                detail: "Local Git commits should become work support for project expectations."
+                    .to_owned(),
+            },
+        ];
         let commit = test_commit(
             "feat: connect git work to project expectations",
             "",

@@ -1872,7 +1872,18 @@ fn write_verification_record(
 }
 
 fn git_shortcut(args: &GitShortcutArgs) -> Result<()> {
-    git_connect(&GitConnectArgs {
+    let artifact = git_shortcut_artifact(args)?;
+    let connect_args = git_shortcut_connect_args(args);
+    run_git_connect(&connect_args, &artifact)
+}
+
+fn git_shortcut_artifact(args: &GitShortcutArgs) -> Result<ProjectAnalysis> {
+    let work = args.output.exists().then_some(&args.output);
+    load_analysis(&args.artifact, None, None, None, work, false)
+}
+
+fn git_shortcut_connect_args(args: &GitShortcutArgs) -> GitConnectArgs {
+    GitConnectArgs {
         repo: args.repo.clone(),
         artifact: args.artifact.clone(),
         since: args.since.clone(),
@@ -1883,7 +1894,7 @@ fn git_shortcut(args: &GitShortcutArgs) -> Result<()> {
         source: args.source.clone(),
         minify: args.minify,
         json: args.json,
-    })
+    }
 }
 
 fn daily_review_paths(target: &Path, output_dir: &Path) -> DailyReviewPaths {
@@ -3658,14 +3669,18 @@ fn remove_work(args: &RemoveWork) -> Result<()> {
 
 fn git_connect(args: &GitConnectArgs) -> Result<()> {
     let artifact = read_analysis_artifact(&args.artifact)?;
+    run_git_connect(args, &artifact)
+}
+
+fn run_git_connect(args: &GitConnectArgs, artifact: &ProjectAnalysis) -> Result<()> {
     let commits = git_commits_for(
         &args.repo,
         args.since.as_deref(),
         args.until.as_deref(),
         args.limit,
     )?;
-    let report = build_git_connect_report(&artifact, &commits);
-    let export = export_git_connect_work(args, &artifact, &report)?;
+    let report = build_git_connect_report(artifact, &commits);
+    let export = export_git_connect_work(args, artifact, &report)?;
     if args.json {
         print_git_connect_json(args, &report, export.as_ref())?;
     } else {
@@ -7021,6 +7036,57 @@ mod tests {
         assert_eq!(report.connected, 1);
         assert_eq!(report.needs_record, 0);
         assert_eq!(report.unconnected, 0);
+        assert_eq!(report.records[0].status, "connected");
+        assert_eq!(report.records[0].works[0].id, "wk_git_f240cd96a07f2ea7");
+    }
+
+    #[test]
+    fn git_shortcut_merges_work_sidecar_before_connecting() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let artifact_path = temp.path().join("project.susu");
+        let work_path = temp.path().join("work.susu");
+        let artifact = test_artifact();
+        let commit = test_commit("Address checkout sequence", "", &["src/api.ts"]);
+        let work = Work {
+            id: "wk_git_f240cd96a07f2ea7".to_owned(),
+            target: ExpectationTarget::Workflow,
+            subject: Some("w_checkout".to_owned()),
+            expectation_id: Some("e_checkout_sequence".to_owned()),
+            kind: WorkKind::Implementation,
+            status: WorkStatus::Completed,
+            source: "human:git-link".to_owned(),
+            evidence: Some(format!("commit:{}", commit.hash)),
+            title: "Address checkout sequence".to_owned(),
+            detail: "Linked from git shortcut sidecar.".to_owned(),
+        };
+        fs::write(
+            &artifact_path,
+            write_susu(&artifact, false).expect("write artifact text"),
+        )
+        .expect("write artifact");
+        fs::write(
+            &work_path,
+            write_works(&[work], false).expect("write work text"),
+        )
+        .expect("write work");
+        let args = GitShortcutArgs {
+            repo: temp.path().to_path_buf(),
+            artifact: artifact_path,
+            output: work_path,
+            since: None,
+            until: None,
+            limit: 25,
+            max_items: 20,
+            no_export: false,
+            source: "import:git-connect".to_owned(),
+            minify: false,
+            json: false,
+        };
+
+        let loaded = git_shortcut_artifact(&args).expect("load shortcut artifact");
+        let report = build_git_connect_report(&loaded, &[commit]);
+
+        assert_eq!(report.connected, 1);
         assert_eq!(report.records[0].status, "connected");
         assert_eq!(report.records[0].works[0].id, "wk_git_f240cd96a07f2ea7");
     }

@@ -151,7 +151,7 @@ The scanner can determine support, not satisfaction. If a commit links to an exp
 - Preserves ambiguous and external calls as visible gaps.
 - Reports deterministic findings for large files, long workflow units, high fan-out, ambiguous targets, parse recovery, and call cycles.
 - Carries authored expectations, verification records, decision records, and work records.
-- Summarizes expectation support in review packets.
+- Summarizes expectation support and machine-readable readiness queues in review packets.
 - Shows an expectation evidence ladder in the portal: observed target, linked work, verification evidence, decision context, review status, and the next suggested action.
 - Groups expectations by readiness in the portal and surfaces dirty or stale evidence with nearby syntax-highlighted source when Susumu can locate it.
 - Connects local Git commits to workflows, expectations, and exported work records, including separate work records when one commit supports multiple expectations.

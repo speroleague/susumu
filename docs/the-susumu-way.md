@@ -96,7 +96,7 @@ susumu review
 susumu open
 ```
 
-Use the portal to inspect the expectation readiness board, top workflows, expectation support, review items, dirty or stale evidence, and source previews. In expectation traceability, the evidence ladder shows the observed target, linked work, verification evidence, decision context, review status, and the next suggested action.
+Use the portal to inspect the expectation readiness board, top workflows, expectation support, review items, dirty or stale evidence, and source previews. The same readiness queue is also embedded in the review packet for agents and CI. In expectation traceability, the evidence ladder shows the observed target, linked work, verification evidence, decision context, review status, and the next suggested action.
 
 ## Agent-assisted development flow
 

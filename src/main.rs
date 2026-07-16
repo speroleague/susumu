@@ -2472,15 +2472,16 @@ function expectationSupport(id){return (packet.expectation_support||[]).find(s=>
 function supportMeta(s){return s?`${esc(s.support_status)} &middot; target=${s.target_observed?'observed':'missing'} &middot; verifications=${s.verification.passed}/${s.verification.failed}/${s.verification.inconclusive} &middot; work=${s.work} &middot; decisions=${s.decisions}`:'support=unknown'}
 function supportReasons(s){return s?miniList(s.reasons||[],r=>item(r,'','support reason'),'No support reasons recorded.'): '<div class="empty">No support summary embedded.</div>'}
 function verificationTotal(s){return s?s.verification.passed+s.verification.failed+s.verification.inconclusive:0}
-function expectationNextAction(e,s){if(!s)return 'Rebuild the review packet so Susumu can summarize this expectation.';if(s.verification.failed>0)return 'Review the failed verification before relying on this expectation.';if(!s.target_observed)return 'Find or reconnect the target this expectation is about.';if(s.work===0)return `Connect work with susumu git or susumu git link <commit> ${e.id}.`;if(verificationTotal(s)===0)return `Record verification with susumu verify ${e.id} --passed --method "<check>".`;if(s.verification.inconclusive>0&&s.verification.passed===0)return 'Resolve the inconclusive verification evidence.';if(s.verification.passed>0)return 'Verified: ready for review or business confidence.';return 'Review the support evidence and decide whether more verification is needed.'}
+function expectationNextAction(e,s){if(!s)return 'Rebuild the review packet so Susumu can summarize this expectation.';if(s.verification.failed>0)return 'Review the failed verification before relying on this expectation.';if(!s.target_observed)return 'Find or reconnect the target this expectation is about.';if(s.verification.passed>0)return 'Verified: ready for review or business confidence.';if(s.work===0)return `Connect work with susumu git or susumu git link <commit> ${e.id}.`;if(verificationTotal(s)===0)return `Record verification with susumu verify ${e.id} --passed --method "<check>".`;if(s.verification.inconclusive>0&&s.verification.passed===0)return 'Resolve the inconclusive verification evidence.';return 'Review the support evidence and decide whether more verification is needed.'}
 function ladderStep(label,value,tone,detail=''){return `<div class="ladder-step ${tone}"><span class="ladder-label">${esc(label)}</span><strong>${esc(value)}</strong>${detail?`<small>${esc(detail)}</small>`:''}</div>`}
 function expectationLadder(e,s){if(!s)return '<div class="empty">No evidence ladder embedded for this expectation.</div>';const total=verificationTotal(s);const verificationDetail=`passed=${s.verification.passed}, failed=${s.verification.failed}, inconclusive=${s.verification.inconclusive}`;return `<div class="ladder" data-evidence-ladder="${esc(e.id)}">${ladderStep('Target observation',s.target_observed?'Target observed':'Target missing',s.target_observed?'good':'bad',`${s.target}${s.subject?':'+s.subject:''}`)}${ladderStep('Work support',s.work>0?`${s.work} linked work record(s)`:'No linked work yet',s.work>0?'good':'warn','Work says what changed for this expectation.')}${ladderStep('Verification evidence',total>0?`${total} verification record(s)`:'No verification yet',s.verification.failed>0?'bad':s.verification.passed>0?'good':'warn',verificationDetail)}${ladderStep('Decision context',s.decisions>0?`${s.decisions} decision record(s)`:'No decision context yet',s.decisions>0?'good':'warn','Decisions record judgment, exceptions, and business context.')}${ladderStep('Review status',s.support_status,s.verification.failed>0||!s.target_observed?'bad':s.verification.passed>0?'good':'warn',(s.reasons||[]).join('; '))}</div><article class="item next-action"><h3>Suggested next action</h3><div class="detail">${esc(expectationNextAction(e,s))}</div></article>`}
 function expectationCard(e){const s=expectationSupport(e.id);return `<article class="item clickable ${e.id===selectedExpectationId?'selected':''}" data-expectation-id="${esc(e.id)}"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; ${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''} &middot; ${supportMeta(s)}</div><div class="detail">${esc(e.detail)}</div></article>`}
 function expectationDetail(id){const e=expectationById(id);if(!e)return `<div class="empty">Select an expectation to inspect its traceability.</div>`;const workflow=expectationWorkflow(e);const preview=workflow?workflowPreview(workflow.id):targetPreview(e.target,e.subject);const s=expectationSupport(id);return `<div class="item"><h3>${esc(e.title)}</h3><div class="meta">${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)} &middot; target=${esc(e.target)}${e.subject?`:${esc(e.subject)}`:''}</div><div class="detail">${esc(e.detail)}</div></div><h3>Evidence ladder</h3>${expectationLadder(e,s)}<h3>Support summary</h3><div class="item"><h3>${esc(s?.support_status||'unknown')}</h3><div class="meta">${supportMeta(s)}</div></div>${supportReasons(s)}<h3>Workflow context</h3>${workflow?miniList([workflow],w=>item(w.trigger,`${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}`,w.id),'No workflow context.'): '<div class="empty">This expectation is not attached to a workflow.</div>'}<h3>Verifications</h3>${miniList(expectationVerifications(id),verificationItem,'No verification records.')}<h3>Work records</h3>${miniList(expectationWork(id),workItem,'No work records.')}<h3>Decisions on same target</h3>${miniList(expectationDecisions(e),decisionItem,'No decisions on this target.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this expectation.</div>'}`}
 function readinessBucket(s){if(!s)return 'Unknown';if(s.verification.failed>0)return 'Failed verification';if(!s.target_observed)return 'Missing target';if(s.verification.passed>0)return 'Verified';if(s.work>0)return 'Has work, needs verification';return 'No linked work yet'}
 function readinessTone(bucket){return bucket==='Verified'?'good':bucket==='Failed verification'||bucket==='Missing target'?'bad':'warn'}
-function readinessRow(e){const s=expectationSupport(e.id);const bucket=readinessBucket(s);return item(e.title,expectationNextAction(e,s),`${esc(e.id)} &middot; ${esc(bucket)} &middot; ${supportMeta(s)}`,`<span class="tag ${readinessTone(bucket)==='good'?'passed':readinessTone(bucket)==='bad'?'critical':'warning'}">${esc(bucket)}</span>`)}
-function readinessSection(){const order=['Failed verification','Missing target','Has work, needs verification','No linked work yet','Verified','Unknown'];const rows=expectations().map(e=>({e,bucket:readinessBucket(expectationSupport(e.id))}));const metrics=order.map(bucket=>`<div class="metric"><b>${rows.filter(r=>r.bucket===bucket).length}</b><span>${esc(bucket)}</span></div>`).join('');return `<div class="grid">${metrics}</div><div class="list" style="margin-top:16px">${order.map(bucket=>{const items=rows.filter(r=>r.bucket===bucket).map(r=>readinessRow(r.e)).join('');return items?`<div><h3>${esc(bucket)}</h3><div class="mini">${items}</div></div>`:''}).join('')||'<div class="empty">No expectations authored yet.</div>'}</div>`}
+function readinessItems(){const stored=packet.expectation_readiness||[];if(stored.length)return stored.map(r=>({id:r.expectation_id,title:r.title,label:r.label,next_action:r.next_action}));return expectations().map(e=>{const s=expectationSupport(e.id);return {id:e.id,title:e.title,label:readinessBucket(s),next_action:expectationNextAction(e,s)}})}
+function readinessRow(r){const s=expectationSupport(r.id);return item(r.title,r.next_action,`${esc(r.id)} &middot; ${esc(r.label)} &middot; ${supportMeta(s)}`,`<span class="tag ${readinessTone(r.label)==='good'?'passed':readinessTone(r.label)==='bad'?'critical':'warning'}">${esc(r.label)}</span>`)}
+function readinessSection(){const order=['Failed verification','Missing target','Has work, needs verification','No linked work yet','Verified','Unknown'];const rows=readinessItems();const metrics=order.map(label=>`<div class="metric"><b>${rows.filter(r=>r.label===label).length}</b><span>${esc(label)}</span></div>`).join('');return `<div class="grid">${metrics}</div><div class="list" style="margin-top:16px">${order.map(label=>{const items=rows.filter(r=>r.label===label).map(readinessRow).join('');return items?`<div><h3>${esc(label)}</h3><div class="mini">${items}</div></div>`:''}).join('')||'<div class="empty">No expectations authored yet.</div>'}</div>`}
 function traceabilitySection(){const first=expectations()[0]?.id;selectedExpectationId=selectedExpectationId||first;return `<div class="workflow-layout"><div>${list(expectations(),expectationCard,'No expectations authored yet.')}</div><aside class="detail-pane" id="expectationDetail">${expectationDetail(selectedExpectationId)}</aside></div>`}
 function dirtyFinding(f){return ['SUS023','SUS033'].includes(f.rule_id)}
 function staleFinding(f){return ['SUS011','SUS021','SUS031','SUS041','SUS043'].includes(f.rule_id)}
@@ -2607,6 +2608,7 @@ fn print_review_packet(packet: &ReviewPacketStored, max_items: usize) {
     println!();
     print_handoff_workflows(&packet.top_workflows, max_items);
     print_stored_review_items(&packet.review_items, max_items);
+    print_expectation_readiness(&packet.expectation_readiness, max_items);
     print_expectation_support(&packet.expectation_support, max_items);
     print_handoff_records(
         "Expectations without verification",
@@ -2620,6 +2622,25 @@ fn print_review_packet(packet: &ReviewPacketStored, max_items: usize) {
     );
     print_string_section("Caveats", &packet.caveats, max_items);
     print_string_section("Suggested next actions", &packet.next_actions, max_items);
+}
+
+fn print_expectation_readiness(items: &[ExpectationReadiness], max_items: usize) {
+    println!();
+    println!("Expectation readiness");
+    if items.is_empty() {
+        println!("  none");
+        return;
+    }
+    for item in items.iter().take(max_items) {
+        println!(
+            "  - {} [{}] {}",
+            item.title, item.label, item.expectation_id
+        );
+        println!("    next: {}", item.next_action);
+    }
+    if items.len() > max_items {
+        println!("  ... {} more", items.len() - max_items);
+    }
 }
 
 fn print_expectation_support(items: &[ExpectationSupport], max_items: usize) {
@@ -3330,6 +3351,18 @@ struct ExpectationVerificationSupport {
     inconclusive: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ExpectationReadiness {
+    expectation_id: String,
+    title: String,
+    target: String,
+    subject: Option<String>,
+    bucket: String,
+    label: String,
+    support_status: String,
+    next_action: String,
+}
+
 #[derive(Debug, Serialize)]
 struct HandoffJson<'a> {
     project: CheckProjectJson<'a>,
@@ -3359,6 +3392,7 @@ struct ReviewPacketJson<'a> {
     review_items: Vec<CheckItemJson<'a>>,
     source_previews: Vec<ReviewSourcePreview>,
     expectation_support: Vec<ExpectationSupport>,
+    expectation_readiness: Vec<ExpectationReadiness>,
     expectations_without_verification: &'a [HandoffRecord],
     work_needing_verification: &'a [HandoffRecord],
     caveats: &'a [String],
@@ -3387,6 +3421,8 @@ struct ReviewPacketStored {
     source_previews: Vec<ReviewSourcePreview>,
     #[serde(default)]
     expectation_support: Vec<ExpectationSupport>,
+    #[serde(default)]
+    expectation_readiness: Vec<ExpectationReadiness>,
     expectations_without_verification: Vec<HandoffRecord>,
     work_needing_verification: Vec<HandoffRecord>,
     caveats: Vec<String>,
@@ -4097,6 +4133,8 @@ fn review_packet<'a>(
     check: &'a CheckReport,
     handoff: &'a HandoffReport,
 ) -> ReviewPacketJson<'a> {
+    let expectation_support = expectation_support(analysis);
+    let expectation_readiness = expectation_readiness(analysis, &expectation_support);
     ReviewPacketJson {
         schema_version: "susumu.review.v1",
         created_unix_seconds,
@@ -4132,7 +4170,8 @@ fn review_packet<'a>(
         top_workflows: &handoff.top_workflows,
         review_items: check_item_jsons(&check.items),
         source_previews: review_source_previews(analysis),
-        expectation_support: expectation_support(analysis),
+        expectation_support,
+        expectation_readiness,
         expectations_without_verification: &handoff.expectations_without_verification,
         work_needing_verification: &handoff.work_needing_verification,
         caveats: &handoff.caveats,
@@ -4255,6 +4294,98 @@ fn expectation_support(analysis: &ProjectAnalysis) -> Vec<ExpectationSupport> {
         .collect::<Vec<_>>();
     support.sort_by(|left, right| left.expectation_id.cmp(&right.expectation_id));
     support
+}
+
+fn expectation_readiness(
+    analysis: &ProjectAnalysis,
+    support: &[ExpectationSupport],
+) -> Vec<ExpectationReadiness> {
+    let mut readiness = support
+        .iter()
+        .map(|support| {
+            let (bucket, label) = expectation_readiness_bucket(support);
+            ExpectationReadiness {
+                expectation_id: support.expectation_id.clone(),
+                title: support.title.clone(),
+                target: support.target.clone(),
+                subject: support.subject.clone(),
+                bucket: bucket.to_owned(),
+                label: label.to_owned(),
+                support_status: support.support_status.clone(),
+                next_action: expectation_readiness_next_action(analysis, support),
+            }
+        })
+        .collect::<Vec<_>>();
+    readiness.sort_by(|left, right| {
+        readiness_bucket_rank(&left.bucket)
+            .cmp(&readiness_bucket_rank(&right.bucket))
+            .then_with(|| left.expectation_id.cmp(&right.expectation_id))
+    });
+    readiness
+}
+
+fn expectation_readiness_bucket(support: &ExpectationSupport) -> (&'static str, &'static str) {
+    if support.verification.failed > 0 {
+        ("failed_verification", "Failed verification")
+    } else if !support.target_observed {
+        ("missing_target", "Missing target")
+    } else if support.verification.passed > 0 {
+        ("verified", "Verified")
+    } else if support.work > 0 {
+        ("needs_verification", "Has work, needs verification")
+    } else {
+        ("needs_work", "No linked work yet")
+    }
+}
+
+const fn readiness_bucket_rank(bucket: &str) -> u8 {
+    match bucket.as_bytes() {
+        b"failed_verification" => 0,
+        b"missing_target" => 1,
+        b"needs_verification" => 2,
+        b"needs_work" => 3,
+        b"verified" => 4,
+        _ => 5,
+    }
+}
+
+fn expectation_readiness_next_action(
+    analysis: &ProjectAnalysis,
+    support: &ExpectationSupport,
+) -> String {
+    if support.verification.failed > 0 {
+        return "Review the failed verification before relying on this expectation.".to_owned();
+    }
+    if !support.target_observed {
+        return "Find or reconnect the target this expectation is about.".to_owned();
+    }
+    if support.verification.passed > 0 {
+        return "Verified: ready for review or business confidence.".to_owned();
+    }
+    if support.work == 0 {
+        return format!(
+            "Connect work with susumu git or susumu git link <commit> {}.",
+            support.expectation_id
+        );
+    }
+    let verification_count = support.verification.passed
+        + support.verification.failed
+        + support.verification.inconclusive;
+    if verification_count == 0 {
+        return format!(
+            "Record verification with susumu verify {} --passed --method \"<check>\".",
+            support.expectation_id
+        );
+    }
+    if support.verification.inconclusive > 0 && support.verification.passed == 0 {
+        return "Resolve the inconclusive verification evidence.".to_owned();
+    }
+    let title = analysis
+        .expectations
+        .iter()
+        .find(|expectation| expectation.id == support.expectation_id)
+        .map_or("this expectation", |expectation| expectation.title.as_str());
+    format!("Review `{title}` and decide whether more verification is needed.")
 }
 
 fn expectation_target_observed(analysis: &ProjectAnalysis, expectation: &Expectation) -> bool {
@@ -7218,6 +7349,24 @@ mod tests {
         );
         assert_eq!(json["expectation_support"][0]["target_observed"], true);
         assert_eq!(json["expectation_support"][0]["work"], 1);
+        assert_eq!(
+            json["expectation_readiness"][0]["expectation_id"],
+            "e_checkout_sequence"
+        );
+        assert_eq!(
+            json["expectation_readiness"][0]["bucket"],
+            "needs_verification"
+        );
+        assert_eq!(
+            json["expectation_readiness"][0]["label"],
+            "Has work, needs verification"
+        );
+        assert!(
+            json["expectation_readiness"][0]["next_action"]
+                .as_str()
+                .expect("next action")
+                .contains("susumu verify e_checkout_sequence")
+        );
         assert_eq!(json["work_needing_verification"][0]["id"], "wk_checkout");
     }
 
@@ -7248,6 +7397,7 @@ mod tests {
         assert!(html.contains("Support summary"));
         assert!(html.contains("Evidence ladder"));
         assert!(html.contains("Expectation readiness board"));
+        assert!(html.contains("expectation_readiness"));
         assert!(html.contains("Dirty and stale evidence"));
         assert!(html.contains("data-evidence-ladder"));
         assert!(html.contains("Record verification with susumu verify"));

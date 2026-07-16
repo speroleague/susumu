@@ -5,7 +5,6 @@ use std::{
     net::{TcpListener, TcpStream},
     path::{Component, Path, PathBuf},
     process::{self, Command as ProcessCommand},
-    sync::OnceLock,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -16,23 +15,18 @@ use sha2::{Digest, Sha256};
 use susumu::{
     analysis::{anchor_decision_bases, anchor_verification_bases, refresh_derived_analysis},
     model::{
-        Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget, Language,
-        Location, ProjectAnalysis, Verification, VerificationStatus, Work, WorkKind, WorkStatus,
+        Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget,
+        ProjectAnalysis, Verification, VerificationStatus, Work, WorkKind, WorkStatus,
     },
     parse_decisions, parse_expectations, parse_susu, parse_verifications, parse_works,
     scan_project, tui, write_decisions, write_expectations, write_susu, write_verifications,
     write_works,
 };
-use syntect::{
-    easy::HighlightLines,
-    highlighting::{Theme, ThemeSet},
-    parsing::{SyntaxReference, SyntaxSet},
-};
-
 mod checks;
 mod cli_values;
 mod expectation_readiness;
 mod handoff;
+mod review_packet;
 mod review_types;
 
 use checks::{check_item_jsons, check_json, check_report, print_check_json, print_check_report};
@@ -40,17 +34,16 @@ use cli_values::{
     DecisionStatusArg, ExpectationStatusArg, ExpectationTargetArg, GitTargetDepth,
     GitTargetDepthArg, VerificationStatusArg, WorkKindArg, WorkStatusArg,
 };
-use expectation_readiness::{expectation_readiness, expectation_support};
+use expectation_readiness::expectation_support;
 use handoff::{
     handoff_report, print_handoff_json, print_handoff_records, print_handoff_report,
     print_handoff_workflows, print_string_section,
 };
+use review_packet::review_packet;
 use review_types::{
-    CheckEvidenceJson, CheckItem, CheckItemJson, CheckProjectJson, CheckRecordsJson, CheckReport,
-    CheckResultJson, CheckReviewJson, CheckSeverity, ExpectationReadiness, ExpectationSupport,
-    ExpectationVerificationSupport, HandoffReport, READINESS_BUCKETS, ReviewItemStored,
-    ReviewPacketJson, ReviewPacketStored, ReviewSourceJson, ReviewSourceLine, ReviewSourcePreview,
-    ReviewSourceToken, check_result_reason,
+    CheckItem, CheckItemJson, CheckSeverity, ExpectationReadiness, ExpectationSupport,
+    ExpectationVerificationSupport, READINESS_BUCKETS, ReviewItemStored, ReviewPacketStored,
+    check_result_reason,
 };
 
 #[derive(Debug, Parser)]
@@ -3351,209 +3344,6 @@ struct ReviewDiffReport {
     top_workflows: ChangeSummary,
 }
 
-fn review_packet<'a>(
-    input: String,
-    created_unix_seconds: u64,
-    analysis: &'a ProjectAnalysis,
-    check: &'a CheckReport,
-    handoff: &'a HandoffReport,
-) -> ReviewPacketJson<'a> {
-    let expectation_support = expectation_support(analysis);
-    let expectation_readiness = expectation_readiness(analysis, &expectation_support);
-    ReviewPacketJson {
-        schema_version: "susumu.review.v1",
-        created_unix_seconds,
-        source: ReviewSourceJson { input },
-        project: CheckProjectJson {
-            name: &analysis.project_name,
-            root: &analysis.root,
-            generated_unix_seconds: analysis.generated_unix_seconds,
-        },
-        evidence: CheckEvidenceJson {
-            files: analysis.files.len(),
-            workflows: analysis.workflows.len(),
-            flows: analysis.flows.len(),
-            findings: analysis.findings.len(),
-        },
-        records: CheckRecordsJson {
-            expectations: analysis.expectations.len(),
-            verifications: analysis.verifications.len(),
-            decisions: analysis.decisions.len(),
-            work: analysis.works.len(),
-        },
-        review: CheckReviewJson {
-            critical: check.critical,
-            warning: check.warning,
-            attention: check.attention,
-        },
-        result: CheckResultJson {
-            status: if check.failed { "failed" } else { "passed" },
-            failed: check.failed,
-            strict: check.strict,
-            reason: check_result_reason(check),
-        },
-        top_workflows: &handoff.top_workflows,
-        review_items: check_item_jsons(&check.items),
-        source_previews: review_source_previews(analysis),
-        expectation_support,
-        expectation_readiness,
-        expectations_without_verification: &handoff.expectations_without_verification,
-        work_needing_verification: &handoff.work_needing_verification,
-        caveats: &handoff.caveats,
-        next_actions: &handoff.next_actions,
-        artifact: analysis,
-    }
-}
-
-fn review_source_previews(analysis: &ProjectAnalysis) -> Vec<ReviewSourcePreview> {
-    let mut previews = Vec::new();
-    let mut seen = BTreeSet::new();
-    for workflow in &analysis.workflows {
-        push_review_source_preview(
-            analysis,
-            &mut previews,
-            &mut seen,
-            &workflow.file_id,
-            &workflow.location,
-        );
-    }
-    for finding in &analysis.findings {
-        let (Some(file_id), Some(location)) =
-            (finding.file_id.as_deref(), finding.location.as_ref())
-        else {
-            continue;
-        };
-        push_review_source_preview(analysis, &mut previews, &mut seen, file_id, location);
-    }
-    previews.sort_by(|left, right| {
-        left.path
-            .cmp(&right.path)
-            .then_with(|| left.highlight_start.cmp(&right.highlight_start))
-            .then_with(|| left.highlight_end.cmp(&right.highlight_end))
-    });
-    previews
-}
-
-fn push_review_source_preview(
-    analysis: &ProjectAnalysis,
-    previews: &mut Vec<ReviewSourcePreview>,
-    seen: &mut BTreeSet<String>,
-    file_id: &str,
-    location: &Location,
-) {
-    let key = format!("{}:{}:{}", file_id, location.start_line, location.end_line);
-    if !seen.insert(key) {
-        return;
-    }
-    let Some(file) = analysis.files.iter().find(|file| file.id == file_id) else {
-        return;
-    };
-    let path = Path::new(&analysis.root).join(&file.path);
-    let Ok(source) = fs::read_to_string(&path) else {
-        return;
-    };
-    let source_lines = source.lines().collect::<Vec<_>>();
-    let line_count = source_lines.len().max(1);
-    let start = location.start_line.saturating_sub(6).max(1);
-    let end = (location.end_line + 10).min(line_count);
-    let mut highlighter = HighlightLines::new(
-        syntax_for_review_language(review_syntax_set(), file.language),
-        review_syntax_theme(),
-    );
-    let lines = (start..=end)
-        .map(|number| {
-            let text = source_lines.get(number - 1).copied().unwrap_or_default();
-            let tokens = highlighted_review_line_tokens(&mut highlighter, text);
-            ReviewSourceLine {
-                number,
-                text: text.to_owned(),
-                html: review_tokens_to_html(&tokens),
-                tokens,
-            }
-        })
-        .collect::<Vec<_>>();
-    previews.push(ReviewSourcePreview {
-        file_id: file.id.clone(),
-        path: file.path.clone(),
-        language: file.language.to_string(),
-        start_line: start,
-        end_line: end,
-        highlight_start: location.start_line,
-        highlight_end: location.end_line,
-        lines,
-    });
-}
-
-fn highlighted_review_line_tokens(
-    highlighter: &mut HighlightLines<'_>,
-    text: &str,
-) -> Vec<ReviewSourceToken> {
-    let syntax_set = review_syntax_set();
-    let Ok(ranges) = highlighter.highlight_line(text, syntax_set) else {
-        return vec![ReviewSourceToken {
-            text: text.to_owned(),
-            color: "#d8dee9".to_owned(),
-        }];
-    };
-    ranges
-        .into_iter()
-        .map(|(style, segment)| {
-            let foreground = style.foreground;
-            ReviewSourceToken {
-                text: segment.to_owned(),
-                color: format!(
-                    "#{:02x}{:02x}{:02x}",
-                    foreground.r, foreground.g, foreground.b
-                ),
-            }
-        })
-        .collect()
-}
-
-fn review_tokens_to_html(tokens: &[ReviewSourceToken]) -> String {
-    let mut output = String::new();
-    for token in tokens {
-        output.push_str("<span style=\"color:");
-        output.push_str(&html_escape(&token.color));
-        output.push_str("\">");
-        output.push_str(&html_escape(&token.text));
-        output.push_str("</span>");
-    }
-    output
-}
-
-fn review_syntax_set() -> &'static SyntaxSet {
-    static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
-    SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_newlines)
-}
-
-fn review_syntax_theme() -> &'static Theme {
-    static THEME: OnceLock<Theme> = OnceLock::new();
-    THEME.get_or_init(|| {
-        let themes = ThemeSet::load_defaults();
-        themes
-            .themes
-            .get("base16-ocean.dark")
-            .or_else(|| themes.themes.values().next())
-            .cloned()
-            .unwrap_or_default()
-    })
-}
-
-fn syntax_for_review_language(syntax_set: &SyntaxSet, language: Language) -> &SyntaxReference {
-    let extension = match language {
-        Language::Rust => "rs",
-        Language::Php => "php",
-        Language::Python => "py",
-        Language::JavaScript => "js",
-        Language::TypeScript => "ts",
-        Language::Tsx => "tsx",
-    };
-    syntax_set
-        .find_syntax_by_extension(extension)
-        .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
-}
-
 fn current_unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -6481,7 +6271,7 @@ mod tests {
         });
 
         let support = expectation_support(&artifact);
-        let readiness = expectation_readiness(&artifact, &support);
+        let readiness = crate::expectation_readiness::expectation_readiness(&artifact, &support);
         let checkout_support = support
             .iter()
             .find(|item| item.expectation_id == "e_checkout_sequence")
@@ -6515,7 +6305,8 @@ mod tests {
         });
 
         let verified_support = expectation_support(&artifact);
-        let verified_readiness = expectation_readiness(&artifact, &verified_support);
+        let verified_readiness =
+            crate::expectation_readiness::expectation_readiness(&artifact, &verified_support);
         let checkout_support = verified_support
             .iter()
             .find(|item| item.expectation_id == "e_checkout_sequence")
@@ -7070,7 +6861,7 @@ mod tests {
             }),
         });
 
-        let previews = review_source_previews(&artifact);
+        let previews = crate::review_packet::review_source_previews(&artifact);
 
         assert!(previews.len() >= 2);
         assert!(previews.iter().any(|preview| preview.path == "src/api.ts"

@@ -53,6 +53,15 @@ pub(crate) struct SuggestedExpectation {
     pub(crate) score: usize,
 }
 
+#[derive(Debug)]
+struct GitConnectionMatches {
+    workflows: Vec<GitConnectedRecord>,
+    expectations: Vec<GitConnectedRecord>,
+    verifications: Vec<GitConnectedRecord>,
+    decisions: Vec<GitConnectedRecord>,
+    works: Vec<GitConnectedRecord>,
+}
+
 pub(crate) fn build_git_connect_report(
     artifact: &ProjectAnalysis,
     commits: &[GitCommit],
@@ -82,68 +91,11 @@ pub(crate) fn build_git_connect_report(
 }
 
 fn git_connection(artifact: &ProjectAnalysis, commit: &GitCommit) -> GitConnection {
-    let text = format!("{}\n{}", commit.subject, commit.body);
-    let matched_file_ids = matched_artifact_file_ids(artifact, &commit.changed_files);
-    let workflows = connected_workflows(artifact, &text, &matched_file_ids);
-    let workflow_ids = workflows
-        .iter()
-        .map(|record| record.id.clone())
-        .collect::<BTreeSet<_>>();
-    let expectations = connected_expectations(artifact, &text, &matched_file_ids, &workflow_ids);
-    let expectation_ids = expectations
-        .iter()
-        .map(|record| record.id.clone())
-        .collect::<BTreeSet<_>>();
-    let verifications = connected_verifications(artifact, &text, &expectation_ids);
-    let decisions = connected_decisions(artifact, &text, &matched_file_ids, &workflow_ids);
-    let works = connected_works(artifact, &text, &commit.hash);
-    let mut reasons = Vec::new();
-    if !workflows.is_empty() {
-        reasons.push(format!("{} workflow link(s)", workflows.len()));
-    }
-    if !expectations.is_empty() {
-        reasons.push(format!("{} expectation link(s)", expectations.len()));
-    }
-    if !verifications.is_empty() {
-        reasons.push(format!("{} verification link(s)", verifications.len()));
-    }
-    if !decisions.is_empty() {
-        reasons.push(format!("{} decision link(s)", decisions.len()));
-    }
-    if !works.is_empty() {
-        reasons.push(format!("{} work record link(s)", works.len()));
-    }
-
+    let matches = git_connection_matches(artifact, commit);
     let missing_expectation_work =
-        missing_expectation_work_records(artifact, &commit.hash, &expectations);
-    let has_record = if expectations.is_empty() {
-        !works.is_empty()
-    } else {
-        missing_expectation_work.is_empty()
-    };
-    let has_context = !workflows.is_empty()
-        || !expectations.is_empty()
-        || !verifications.is_empty()
-        || !decisions.is_empty();
-    let status = if has_record {
-        "connected"
-    } else if has_context {
-        "needs_record"
-    } else {
-        "unconnected"
-    }
-    .to_owned();
-
-    if reasons.is_empty() {
-        reasons.push("no Susumu records or workflow files matched".to_owned());
-    } else if !missing_expectation_work.is_empty() {
-        reasons.push(format!(
-            "{} expectation work record(s) missing",
-            missing_expectation_work.len()
-        ));
-    } else if !has_record {
-        reasons.push("no work record references this commit".to_owned());
-    }
+        missing_expectation_work_records(artifact, &commit.hash, &matches.expectations);
+    let status = git_connection_status(&matches, &missing_expectation_work);
+    let reasons = git_connection_reasons(&matches, &missing_expectation_work, &status);
     let suggestions = if status == "unconnected" {
         git_link_suggestions(artifact, commit)
     } else {
@@ -159,13 +111,103 @@ fn git_connection(artifact: &ProjectAnalysis, commit: &GitCommit) -> GitConnecti
         status,
         reasons,
         changed_files: commit.changed_files.clone(),
+        workflows: matches.workflows,
+        expectations: matches.expectations,
+        verifications: matches.verifications,
+        decisions: matches.decisions,
+        works: matches.works,
+        suggestions,
+    }
+}
+
+fn git_connection_matches(artifact: &ProjectAnalysis, commit: &GitCommit) -> GitConnectionMatches {
+    let text = format!("{}\n{}", commit.subject, commit.body);
+    let matched_file_ids = matched_artifact_file_ids(artifact, &commit.changed_files);
+    let workflows = connected_workflows(artifact, &text, &matched_file_ids);
+    let workflow_ids = record_ids(&workflows);
+    let expectations = connected_expectations(artifact, &text, &matched_file_ids, &workflow_ids);
+    let expectation_ids = record_ids(&expectations);
+    let verifications = connected_verifications(artifact, &text, &expectation_ids);
+    let decisions = connected_decisions(artifact, &text, &matched_file_ids, &workflow_ids);
+    let works = connected_works(artifact, &text, &commit.hash);
+
+    GitConnectionMatches {
         workflows,
         expectations,
         verifications,
         decisions,
         works,
-        suggestions,
     }
+}
+
+fn git_connection_status(
+    matches: &GitConnectionMatches,
+    missing_expectation_work: &[GitConnectedRecord],
+) -> String {
+    let has_record = if matches.expectations.is_empty() {
+        !matches.works.is_empty()
+    } else {
+        missing_expectation_work.is_empty()
+    };
+    let has_context = !matches.workflows.is_empty()
+        || !matches.expectations.is_empty()
+        || !matches.verifications.is_empty()
+        || !matches.decisions.is_empty();
+    if has_record {
+        "connected"
+    } else if has_context {
+        "needs_record"
+    } else {
+        "unconnected"
+    }
+    .to_owned()
+}
+
+fn git_connection_reasons(
+    matches: &GitConnectionMatches,
+    missing_expectation_work: &[GitConnectedRecord],
+    status: &str,
+) -> Vec<String> {
+    let mut reasons = git_connection_match_reasons(matches);
+    if reasons.is_empty() {
+        reasons.push("no Susumu records or workflow files matched".to_owned());
+    } else if !missing_expectation_work.is_empty() {
+        reasons.push(format!(
+            "{} expectation work record(s) missing",
+            missing_expectation_work.len()
+        ));
+    } else if status != "connected" {
+        reasons.push("no work record references this commit".to_owned());
+    }
+    reasons
+}
+
+fn git_connection_match_reasons(matches: &GitConnectionMatches) -> Vec<String> {
+    let mut reasons = Vec::new();
+    push_count_reason(&mut reasons, matches.workflows.len(), "workflow link(s)");
+    push_count_reason(
+        &mut reasons,
+        matches.expectations.len(),
+        "expectation link(s)",
+    );
+    push_count_reason(
+        &mut reasons,
+        matches.verifications.len(),
+        "verification link(s)",
+    );
+    push_count_reason(&mut reasons, matches.decisions.len(), "decision link(s)");
+    push_count_reason(&mut reasons, matches.works.len(), "work record link(s)");
+    reasons
+}
+
+fn push_count_reason(reasons: &mut Vec<String>, count: usize, label: &str) {
+    if count > 0 {
+        reasons.push(format!("{count} {label}"));
+    }
+}
+
+fn record_ids(records: &[GitConnectedRecord]) -> BTreeSet<String> {
+    records.iter().map(|record| record.id.clone()).collect()
 }
 
 fn git_link_suggestions(artifact: &ProjectAnalysis, commit: &GitCommit) -> Vec<GitSuggestion> {

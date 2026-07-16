@@ -4635,6 +4635,7 @@ struct GitConnection {
     verifications: Vec<GitConnectedRecord>,
     decisions: Vec<GitConnectedRecord>,
     works: Vec<GitConnectedRecord>,
+    suggestions: Vec<GitSuggestion>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -4642,6 +4643,14 @@ struct GitConnectedRecord {
     id: String,
     title: String,
     reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct GitSuggestion {
+    expectation_id: String,
+    title: String,
+    score: usize,
+    command: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -4870,6 +4879,11 @@ fn git_connection(artifact: &ProjectAnalysis, commit: &GitCommit) -> GitConnecti
     } else if !has_record {
         reasons.push("no work record references this commit".to_owned());
     }
+    let suggestions = if status == "unconnected" {
+        git_link_suggestions(artifact, commit)
+    } else {
+        Vec::new()
+    };
 
     GitConnection {
         commit: commit.hash.clone(),
@@ -4885,7 +4899,65 @@ fn git_connection(artifact: &ProjectAnalysis, commit: &GitCommit) -> GitConnecti
         verifications,
         decisions,
         works,
+        suggestions,
     }
+}
+
+fn git_link_suggestions(artifact: &ProjectAnalysis, commit: &GitCommit) -> Vec<GitSuggestion> {
+    suggested_expectations(artifact, &format!("{}\n{}", commit.subject, commit.body))
+        .into_iter()
+        .map(|candidate| GitSuggestion {
+            command: format!(
+                "susumu git link {} {}",
+                short_hash(&commit.hash),
+                candidate.id
+            ),
+            expectation_id: candidate.id,
+            title: candidate.title,
+            score: candidate.score,
+        })
+        .collect()
+}
+
+#[derive(Debug)]
+struct SuggestedExpectation {
+    id: String,
+    title: String,
+    score: usize,
+}
+
+fn suggested_expectations(
+    artifact: &ProjectAnalysis,
+    searchable: &str,
+) -> Vec<SuggestedExpectation> {
+    let searchable_tokens = expectation_language_tokens(searchable);
+    if searchable_tokens.is_empty() {
+        return Vec::new();
+    }
+    let mut matches = artifact
+        .expectations
+        .iter()
+        .filter_map(|expectation| {
+            let mut expectation_text = expectation.title.clone();
+            expectation_text.push(' ');
+            expectation_text.push_str(&expectation.detail);
+            let expectation_tokens = expectation_language_tokens(&expectation_text);
+            let overlap = expectation_tokens.intersection(&searchable_tokens).count();
+            (overlap >= 2).then(|| SuggestedExpectation {
+                id: expectation.id.clone(),
+                title: expectation.title.clone(),
+                score: overlap,
+            })
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    matches.truncate(3);
+    matches
 }
 
 fn connected_workflows(
@@ -5259,6 +5331,7 @@ fn print_git_connect_report(
         print_connected_section("verifications", &record.verifications);
         print_connected_section("decisions", &record.decisions);
         print_connected_section("work", &record.works);
+        print_git_suggestions(record);
         if !record.changed_files.is_empty() {
             println!("  changed:");
             for path in record.changed_files.iter().take(5) {
@@ -5273,6 +5346,32 @@ fn print_git_connect_report(
 
     if report.records.len() > args.max_items {
         println!("... {} more commits", report.records.len() - args.max_items);
+    }
+}
+
+fn print_git_suggestions(record: &GitConnection) {
+    if record.status != "unconnected" {
+        return;
+    }
+    println!("  next:");
+    if record.suggestions.is_empty() {
+        println!("    - susumu expectation list");
+        println!(
+            "    - susumu git link {} <expectation-id>",
+            record.short_commit
+        );
+        return;
+    }
+    println!("    likely expectations:");
+    for suggestion in &record.suggestions {
+        println!(
+            "      - {}  {} (score {})",
+            suggestion.expectation_id, suggestion.title, suggestion.score
+        );
+    }
+    println!("    commands:");
+    for suggestion in &record.suggestions {
+        println!("      - {}", suggestion.command);
     }
 }
 
@@ -6579,6 +6678,99 @@ mod tests {
         assert_eq!(report.unconnected, 0);
         assert_eq!(report.records[0].status, "connected");
         assert_eq!(report.records[0].works[0].id, "wk_git_f240cd96a07f2ea7");
+    }
+
+    #[test]
+    fn git_connect_suggests_link_commands_for_unconnected_commits() {
+        let mut artifact = test_artifact();
+        artifact.expectations.push(Expectation {
+            id: "e_docs_workflow".to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            status: ExpectationStatus::Accepted,
+            source: "human:test".to_owned(),
+            title: "Docs guide daily project review".to_owned(),
+            detail: "Documentation should explain routine review commands for project work."
+                .to_owned(),
+        });
+        artifact.expectations.push(Expectation {
+            id: "e_docs_commands".to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            status: ExpectationStatus::Accepted,
+            source: "human:test".to_owned(),
+            title: "Docs guide routine commands".to_owned(),
+            detail: "Docs should explain local commands.".to_owned(),
+        });
+        let commit = test_commit("docs: update guide commands", "", &["README.md"]);
+
+        let report = build_git_connect_report(&artifact, &[commit]);
+
+        assert_eq!(report.records[0].status, "unconnected");
+        assert!(
+            report.records[0]
+                .suggestions
+                .iter()
+                .any(|suggestion| suggestion.expectation_id == "e_docs_workflow")
+        );
+        assert!(
+            report.records[0]
+                .suggestions
+                .iter()
+                .any(|suggestion| suggestion.command == "susumu git link f240cd96 e_docs_workflow")
+        );
+    }
+
+    #[test]
+    fn suggested_expectations_are_ranked_and_limited() {
+        let mut artifact = test_artifact();
+        artifact.expectations = vec![
+            Expectation {
+                id: "e_docs".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:test".to_owned(),
+                title: "Docs guide daily workflow commands".to_owned(),
+                detail: "Docs should explain review commands and link commands.".to_owned(),
+            },
+            Expectation {
+                id: "e_git".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:test".to_owned(),
+                title: "Guide suggests next commands".to_owned(),
+                detail: "Output should suggest workflow commands.".to_owned(),
+            },
+            Expectation {
+                id: "e_portal".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:test".to_owned(),
+                title: "Daily status guide is visible".to_owned(),
+                detail: "Review context and commands should stay visible.".to_owned(),
+            },
+            Expectation {
+                id: "e_ai".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:test".to_owned(),
+                title: "AI output remains optional".to_owned(),
+                detail: "AI generated summaries should be optional.".to_owned(),
+            },
+        ];
+
+        let suggestions = suggested_expectations(&artifact, "docs: guide daily workflow commands");
+
+        assert_eq!(suggestions.len(), 3);
+        assert_eq!(suggestions[0].id, "e_docs");
+        assert!(
+            suggestions[0].score >= suggestions[1].score,
+            "suggestions should be score-ranked"
+        );
     }
 
     #[test]

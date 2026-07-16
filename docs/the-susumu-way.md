@@ -77,6 +77,8 @@ susumu review
 
 This writes a work record without rewriting Git history.
 
+When possible, `susumu git` will suggest likely expectations and print ready-to-copy `susumu git link ...` commands under unconnected commits. Treat those as suggestions, not facts; choose the expectation that actually matches the intent of the work.
+
 Before opening a pull request:
 
 ```powershell

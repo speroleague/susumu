@@ -353,6 +353,8 @@ This repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`
 
 The `Rust checks` job runs formatting, tests, and Clippy as hard gates. The `Susumu self-review packet` job builds the repository's own `.susu` artifact, automatically loading `expectations.susu` and `verifications.susu`, writes machine-readable `check.json`, creates a `review.susu` packet, exports the standalone `review.html` portal, verifies those files exist, and uploads them as a retained workflow artifact named `susumu-review-<run-id>`.
 
+On pushes to `main`, the `Publish Susumu portal` job also publishes the latest generated portal to GitHub Pages. The deployed site uses the same artifact bundle as the CI review packet: `index.html` is copied from `review.html`, and `project.susu`, `check.json`, and `review.susu` remain available beside it for humans, agents, and automation. Open-source projects can use this as an always-current public project memory page; companies can use the same pattern with an internal static host.
+
 Uploaded PR artifacts include:
 
 - `project.susu` - the current deterministic project evidence model.
@@ -361,6 +363,8 @@ Uploaded PR artifacts include:
 - `review.html` - the standalone stakeholder review portal.
 
 The self-review job records review findings in `check.json` but does not fail just because the packet contains warnings, because those findings are useful output for the review artifact. In a production repository, use `cargo run -- status --strict`, `cargo run -- check project.susu --strict`, or `cargo run -- diff old.susu new.susu --fail-on-stale` when the review signal should block a pull request.
+
+To enable the Pages deployment in GitHub, configure the repository's Pages source to use GitHub Actions. Pull requests still receive retained review artifacts without deploying a public site.
 
 ## A `.susu` artifact
 

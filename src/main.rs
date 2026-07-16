@@ -6331,7 +6331,7 @@ mod tests {
     }
 
     #[test]
-    fn ci_workflow_uploads_susumu_review_artifacts() {
+    fn ci_workflow_uploads_and_publishes_susumu_review_artifacts() {
         let workflow = include_str!("../.github/workflows/ci.yml");
 
         assert!(workflow.contains("pull_request:"));
@@ -6349,6 +6349,17 @@ mod tests {
         assert!(workflow.contains("target/susumu-review/check.json"));
         assert!(workflow.contains("target/susumu-review/review.susu"));
         assert!(workflow.contains("target/susumu-review/review.html"));
+        assert!(workflow.contains("Publish Susumu portal"));
+        assert!(
+            workflow.contains("github.event_name == 'push' && github.ref == 'refs/heads/main'")
+        );
+        assert!(workflow.contains("pages: write"));
+        assert!(workflow.contains("id-token: write"));
+        assert!(workflow.contains("actions/download-artifact@v4"));
+        assert!(workflow.contains("cp susumu-pages/review.html susumu-pages/index.html"));
+        assert!(workflow.contains("actions/configure-pages@v5"));
+        assert!(workflow.contains("actions/upload-pages-artifact@v3"));
+        assert!(workflow.contains("actions/deploy-pages@v4"));
     }
 
     #[test]

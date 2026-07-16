@@ -94,3 +94,43 @@ jobs:
             target/susumu-review/check.json
             target/susumu-review/review.susu
             target/susumu-review/review.html
+
+  publish-susumu-pages:
+    name: Publish Susumu portal
+    runs-on: ubuntu-latest
+    needs: susumu-review
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Download Susumu review artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: susumu-review-${{ github.run_id }}
+          path: susumu-pages
+
+      - name: Prepare Susumu Pages site
+        run: |
+          cp susumu-pages/review.html susumu-pages/index.html
+          {
+            echo "User-agent: *"
+            echo "Disallow:"
+          } > susumu-pages/robots.txt
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Susumu Pages site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: susumu-pages
+
+      - name: Deploy Susumu Pages site
+        id: deployment
+        uses: actions/deploy-pages@v4

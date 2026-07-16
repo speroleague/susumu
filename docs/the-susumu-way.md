@@ -57,6 +57,8 @@ The easy workflow writes generated files under `.susumu/`:
 
 Generated files should usually stay out of commits. Attach or publish them when they are useful as review artifacts, release snapshots, or business decision records.
 
+For open-source repositories, CI can publish `.susumu/review.html` to GitHub Pages on every push to `main`, giving the project an always-current public Susumu portal. For companies, the same generated HTML and packet can be published to an internal static host so non-engineers can inspect workflows, expectations, evidence, and review status without cloning the repository.
+
 ## Day-to-day engineering flow
 
 Before starting work:

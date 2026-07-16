@@ -102,6 +102,9 @@ enum Command {
     /// Show the current Susumu project status.
     Status(StatusArgs),
 
+    /// Show expectation readiness from the latest review packet.
+    Readiness(ReadinessArgs),
+
     /// Browse and search expectation ids for reviews, Git links, and verification.
     Expectations(ExpectationsArgs),
 
@@ -531,6 +534,26 @@ struct StatusArgs {
 
     /// Maximum review items to print.
     #[arg(long, default_value_t = 10)]
+    max_items: usize,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct ReadinessArgs {
+    /// Review packet to inspect.
+    #[arg(
+        short,
+        long,
+        default_value = ".susumu/review.susu",
+        value_name = "FILE"
+    )]
+    packet: PathBuf,
+
+    /// Maximum readiness items to print.
+    #[arg(long, default_value_t = 20)]
     max_items: usize,
 
     /// Emit machine-readable JSON.
@@ -1317,6 +1340,7 @@ fn run_command(command: Command) -> Result<()> {
         }
         Command::Open(args) => open_shortcut(&args),
         Command::Status(args) => status_shortcut(&args),
+        Command::Readiness(args) => readiness_shortcut(&args),
         Command::Expectations(args) => expectations_shortcut(&args),
         Command::Verify(args) => verify_shortcut(args),
         Command::Expectation { command } => match command {
@@ -1417,6 +1441,76 @@ fn status_shortcut(args: &StatusArgs) -> Result<()> {
         strict: args.strict,
         max_items: args.max_items,
         json: args.json,
+    })
+}
+
+fn readiness_shortcut(args: &ReadinessArgs) -> Result<()> {
+    let packet = read_review_packet(&args.packet).with_context(|| {
+        format!(
+            "could not read readiness from {}; run `susumu review` first",
+            args.packet.display()
+        )
+    })?;
+    if args.json {
+        print_readiness_json(&args.packet, &packet)?;
+    } else {
+        print_readiness_report(&args.packet, &packet, args.max_items);
+    }
+    Ok(())
+}
+
+fn print_readiness_report(packet_path: &Path, packet: &ReviewPacketStored, max_items: usize) {
+    println!("Susumu readiness: {}", packet.project.name);
+    println!("Packet: {}", packet_path.display());
+    println!(
+        "Result: {} ({})",
+        packet.result.status, packet.result.reason
+    );
+    println!();
+    print_readiness_counts(&packet.expectation_readiness);
+    println!();
+    print_expectation_readiness(&packet.expectation_readiness, max_items);
+}
+
+fn print_readiness_counts(items: &[ExpectationReadiness]) {
+    println!("Readiness counts");
+    for (bucket, label) in READINESS_BUCKETS {
+        let count = items.iter().filter(|item| item.bucket == bucket).count();
+        println!("  - {label}: {count}");
+    }
+}
+
+fn print_readiness_json(packet_path: &Path, packet: &ReviewPacketStored) -> Result<()> {
+    let output = readiness_json(packet_path, packet);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&output).context("could not serialize readiness report")?
+    );
+    Ok(())
+}
+
+fn readiness_json(packet_path: &Path, packet: &ReviewPacketStored) -> serde_json::Value {
+    let counts = READINESS_BUCKETS
+        .iter()
+        .map(|(bucket, label)| {
+            serde_json::json!({
+                "bucket": bucket,
+                "label": label,
+                "count": packet
+                    .expectation_readiness
+                    .iter()
+                    .filter(|item| item.bucket == *bucket)
+                    .count(),
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "packet": packet_path.display().to_string(),
+        "project": &packet.project,
+        "result": &packet.result,
+        "total": packet.expectation_readiness.len(),
+        "counts": counts,
+        "items": &packet.expectation_readiness,
     })
 }
 
@@ -3362,6 +3456,14 @@ struct ExpectationReadiness {
     support_status: String,
     next_action: String,
 }
+
+const READINESS_BUCKETS: [(&str, &str); 5] = [
+    ("failed_verification", "Failed verification"),
+    ("missing_target", "Missing target"),
+    ("needs_verification", "Has work, needs verification"),
+    ("needs_work", "No linked work yet"),
+    ("verified", "Verified"),
+];
 
 #[derive(Debug, Serialize)]
 struct HandoffJson<'a> {
@@ -7005,6 +7107,29 @@ mod tests {
     }
 
     #[test]
+    fn readiness_command_parses_packet_and_json() {
+        let cli = Cli::try_parse_from([
+            "susumu",
+            "readiness",
+            "--packet",
+            "custom.review.susu",
+            "--max-items",
+            "5",
+            "--json",
+        ])
+        .expect("parse readiness shortcut");
+
+        match cli.command.expect("command") {
+            Command::Readiness(args) => {
+                assert_eq!(args.packet, PathBuf::from("custom.review.susu"));
+                assert_eq!(args.max_items, 5);
+                assert!(args.json);
+            }
+            other => panic!("expected readiness shortcut, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn expectation_rows_filter_by_search_and_status() {
         let rows = vec![
             ExpectationBrowseRow {
@@ -7380,6 +7505,41 @@ mod tests {
         let packet = review_packet(input.to_owned(), created, artifact, &check, &handoff);
         serde_json::from_value(serde_json::to_value(packet).expect("packet serializes"))
             .expect("packet deserializes")
+    }
+
+    #[test]
+    fn readiness_json_summarizes_packet_queue() {
+        let mut artifact = test_artifact();
+        refresh_derived_analysis(&mut artifact);
+        artifact.works.push(Work {
+            id: "wk_checkout".to_owned(),
+            target: ExpectationTarget::Workflow,
+            subject: Some("w_checkout".to_owned()),
+            expectation_id: Some("e_checkout_sequence".to_owned()),
+            kind: WorkKind::Implementation,
+            status: WorkStatus::Completed,
+            source: "agent:test".to_owned(),
+            evidence: Some("commit:abc123".to_owned()),
+            title: "Implement checkout sequence".to_owned(),
+            detail: "Checkout implementation touched the workflow and now needs verification."
+                .to_owned(),
+        });
+        let packet = stored_review_packet("fixture.review.susu", 1, &artifact);
+
+        let json = readiness_json(Path::new("fixture.review.susu"), &packet);
+
+        assert_eq!(json["packet"], "fixture.review.susu");
+        assert_eq!(json["total"], 1);
+        assert_eq!(json["items"][0]["bucket"], "needs_verification");
+        assert_eq!(
+            json["counts"]
+                .as_array()
+                .expect("counts")
+                .iter()
+                .find(|item| item["bucket"] == "needs_verification")
+                .expect("needs verification count")["count"],
+            1
+        );
     }
 
     #[test]

@@ -11,6 +11,7 @@ Use these commands most of the time:
 ```powershell
 cargo run -- review
 cargo run -- status
+cargo run -- readiness
 cargo run -- git --since main
 cargo run -- expectations --search git
 cargo run -- verify e_susumu_easy_daily_cli --passed --method "cargo test --locked"
@@ -23,6 +24,7 @@ Installed globally, that becomes:
 ```powershell
 susumu review
 susumu status
+susumu readiness
 susumu git --since main
 susumu expectations --search git
 susumu verify e_susumu_easy_daily_cli --passed --method "cargo test --locked"
@@ -70,9 +72,10 @@ After making commits:
 ```powershell
 susumu git --since main
 susumu review
+susumu readiness
 ```
 
-The first command connects commits to expectations and exports work records. The second command folds that work back into the review packet.
+The first command connects commits to expectations and exports work records. The second command folds that work back into the review packet. The third command shows expectation readiness counts and next actions from that packet.
 
 If one commit clearly supports multiple expectations, Susumu writes separate work records so each expectation gets its own reviewable support.
 
@@ -111,7 +114,8 @@ A good agent loop is:
 5. If the commit is unconnected but the intent is known, run `susumu git link <commit> <expectation-id>`.
 6. Run `susumu verify <expectation-id> --passed --method "<check>"` when a check has actually been performed.
 7. Run `susumu review`.
-8. Report which expectation the work supported and what still needs verification.
+8. Run `susumu readiness --json` when an agent or CI needs the readiness queue.
+9. Report which expectation the work supported and what still needs verification.
 
 Agents should not claim an expectation is satisfied just because they changed code. Work supports an expectation. Verification checks it. Decisions record judgment about it.
 

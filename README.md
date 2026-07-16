@@ -21,6 +21,7 @@ Use Susumu day to day:
 ```powershell
 cargo run -- review
 cargo run -- status
+cargo run -- readiness
 cargo run -- git --since main
 cargo run -- expectations --search git
 cargo run -- verify e_susumu_easy_daily_cli --passed --method "cargo test --locked"
@@ -32,11 +33,12 @@ That is the core workflow:
 
 1. `review` scans the project and writes the current review files.
 2. `status` shows the review queue without opening the portal.
-3. `git --since main` connects recent commits to expectations and writes work records.
-4. `expectations --search git` helps you find the right expectation id when a commit needs an explicit link.
-5. `verify` records how an expectation was checked.
-6. `review` runs again so the new work and verification records appear in the packet.
-7. `open` starts the local stakeholder/engineering portal.
+3. `readiness` shows expectation readiness counts and next actions from the latest review packet.
+4. `git --since main` connects recent commits to expectations and writes work records.
+5. `expectations --search git` helps you find the right expectation id when a commit needs an explicit link.
+6. `verify` records how an expectation was checked.
+7. `review` runs again so the new work and verification records appear in the packet.
+8. `open` starts the local stakeholder/engineering portal.
 
 By convention:
 
@@ -88,6 +90,13 @@ Check current status:
 
 ```powershell
 cargo run -- status
+```
+
+Show expectation readiness from the latest packet:
+
+```powershell
+cargo run -- readiness
+cargo run -- readiness --json
 ```
 
 Browse or search expectation ids:

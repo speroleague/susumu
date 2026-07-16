@@ -7768,6 +7768,83 @@ mod tests {
     }
 
     #[test]
+    fn scanner_support_does_not_verify_expectations_without_passed_verification() {
+        let mut artifact = test_artifact();
+        refresh_derived_analysis(&mut artifact);
+        artifact.works.push(Work {
+            id: "wk_checkout".to_owned(),
+            target: ExpectationTarget::Workflow,
+            subject: Some("w_checkout".to_owned()),
+            expectation_id: Some("e_checkout_sequence".to_owned()),
+            kind: WorkKind::Implementation,
+            status: WorkStatus::Completed,
+            source: "agent:test".to_owned(),
+            evidence: Some("commit:abc123".to_owned()),
+            title: "Implement checkout sequence".to_owned(),
+            detail: "Work supports the expectation but does not prove it.".to_owned(),
+        });
+        artifact.findings.push(Finding {
+            rule_id: "SUS998".to_owned(),
+            source: "scanner:test".to_owned(),
+            severity: Severity::Info,
+            title: "Observed checkout workflow".to_owned(),
+            detail: "Scanner-observed evidence is support, not verification.".to_owned(),
+            file_id: Some("f_api".to_owned()),
+            subject: Some("w_checkout".to_owned()),
+            location: Some(test_location()),
+        });
+
+        let support = expectation_support(&artifact);
+        let readiness = expectation_readiness(&artifact, &support);
+        let checkout_support = support
+            .iter()
+            .find(|item| item.expectation_id == "e_checkout_sequence")
+            .expect("checkout support");
+        let checkout_readiness = readiness
+            .iter()
+            .find(|item| item.expectation_id == "e_checkout_sequence")
+            .expect("checkout readiness");
+
+        assert!(checkout_support.target_observed);
+        assert_eq!(checkout_support.work, 1);
+        assert_eq!(checkout_support.findings, 1);
+        assert_eq!(checkout_support.verification.passed, 0);
+        assert_eq!(checkout_support.support_status, "partially_supported");
+        assert_eq!(checkout_readiness.bucket, "needs_verification");
+        assert!(
+            checkout_readiness
+                .next_action
+                .contains("susumu verify e_checkout_sequence")
+        );
+
+        artifact.verifications.push(Verification {
+            id: "v_checkout".to_owned(),
+            expectation_id: "e_checkout_sequence".to_owned(),
+            status: VerificationStatus::Passed,
+            method: "cargo test checkout".to_owned(),
+            source: "ci:test".to_owned(),
+            evidence: Some("run:checkout".to_owned()),
+            basis: None,
+            detail: "Passed verification promotes support to verified.".to_owned(),
+        });
+
+        let verified_support = expectation_support(&artifact);
+        let verified_readiness = expectation_readiness(&artifact, &verified_support);
+        let checkout_support = verified_support
+            .iter()
+            .find(|item| item.expectation_id == "e_checkout_sequence")
+            .expect("verified support");
+        let checkout_readiness = verified_readiness
+            .iter()
+            .find(|item| item.expectation_id == "e_checkout_sequence")
+            .expect("verified readiness");
+
+        assert_eq!(checkout_support.verification.passed, 1);
+        assert_eq!(checkout_support.support_status, "verified");
+        assert_eq!(checkout_readiness.bucket, "verified");
+    }
+
+    #[test]
     fn review_build_writes_artifact_packet_check_and_html() {
         let temp = tempfile::tempdir().expect("tempdir");
         fs::write(

@@ -56,19 +56,21 @@ cargo run -- .\target\susumu-demo.susu
 Create a review packet and open the local web portal:
 
 ```powershell
-cargo run -- review create .\target\susumu-demo.susu --output .\target\susumu-demo.review.susu
+cargo run -- review build .\examples\demo-project --expectations .\examples\demo-project\expectations.susu --verifications .\examples\demo-project\verifications.susu --decisions .\examples\demo-project\decisions.susu --work .\examples\demo-project\work.susu --artifact-output .\target\susumu-demo.susu --output .\target\susumu-demo.review.susu --html .\target\susumu-demo.html
 cargo run -- review serve .\target\susumu-demo.review.susu
 ```
 
-Or export the same review as a standalone HTML file:
+Or create/export from an existing artifact:
 
 ```powershell
+cargo run -- review create .\target\susumu-demo.susu --output .\target\susumu-demo.review.susu
 cargo run -- review export-html .\target\susumu-demo.review.susu --output .\target\susumu-demo.html
 ```
 
 Scan your own project:
 
 ```powershell
+cargo run -- init C:\path\to\project --name "My Project"
 cargo run -- C:\path\to\project --output project.susu --headless
 cargo run -- project.susu
 ```
@@ -79,13 +81,19 @@ cargo run -- project.susu
 cargo run -- C:\path\to\project
 ```
 
+Start a project the Susumu way by creating an authored expectations sidecar:
+
+```powershell
+cargo run -- init C:\path\to\project --name "Checkout Service"
+```
+
 Scan a repository, write an artifact, and skip the TUI:
 
 ```powershell
 cargo run -- C:\path\to\project --output project.susu --headless
 ```
 
-Merge authored expectations while scanning:
+Merge authored expectations while scanning. Initialized repositories automatically load `expectations.susu`; use `--expectations` when the sidecar lives somewhere else:
 
 ```powershell
 cargo run -- C:\path\to\project --expectations expectations.susu --output project.susu --headless
@@ -200,11 +208,14 @@ cargo run -- handoff project.susu --json
 Create a point-in-time review packet:
 
 ```powershell
+cargo run -- review build C:\path\to\project --artifact-output project.susu --output review.susu --check-json check.json --html review.html
 cargo run -- review create project.susu --output review.susu
 cargo run -- review create project.susu --json
 ```
 
-`review create` packages the full current Susumu artifact together with the handoff summary, check result, review items, top workflows, caveats, next actions, and portable syntax-highlighted source snippets when the source files are readable. The packet uses JSON with `schema_version="susumu.review.v1"`, so it can be attached to pull requests, stored as a release decision snapshot, passed to an AI agent, or opened later by a TUI/web review surface. Creating a packet does not fail just because review issues are present; those issues are captured inside the packet.
+`review build` is the day-to-day command for initialized projects. It scans the project, automatically loads `expectations.susu` when present, writes the current `.susu` artifact, creates the review packet, can write `check --json`, and can export the standalone HTML portal. Add `--serve` to open the local portal after building, or `--fail-on-check` when CI should fail after outputs are written.
+
+`review create` packages an existing artifact or project together with the handoff summary, check result, review items, top workflows, caveats, next actions, and portable syntax-highlighted source snippets when the source files are readable. The packet uses JSON with `schema_version="susumu.review.v1"`, so it can be attached to pull requests, stored as a release decision snapshot, passed to an AI agent, or opened later by a TUI/web review surface. Creating a packet does not fail just because review issues are present; those issues are captured inside the packet.
 
 Open or compare review packets later:
 
@@ -234,6 +245,35 @@ cargo run -- diff old.susu new.susu --json
 `diff` compares files, workflows, expectations, verifications, decisions, and work records. It also lists stale verification or decision evidence detected in the newer artifact. Add `--fail-on-stale` when CI or an agent should stop if previously accepted checks or judgments need review.
 
 Inside the TUI, use `1` through `9`, `0`, or `Tab` to change views, `j`/`k` or the arrow keys to move, `Enter` to jump from a Review or Connections item to its source record, `b` to go back, `e` to export readable syntax, `m` to export minified syntax, and `q` to quit. The `0` shortcut jumps to the final Files tab; use `Tab` or the arrow keys for any tab between `9` and `0`.
+
+## Dogfooding Susumu
+
+This repository uses Susumu to describe Susumu.
+
+The root `expectations.susu` file is the authored intent: the project expectations humans want Susumu to preserve and review. When Susumu scans this initialized repo, it automatically loads that sidecar. The generated artifact, check JSON, review packet, and HTML portal are produced from the current repository state.
+
+This repo has already been initialized with `expectations.susu`. Generate the self-review artifact:
+
+```powershell
+cargo run -- . --output .\target\susumu-self.susu --headless
+```
+
+Build and view the review packet:
+
+```powershell
+cargo run -- review build . --artifact-output .\target\susumu-self.susu --output .\target\susumu-self.review.susu --check-json .\target\susumu-self-check.json --html .\target\susumu-self.review.html
+cargo run -- review serve .\target\susumu-self.review.susu
+```
+
+This is the intended loop for other projects too: keep expectations explicit, let Susumu observe the code, then review what the generated artifact says is implemented, unresolved, stale, or missing.
+
+## CI and pull requests
+
+This repository includes a GitHub Actions workflow at `.github/workflows/ci.yml`.
+
+The `Rust checks` job runs formatting, tests, and Clippy as hard gates. The `Susumu self-review packet` job builds the repository's own `.susu` artifact, automatically loading `expectations.susu`, writes `check --json`, creates a `.review.susu` packet, exports the standalone HTML portal, and uploads those files as workflow artifacts.
+
+The self-review `check --json` step records its exit code but does not fail the job, because review findings are useful output for the packet. In a production repository, use `cargo run -- check project.susu --strict` or `cargo run -- diff old.susu new.susu --fail-on-stale` when the review signal should block a pull request.
 
 ## Try the workflow demo
 

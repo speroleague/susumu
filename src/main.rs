@@ -74,6 +74,9 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Create a starter expectations sidecar for a repository.
+    Init(InitArgs),
+
     /// Check an artifact or project for review blockers.
     Check(CheckArgs),
 
@@ -118,6 +121,29 @@ enum Command {
         #[command(subcommand)]
         command: GitCommand,
     },
+}
+
+#[derive(Debug, Args)]
+struct InitArgs {
+    /// Repository directory to initialize.
+    #[arg(default_value = ".")]
+    target: PathBuf,
+
+    /// Expectations sidecar to create. Relative paths are resolved under the target directory.
+    #[arg(short, long, default_value = "expectations.susu")]
+    file: PathBuf,
+
+    /// Project name to use in starter expectation text.
+    #[arg(long)]
+    name: Option<String>,
+
+    /// Provenance label for the starter expectations.
+    #[arg(long, default_value = "human:maintainer")]
+    source: String,
+
+    /// Overwrite an existing sidecar.
+    #[arg(long)]
+    force: bool,
 }
 
 #[derive(Debug, Args)]
@@ -209,6 +235,9 @@ struct HandoffArgs {
 
 #[derive(Debug, Subcommand)]
 enum ReviewCommand {
+    /// Scan, check, and create review outputs in one command.
+    Build(ReviewBuildArgs),
+
     /// Create a standalone review packet from an artifact or project.
     Create(ReviewCreateArgs),
 
@@ -223,6 +252,75 @@ enum ReviewCommand {
 
     /// Export a saved review packet as a standalone HTML portal.
     ExportHtml(ReviewExportHtmlArgs),
+}
+
+#[derive(Debug, Args)]
+#[allow(clippy::struct_excessive_bools)]
+struct ReviewBuildArgs {
+    /// Directory to scan, or an existing .susu artifact to package.
+    #[arg(default_value = ".")]
+    target: PathBuf,
+
+    /// Merge authored expectations from a .susu artifact or expectation-only fragment.
+    #[arg(long, value_name = "FILE")]
+    expectations: Option<PathBuf>,
+
+    /// Merge verification records from a .susu artifact or verification-only fragment.
+    #[arg(long, value_name = "FILE")]
+    verifications: Option<PathBuf>,
+
+    /// Merge decision records from a .susu artifact or decision-only fragment.
+    #[arg(long, value_name = "FILE")]
+    decisions: Option<PathBuf>,
+
+    /// Merge work records from a .susu artifact or work-only fragment.
+    #[arg(long, value_name = "FILE")]
+    work: Option<PathBuf>,
+
+    /// Write the generated .susu artifact to this file.
+    #[arg(long, default_value = "target/susumu.susu", value_name = "FILE")]
+    artifact_output: PathBuf,
+
+    /// Write the review packet to this file.
+    #[arg(
+        short,
+        long,
+        default_value = "target/susumu.review.susu",
+        value_name = "FILE"
+    )]
+    output: PathBuf,
+
+    /// Optionally write the machine-readable check report JSON.
+    #[arg(long, value_name = "FILE")]
+    check_json: Option<PathBuf>,
+
+    /// Optionally export the review portal as standalone HTML.
+    #[arg(long, value_name = "FILE")]
+    html: Option<PathBuf>,
+
+    /// Fail the embedded check result on warnings as well as critical items.
+    #[arg(long)]
+    strict: bool,
+
+    /// Exit nonzero after writing outputs if the check result failed.
+    #[arg(long)]
+    fail_on_check: bool,
+
+    /// Emit a machine-readable build summary.
+    #[arg(long)]
+    json: bool,
+
+    /// Serve the built review packet as a local web portal after writing outputs.
+    #[arg(long)]
+    serve: bool,
+
+    /// Host interface to bind when --serve is used.
+    #[arg(long, default_value = "127.0.0.1")]
+    host: String,
+
+    /// Port to bind when --serve is used. Use 0 to ask the OS for an available port.
+    #[arg(long, default_value_t = 7878)]
+    port: u16,
 }
 
 #[derive(Debug, Args)]
@@ -897,10 +995,12 @@ fn main() -> Result<()> {
 
 fn run_command(command: Command) -> Result<()> {
     match command {
+        Command::Init(args) => init_repository(&args),
         Command::Check(args) => check(&args),
         Command::Diff(args) => diff(&args),
         Command::Handoff(args) => handoff(&args),
         Command::Review { command } => match command {
+            ReviewCommand::Build(args) => build_review(&args),
             ReviewCommand::Create(args) => create_review(&args),
             ReviewCommand::Open(args) => open_review(&args),
             ReviewCommand::Diff(args) => diff_reviews(&args),
@@ -958,6 +1058,14 @@ fn load_analysis(
         scan_project(target)?
     };
     refresh_derived_analysis(&mut analysis);
+
+    let discovered_expectations = if expectations.is_none() && !is_artifact {
+        let candidate = target.join("expectations.susu");
+        candidate.exists().then_some(candidate)
+    } else {
+        None
+    };
+    let expectations = expectations.or(discovered_expectations.as_ref());
 
     if let Some(expectations) = expectations {
         let source = fs::read_to_string(expectations)
@@ -1028,6 +1136,133 @@ fn load_analysis(
     }
 
     Ok(analysis)
+}
+
+fn init_repository(args: &InitArgs) -> Result<()> {
+    if !args.target.is_dir() {
+        bail!("{} is not a directory", args.target.display());
+    }
+
+    let file = if args.file.is_absolute() {
+        args.file.clone()
+    } else {
+        args.target.join(&args.file)
+    };
+
+    if file.exists() && !args.force {
+        bail!(
+            "{} already exists; use --force to replace it",
+            file.display()
+        );
+    }
+
+    if let Some(parent) = file.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("could not create {}", parent.display()))?;
+    }
+
+    let project_name = args.name.clone().unwrap_or_else(|| {
+        args.target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or("project")
+            .to_owned()
+    });
+    let expectations = starter_expectations(&project_name, &args.source);
+    fs::write(&file, write_expectations(&expectations, false)?)
+        .with_context(|| format!("could not write {}", file.display()))?;
+
+    eprintln!(
+        "wrote {} starter expectations to {}",
+        expectations.len(),
+        file.display()
+    );
+    eprintln!(
+        "next: susumu {} --expectations {} --output target/{}.susu --headless",
+        args.target.display(),
+        file.display(),
+        sanitize_artifact_name(&project_name)
+    );
+    Ok(())
+}
+
+fn starter_expectations(project_name: &str, source: &str) -> Vec<Expectation> {
+    let records = [
+        (
+            ExpectationStatus::Accepted,
+            format!("{project_name} keeps expectations explicit"),
+            format!(
+                "{project_name} should keep project expectations in an authored expectations.susu sidecar so implementation evidence and intent can be reviewed together."
+            ),
+        ),
+        (
+            ExpectationStatus::Proposed,
+            format!("{project_name} documents primary workflows"),
+            format!(
+                "{project_name} should describe the business or product workflows that matter most, then link those expectations to observed files, symbols, or workflows as evidence improves."
+            ),
+        ),
+        (
+            ExpectationStatus::Proposed,
+            format!("{project_name} records verification evidence"),
+            format!(
+                "{project_name} should record how important expectations are checked, such as tests, CI runs, manual reviews, policy checks, runtime traces, or release approvals."
+            ),
+        ),
+    ];
+
+    records
+        .into_iter()
+        .map(|(status, title, detail)| {
+            let id = expectation_id(
+                ExpectationTarget::Project,
+                None,
+                status,
+                source,
+                &title,
+                &detail,
+            );
+            Expectation {
+                id,
+                target: ExpectationTarget::Project,
+                subject: None,
+                status,
+                source: source.to_owned(),
+                title,
+                detail,
+            }
+        })
+        .collect()
+}
+
+fn sanitize_artifact_name(name: &str) -> String {
+    let mut output = String::new();
+    for character in name.chars() {
+        if character.is_ascii_alphanumeric() {
+            output.push(character.to_ascii_lowercase());
+        } else if matches!(character, '-' | '_' | ' ' | '.') && !output.ends_with('-') {
+            output.push('-');
+        }
+    }
+    let trimmed = output.trim_matches('-');
+    if trimmed.is_empty() {
+        "project".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
+fn write_text_file(path: &Path, contents: &str) -> Result<()> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("could not create {}", parent.display()))?;
+    }
+    fs::write(path, contents).with_context(|| format!("could not write {}", path.display()))
 }
 
 fn check(args: &CheckArgs) -> Result<()> {
@@ -1128,6 +1363,101 @@ fn create_review(args: &ReviewCreateArgs) -> Result<()> {
         println!("Suggested next actions: {}", handoff.next_actions.len());
     }
 
+    Ok(())
+}
+
+fn build_review(args: &ReviewBuildArgs) -> Result<()> {
+    let analysis = load_analysis(
+        &args.target,
+        args.expectations.as_ref(),
+        args.verifications.as_ref(),
+        args.decisions.as_ref(),
+        args.work.as_ref(),
+        true,
+    )?;
+    write_text_file(&args.artifact_output, &write_susu(&analysis, false)?)?;
+
+    let check = check_report(&analysis, args.strict);
+    if let Some(check_output) = &args.check_json {
+        let check_json = check_json(&analysis, &check);
+        write_text_file(
+            check_output,
+            &serde_json::to_string_pretty(&check_json)
+                .context("could not serialize check report")?,
+        )?;
+    }
+
+    let handoff = handoff_report(&analysis, &check);
+    let packet = review_packet(
+        args.target.display().to_string(),
+        current_unix_seconds(),
+        &analysis,
+        &check,
+        &handoff,
+    );
+    let packet_json =
+        serde_json::to_string_pretty(&packet).context("could not serialize review packet")?;
+    write_text_file(&args.output, &packet_json)?;
+
+    if let Some(html_output) = &args.html {
+        let stored_packet: ReviewPacketStored =
+            serde_json::from_str(&packet_json).context("could not read built review packet")?;
+        write_text_file(html_output, &review_portal_html(&stored_packet)?)?;
+    }
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "project": analysis.project_name,
+                "artifact": args.artifact_output,
+                "review_packet": args.output,
+                "check_json": args.check_json,
+                "html": args.html,
+                "result": {
+                    "status": if check.failed { "failed" } else { "passed" },
+                    "failed": check.failed,
+                    "strict": check.strict,
+                    "reason": check_result_reason(&check),
+                },
+                "review": {
+                    "critical": check.critical,
+                    "warning": check.warning,
+                    "attention": check.attention,
+                }
+            }))
+            .context("could not serialize review build summary")?
+        );
+    } else {
+        println!("Susumu review build: {}", analysis.project_name);
+        println!("Artifact: {}", args.artifact_output.display());
+        println!("Review packet: {}", args.output.display());
+        if let Some(check_output) = &args.check_json {
+            println!("Check JSON: {}", check_output.display());
+        }
+        if let Some(html_output) = &args.html {
+            println!("HTML portal: {}", html_output.display());
+        }
+        println!(
+            "Review: {} critical, {} warning, {} attention ({})",
+            check.critical,
+            check.warning,
+            check.attention,
+            check_result_reason(&check)
+        );
+    }
+
+    if args.serve {
+        serve_review(&ReviewServeArgs {
+            packet: args.output.clone(),
+            host: args.host.clone(),
+            port: args.port,
+        })?;
+    }
+
+    if args.fail_on_check && check.failed {
+        process::exit(1);
+    }
     Ok(())
 }
 
@@ -2504,7 +2834,16 @@ fn print_check_report(analysis: &ProjectAnalysis, report: &CheckReport, max_item
 }
 
 fn print_check_json(analysis: &ProjectAnalysis, report: &CheckReport) -> Result<()> {
-    let output = CheckJson {
+    let output = check_json(analysis, report);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&output).context("could not serialize check report")?
+    );
+    Ok(())
+}
+
+fn check_json<'a>(analysis: &'a ProjectAnalysis, report: &'a CheckReport) -> CheckJson<'a> {
+    CheckJson {
         project: CheckProjectJson {
             name: &analysis.project_name,
             root: &analysis.root,
@@ -2534,12 +2873,7 @@ fn print_check_json(analysis: &ProjectAnalysis, report: &CheckReport) -> Result<
             reason: check_result_reason(report),
         },
         items: check_item_jsons(&report.items),
-    };
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&output).context("could not serialize check report")?
-    );
-    Ok(())
+    }
 }
 
 fn check_item_jsons(items: &[CheckItem]) -> Vec<CheckItemJson<'_>> {
@@ -4855,6 +5189,113 @@ mod tests {
                 .map(|path| (*path).to_owned())
                 .collect(),
         }
+    }
+
+    #[test]
+    fn init_writes_starter_expectations() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        init_repository(&InitArgs {
+            target: temp.path().to_path_buf(),
+            file: PathBuf::from("expectations.susu"),
+            name: Some("Acme Checkout".to_owned()),
+            source: "human:test".to_owned(),
+            force: false,
+        })
+        .expect("init should write expectations");
+
+        let expectations =
+            read_expectations_file(&temp.path().join("expectations.susu")).expect("expectations");
+        assert_eq!(expectations.len(), 3);
+        assert_eq!(expectations[0].target, ExpectationTarget::Project);
+        assert_eq!(expectations[0].subject, None);
+        assert_eq!(expectations[0].status, ExpectationStatus::Accepted);
+        assert_eq!(expectations[0].source, "human:test");
+        assert!(expectations[0].title.contains("Acme Checkout"));
+    }
+
+    #[test]
+    fn init_refuses_to_overwrite_without_force() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let file = temp.path().join("expectations.susu");
+        fs::write(&file, "expectation e_existing target=project subject=- status=accepted source=\"human:test\" title=\"Existing\" detail=\"Existing expectation.\";\n")
+            .expect("write existing sidecar");
+
+        let result = init_repository(&InitArgs {
+            target: temp.path().to_path_buf(),
+            file: PathBuf::from("expectations.susu"),
+            name: None,
+            source: "human:test".to_owned(),
+            force: false,
+        });
+
+        assert!(result.is_err());
+        let existing = fs::read_to_string(file).expect("read existing sidecar");
+        assert!(existing.contains("e_existing"));
+    }
+
+    #[test]
+    fn directory_scans_auto_merge_expectations_sidecar() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            temp.path().join("expectations.susu"),
+            "expectation e_auto target=project subject=- status=accepted source=\"human:test\" title=\"Auto loaded\" detail=\"Directory scans should load this sidecar.\";\n",
+        )
+        .expect("write expectations sidecar");
+
+        let analysis = load_analysis(&temp.path().to_path_buf(), None, None, None, None, false)
+            .expect("load analysis");
+
+        assert!(
+            analysis
+                .expectations
+                .iter()
+                .any(|expectation| expectation.id == "e_auto")
+        );
+    }
+
+    #[test]
+    fn review_build_writes_artifact_packet_check_and_html() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            temp.path().join("expectations.susu"),
+            "expectation e_build target=project subject=- status=accepted source=\"human:test\" title=\"Build review\" detail=\"Review build should load this sidecar.\";\n",
+        )
+        .expect("write expectations sidecar");
+        let artifact = temp.path().join("target").join("project.susu");
+        let packet = temp.path().join("target").join("project.review.susu");
+        let check = temp.path().join("target").join("project.check.json");
+        let html = temp.path().join("target").join("project.review.html");
+
+        build_review(&ReviewBuildArgs {
+            target: temp.path().to_path_buf(),
+            expectations: None,
+            verifications: None,
+            decisions: None,
+            work: None,
+            artifact_output: artifact.clone(),
+            output: packet.clone(),
+            check_json: Some(check.clone()),
+            html: Some(html.clone()),
+            strict: false,
+            fail_on_check: false,
+            json: false,
+            serve: false,
+            host: "127.0.0.1".to_owned(),
+            port: 0,
+        })
+        .expect("review build should write outputs");
+
+        assert!(artifact.exists());
+        assert!(packet.exists());
+        assert!(check.exists());
+        assert!(html.exists());
+        let built = read_analysis_artifact(&artifact).expect("read built artifact");
+        assert!(
+            built
+                .expectations
+                .iter()
+                .any(|expectation| expectation.id == "e_build")
+        );
     }
 
     #[test]

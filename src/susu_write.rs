@@ -217,11 +217,17 @@ fn expectation_statement(expectation: &Expectation) -> Result<String> {
 }
 
 fn verification_statement(verification: &Verification) -> Result<String> {
+    let supersedes = verification
+        .supersedes
+        .as_deref()
+        .map(|id| format!(" supersedes={id}"))
+        .unwrap_or_default();
     Ok(format!(
-        "verification {} expectation={} status={} method={} source={} evidence={} basis={} detail={}",
+        "verification {} expectation={} status={}{} method={} source={} evidence={} basis={} detail={}",
         verification.id,
         verification.expectation_id,
         verification.status,
+        supersedes,
         quote(&verification.method)?,
         quote(&verification.source)?,
         optional_quoted(verification.evidence.as_deref())?,

@@ -228,6 +228,7 @@ pub struct Verification {
     pub id: String,
     pub expectation_id: String,
     pub status: VerificationStatus,
+    pub supersedes: Option<String>,
     pub method: String,
     pub source: String,
     pub evidence: Option<String>,

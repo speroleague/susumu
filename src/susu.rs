@@ -329,6 +329,7 @@ fn parse_verification_statement(statement: &[Token]) -> Result<Verification> {
         status: required(&values, "status")?
             .parse()
             .map_err(|error: String| anyhow!(error))?,
+        supersedes: optional_id(values.get("supersedes").map_or("-", String::as_str)),
         method: required(&values, "method")?.to_owned(),
         source: required(&values, "source")?.to_owned(),
         evidence: optional_id(required(&values, "evidence")?),
@@ -560,6 +561,7 @@ mod tests {
                 id: "v0".to_owned(),
                 expectation_id: "e0".to_owned(),
                 status: VerificationStatus::Passed,
+                supersedes: None,
                 method: "cargo test".to_owned(),
                 source: "human:engineer".to_owned(),
                 evidence: Some("ci:123".to_owned()),
@@ -668,6 +670,17 @@ finding SUS004 severity=info title="Ambiguous call targets" detail="Targets rema
 
         assert!(encoded.starts_with("verification v0"));
         assert_eq!(parse_verifications(&encoded).unwrap(), expected);
+    }
+
+    #[test]
+    fn parses_and_writes_verification_supersession() {
+        let source = "verification v_new expectation=e0 status=inconclusive supersedes=v_old method=\"recheck\" source=\"human:reviewer\" evidence=- basis=- detail=\"The prior result is no longer relied on.\";\n";
+        let parsed = parse_verifications(source).expect("parse superseding verification");
+        assert_eq!(parsed[0].supersedes.as_deref(), Some("v_old"));
+
+        let encoded = write_verifications(&parsed, false).expect("write superseding verification");
+        assert!(encoded.contains("supersedes=v_old"));
+        assert_eq!(parse_verifications(&encoded).unwrap(), parsed);
     }
 
     #[test]

@@ -658,6 +658,10 @@ struct VerifyArgs {
     #[arg(long)]
     id: Option<String>,
 
+    /// Verification id this record supersedes.
+    #[arg(long)]
+    supersedes: Option<String>,
+
     /// Mark the verification as passed.
     #[arg(long, conflicts_with_all = ["failed", "inconclusive"])]
     passed: bool,
@@ -827,6 +831,10 @@ struct AddVerification {
     /// Optional explicit id. Omit to derive a stable id from the record.
     #[arg(long)]
     id: Option<String>,
+
+    /// Verification id this record supersedes.
+    #[arg(long)]
+    supersedes: Option<String>,
 
     /// Expectation id being checked.
     #[arg(long)]
@@ -1869,6 +1877,7 @@ fn verify_shortcut(args: VerifyArgs) -> Result<()> {
         verification_id(
             &expectation.id,
             status,
+            args.supersedes.as_deref(),
             &args.method,
             &args.source,
             evidence.as_deref(),
@@ -1879,6 +1888,7 @@ fn verify_shortcut(args: VerifyArgs) -> Result<()> {
         id,
         expectation_id: expectation.id.clone(),
         status,
+        supersedes: args.supersedes.filter(|value| !value.trim().is_empty()),
         method: args.method,
         source: args.source,
         evidence,
@@ -1939,6 +1949,38 @@ fn write_verification_record(
     } else {
         Vec::new()
     };
+    if let Some(existing) = verifications
+        .iter()
+        .find(|current| current.id == verification.id)
+    {
+        if existing == &verification {
+            return Ok(existing.clone());
+        }
+        bail!(
+            "verification {} already exists; use a new id and --supersedes to preserve history",
+            verification.id
+        );
+    }
+    if let Some(superseded_id) = verification.supersedes.as_deref() {
+        let Some(superseded) = verifications
+            .iter()
+            .find(|current| current.id == superseded_id)
+        else {
+            bail!(
+                "verification {} cannot supersede missing verification {}",
+                verification.id,
+                superseded_id
+            );
+        };
+        if superseded.expectation_id != verification.expectation_id {
+            bail!(
+                "verification {} must supersede a record for expectation {}, not {}",
+                verification.id,
+                verification.expectation_id,
+                superseded.expectation_id
+            );
+        }
+    }
     merge_verifications(&mut verifications, vec![verification.clone()]);
     write_text_file(file, &write_verifications(&verifications, minify)?)?;
     Ok(verification)
@@ -3803,6 +3845,7 @@ fn add_verification(args: AddVerification) -> Result<()> {
         verification_id(
             &args.expectation,
             status,
+            args.supersedes.as_deref(),
             &args.method,
             &args.source,
             evidence.as_deref(),
@@ -3813,6 +3856,7 @@ fn add_verification(args: AddVerification) -> Result<()> {
         id,
         expectation_id: args.expectation,
         status,
+        supersedes: args.supersedes.filter(|value| !value.trim().is_empty()),
         method: args.method,
         source: args.source,
         evidence,
@@ -3843,25 +3887,12 @@ fn list_verifications(args: &ListVerifications) -> Result<()> {
 }
 
 fn remove_verification(args: &RemoveVerification) -> Result<()> {
-    let mut verifications = read_verification_sidecar(&args.file)?;
-    let original_len = verifications.len();
-    verifications.retain(|verification| verification.id != args.id);
-    if verifications.len() == original_len {
-        bail!(
-            "{} does not contain verification {}",
-            args.file.display(),
-            args.id
-        );
-    }
-
-    fs::write(&args.file, write_verifications(&verifications, false)?)
-        .with_context(|| format!("could not write {}", args.file.display()))?;
-    eprintln!(
-        "removed verification {} from {}",
+    bail!(
+        "verification records are append-only; cannot remove {} from {}. Add a new verification with --supersedes {} and the replacement status",
         args.id,
-        args.file.display()
-    );
-    Ok(())
+        args.file.display(),
+        args.id
+    )
 }
 
 fn add_decision(args: AddDecision) -> Result<()> {
@@ -5045,6 +5076,7 @@ fn expectation_id(
 fn verification_id(
     expectation_id: &str,
     status: VerificationStatus,
+    supersedes: Option<&str>,
     method: &str,
     source: &str,
     evidence: Option<&str>,
@@ -5054,6 +5086,7 @@ fn verification_id(
     for part in [
         expectation_id.to_owned(),
         status.to_string(),
+        supersedes.unwrap_or("-").to_owned(),
         method.to_owned(),
         source.to_owned(),
         evidence.unwrap_or("-").to_owned(),
@@ -5804,6 +5837,7 @@ mod tests {
             target: temp.path().to_path_buf(),
             file: output.clone(),
             id: None,
+            supersedes: None,
             passed: true,
             failed: false,
             inconclusive: false,
@@ -5837,6 +5871,7 @@ mod tests {
             target: PathBuf::from("."),
             file: PathBuf::from("verifications.susu"),
             id: None,
+            supersedes: None,
             passed: false,
             failed: false,
             inconclusive: false,
@@ -5850,6 +5885,25 @@ mod tests {
         });
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn verification_remove_preserves_append_only_history() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let file = temp.path().join("verifications.susu");
+        fs::write(
+            &file,
+            "verification v_old expectation=e_verify status=passed supersedes=- method=\"cargo test\" source=\"human:test\" evidence=- basis=- detail=\"Passed.\";\n",
+        )
+        .expect("write verification sidecar");
+
+        let result = remove_verification(&RemoveVerification {
+            file: file.clone(),
+            id: "v_old".to_owned(),
+        });
+
+        assert!(result.is_err());
+        assert!(fs::read_to_string(file).unwrap().contains("v_old"));
     }
 
     #[test]
@@ -5987,6 +6041,7 @@ mod tests {
             id: "v_one_passed".to_owned(),
             expectation_id: "e_project_one".to_owned(),
             status: VerificationStatus::Passed,
+            supersedes: None,
             method: "cargo test".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:1".to_owned()),
@@ -5997,6 +6052,7 @@ mod tests {
             id: "v_one_failed".to_owned(),
             expectation_id: "e_project_one".to_owned(),
             status: VerificationStatus::Failed,
+            supersedes: None,
             method: "manual review".to_owned(),
             source: "human:test".to_owned(),
             evidence: Some("review:1".to_owned()),
@@ -6007,6 +6063,7 @@ mod tests {
             id: "v_one_inconclusive".to_owned(),
             expectation_id: "e_project_one".to_owned(),
             status: VerificationStatus::Inconclusive,
+            supersedes: None,
             method: "log review".to_owned(),
             source: "human:test".to_owned(),
             evidence: None,
@@ -6158,6 +6215,7 @@ mod tests {
             id: "v_checkout".to_owned(),
             expectation_id: "e_checkout_sequence".to_owned(),
             status: VerificationStatus::Passed,
+            supersedes: None,
             method: "cargo test checkout".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:checkout".to_owned()),
@@ -6440,6 +6498,7 @@ mod tests {
             id: "v_checkout".to_owned(),
             expectation_id: "e_checkout_sequence".to_owned(),
             status: VerificationStatus::Passed,
+            supersedes: None,
             method: "cargo test checkout".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:checkout".to_owned()),
@@ -6900,6 +6959,7 @@ mod tests {
             id: "v_checkout_failed".to_owned(),
             expectation_id: "e_checkout_sequence".to_owned(),
             status: VerificationStatus::Failed,
+            supersedes: None,
             method: "manual review".to_owned(),
             source: "human:qa".to_owned(),
             evidence: Some("review:1".to_owned()),

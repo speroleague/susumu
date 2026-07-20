@@ -245,13 +245,17 @@ cargo run -- expectation list --file expectations.susu
 cargo run -- expectation remove --file expectations.susu e_91bbd1
 ```
 
-Create, list, or remove verification sidecars:
+Create or list verification sidecars:
 
 ```powershell
 cargo run -- verification add --file verifications.susu --expectation e_91bbd1 --status passed --method "cargo test checkout_order" --source ci:github-actions --evidence run:123456 --detail "The checkout order test passed in CI."
 cargo run -- verification list --file verifications.susu
-cargo run -- verification remove --file verifications.susu v_checkout_order
+cargo run -- verification add --file verifications.susu --expectation e_91bbd1 --status inconclusive --supersedes v_checkout_order --method "Await retained CI evidence" --source human:engineer --detail "The prior verification is no longer relied on for this review."
 ```
+
+Verification sidecars are append-only through supported commands. `verification remove` fails so a prior assertion cannot be silently removed from the supported workflow; use a new record with `--supersedes` to document a replacement or retraction. This is workflow integrity, not tamper-proofing: ordinary text files remain subject to Git and filesystem controls until a future anchored integrity feature is used.
+
+Susumu can support an organization's compliance process by organizing evidence, review state, provenance, and retention information. It does not certify compliance, determine that a control or regulation has been met, or promise that it will be met. Any compliance conclusion remains the responsibility of the relevant people, process, and organization.
 
 Create, list, or remove decision sidecars:
 

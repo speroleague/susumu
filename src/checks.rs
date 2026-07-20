@@ -296,6 +296,7 @@ mod tests {
             id: "v_checkout".to_owned(),
             expectation_id: "e_checkout".to_owned(),
             status: VerificationStatus::Failed,
+            supersedes: None,
             method: "cargo test checkout".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:checkout".to_owned()),

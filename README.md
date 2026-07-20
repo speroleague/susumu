@@ -91,10 +91,16 @@ Build and immediately serve the portal:
 cargo run -- review --serve
 ```
 
-Open the latest portal:
+Open the latest static portal export in your default browser:
 
 ```powershell
 cargo run -- open
+```
+
+Use the local server when the portal needs to be served over HTTP:
+
+```powershell
+cargo run -- open --serve
 ```
 
 Print the saved review summary instead of serving:

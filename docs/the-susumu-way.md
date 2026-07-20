@@ -32,6 +32,8 @@ susumu review
 susumu open
 ```
 
+`susumu open` opens the generated `.susumu/review.html` directly for a quick glance. Use `susumu open --serve` when you specifically need the local HTTP server on port 7878.
+
 ## Which files people edit
 
 People edit authored sidecars:

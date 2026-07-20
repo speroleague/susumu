@@ -509,9 +509,10 @@ struct ReviewExportHtmlArgs {
     output: PathBuf,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Args)]
 struct OpenArgs {
-    /// Review packet to open.
+    /// Review packet whose sibling review.html file should be opened.
     #[arg(default_value = ".susumu/review.susu")]
     packet: PathBuf,
 
@@ -523,11 +524,15 @@ struct OpenArgs {
     #[arg(long, default_value_t = 7878)]
     port: u16,
 
-    /// Print the review summary instead of serving the portal.
+    /// Serve the packet locally instead of opening its static HTML export.
+    #[arg(long)]
+    serve: bool,
+
+    /// Print the review summary instead of opening the portal.
     #[arg(long)]
     summary: bool,
 
-    /// Open the embedded artifact in the Susumu TUI instead of serving the portal.
+    /// Open the embedded artifact in the Susumu TUI instead of opening the portal.
     #[arg(long)]
     tui: bool,
 
@@ -535,7 +540,7 @@ struct OpenArgs {
     #[arg(long, default_value_t = 8)]
     max_items: usize,
 
-    /// Emit the stored review packet JSON instead of serving the portal.
+    /// Emit the stored review packet JSON instead of opening the portal.
     #[arg(long)]
     json: bool,
 }
@@ -1327,11 +1332,45 @@ fn open_shortcut(args: &OpenArgs) -> Result<()> {
         });
     }
 
-    serve_review(&ReviewServeArgs {
-        packet: args.packet.clone(),
-        host: args.host.clone(),
-        port: args.port,
-    })
+    if args.serve {
+        return serve_review(&ReviewServeArgs {
+            packet: args.packet.clone(),
+            host: args.host.clone(),
+            port: args.port,
+        });
+    }
+
+    open_static_review(&args.packet)
+}
+
+fn open_static_review(packet: &Path) -> Result<()> {
+    let html = packet.with_extension("html");
+    if !html.is_file() {
+        bail!(
+            "could not find static review portal at {}; run `susumu review` first",
+            html.display()
+        );
+    }
+
+    let status = if cfg!(target_os = "windows") {
+        ProcessCommand::new("explorer.exe").arg(&html).status()
+    } else if cfg!(target_os = "macos") {
+        ProcessCommand::new("open").arg(&html).status()
+    } else {
+        ProcessCommand::new("xdg-open").arg(&html).status()
+    }
+    .with_context(|| format!("could not open static review portal {}", html.display()))?;
+
+    if !status.success() {
+        bail!(
+            "could not open static review portal {} (browser launcher exited with {})",
+            html.display(),
+            status
+        );
+    }
+
+    println!("Opened static review portal: {}", html.display());
+    Ok(())
 }
 
 fn status_shortcut(args: &StatusArgs) -> Result<()> {
@@ -5794,6 +5833,17 @@ mod tests {
         let html = fs::read_to_string(&html_path).expect("read html portal");
         assert!(html.contains("Daily Memory &middot;"));
         assert!(html.contains(":root{--accent:#778899}"));
+    }
+
+    #[test]
+    fn open_static_review_requires_review_export() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let packet = temp.path().join("review.susu");
+
+        let error = open_static_review(&packet).expect_err("missing HTML should fail");
+
+        assert!(error.to_string().contains("run `susumu review` first"));
+        assert!(error.to_string().contains("review.html"));
     }
 
     #[test]

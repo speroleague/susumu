@@ -40,14 +40,15 @@ fn write_source_statements(analysis: &ProjectAnalysis, statements: &mut Vec<Stri
     }
     for symbol in &analysis.symbols {
         statements.push(format!(
-            "symbol {} name={} kind={} file={} start={} end={} entry={}",
+            "symbol {} name={} kind={} file={} start={} end={} entry={} hash={}",
             symbol.id,
             quote(&symbol.name)?,
             symbol.kind,
             symbol.file_id,
             symbol.location.start_token(),
             symbol.location.end_token(),
-            symbol.entrypoint
+            symbol.entrypoint,
+            symbol.content_hash.as_deref().unwrap_or("-")
         ));
     }
     for dependency in &analysis.dependencies {

@@ -82,6 +82,7 @@ pub fn parse_susu(source: &str) -> Result<ProjectAnalysis> {
                         .parse()
                         .map_err(|error: String| anyhow!(error))?,
                     file_id: required(&values, "file")?.to_owned(),
+                    content_hash: optional_id(values.get("hash").map_or("-", String::as_str)),
                     location: parse_location(&values)?,
                     entrypoint: required(&values, "entry")?
                         .parse()
@@ -502,6 +503,7 @@ mod tests {
                 name: "main".to_owned(),
                 kind: SymbolKind::Function,
                 file_id: "f0".to_owned(),
+                content_hash: Some("symbol-hash0".to_owned()),
                 location: Location {
                     start_line: 1,
                     start_column: 1,

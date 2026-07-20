@@ -253,6 +253,59 @@ fn load_order() {
     }
 
     #[test]
+    fn symbol_fingerprints_ignore_unrelated_file_edits() {
+        let directory = tempdir().unwrap();
+        let source_directory = directory.path().join("src");
+        fs::create_dir(&source_directory).unwrap();
+        let source_path = source_directory.join("main.rs");
+        fs::write(
+            &source_path,
+            "fn first() {\n    1;\n}\n\nfn second() {\n    2;\n}\n",
+        )
+        .unwrap();
+
+        let before = scan_project(directory.path()).unwrap();
+        let first_before = before
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "first")
+            .unwrap()
+            .content_hash
+            .clone();
+        let second_before = before
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "second")
+            .unwrap()
+            .content_hash
+            .clone();
+
+        fs::write(
+            source_path,
+            "fn first() {\n    1;\n}\n\nfn second() {\n    3;\n}\n",
+        )
+        .unwrap();
+        let after = scan_project(directory.path()).unwrap();
+        let first_after = after
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "first")
+            .unwrap()
+            .content_hash
+            .clone();
+        let second_after = after
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "second")
+            .unwrap()
+            .content_hash
+            .clone();
+
+        assert_eq!(first_before, first_after);
+        assert_ne!(second_before, second_after);
+    }
+
+    #[test]
     fn scans_the_initial_language_set() {
         let directory = tempdir().unwrap();
         fs::write(

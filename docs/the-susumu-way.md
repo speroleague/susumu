@@ -47,7 +47,7 @@ The most important one is `expectations.susu`. Start there. A project does not n
 
 The easy `susumu review` path automatically loads `expectations.susu` and `verifications.susu` from the project directory when they exist.
 
-For file-targeted expectations, use a repository-relative path and Susumu resolves it to the stable scanner id. `susumu resolve src/checkout.rs` is available when you need to inspect or script the mapping. The scanner currently fingerprints whole files for staleness; symbol- and line-aware fingerprints are a planned follow-up once the file-level behavior has been exercised in real projects.
+For file-targeted expectations, use a repository-relative path and Susumu resolves it to the stable scanner id. `susumu resolve src/checkout.rs` is available when you need to inspect or script the mapping. File-targeted evidence remains intentionally whole-file; symbol- and handler-targeted evidence now fingerprints the parsed symbol region, with a file-level fallback for legacy artifacts or unresolved scopes.
 
 Projects can also add `susumu.toml` for portal branding. The `[portal]` section can set a title and soft color values such as `background`, `panel`, `text`, `muted`, `line`, and `accent`. This changes the generated HTML shell, not the `.susu` evidence model.
 

@@ -21,7 +21,7 @@ Version 1 contains observed evidence plus explicit authored intent:
 - `work` - a recorded activity by a human, agent, import, or automation, optionally linked to an expectation and evidence reference.
 - `finding` - a deterministic rule result with source, optional file link, and optional subject link.
 
-Files, symbols, and workflows receive deterministic ids derived from stable source identity rather than scan order. This allows review targets to survive unrelated line changes and rescans. A flow uses real arrow syntax:
+Files, symbols, and workflows receive deterministic ids derived from stable source identity rather than scan order. Symbols also carry a fingerprint of their parsed source region, so verification and decision evidence for one symbol does not become stale when unrelated code in the same file changes. Older artifacts and targets without a narrower scope use the file-level fallback. A flow uses real arrow syntax:
 
 ```susu
 flow s_14f9a710a831c89a -> s_325146f3bd3461ad call="authorize" confidence=exact start=44:5 end=44:27;

@@ -115,6 +115,9 @@ pub struct Symbol {
     pub name: String,
     pub kind: SymbolKind,
     pub file_id: String,
+    /// Hash of the parsed symbol region when the scanner could determine it.
+    /// Older artifacts may omit this and use the file-level fallback.
+    pub content_hash: Option<String>,
     pub location: Location,
     pub entrypoint: bool,
 }

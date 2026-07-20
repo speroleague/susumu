@@ -304,11 +304,28 @@ fn target_fingerprint(
             .and_then(|file| file.content_hash.clone()),
         ExpectationTarget::Symbol => subject
             .and_then(|id| analysis.symbols.iter().find(|symbol| symbol.id == id))
-            .and_then(|symbol| located_fingerprint(analysis, &symbol.file_id, &symbol.location)),
+            .and_then(|symbol| {
+                symbol
+                    .content_hash
+                    .clone()
+                    .or_else(|| located_fingerprint(analysis, &symbol.file_id, &symbol.location))
+            }),
         ExpectationTarget::Workflow => subject
             .and_then(|id| analysis.workflows.iter().find(|workflow| workflow.id == id))
             .and_then(|workflow| {
-                located_fingerprint(analysis, &workflow.file_id, &workflow.location)
+                workflow
+                    .entry_symbol
+                    .as_deref()
+                    .and_then(|symbol_id| {
+                        analysis
+                            .symbols
+                            .iter()
+                            .find(|symbol| symbol.id == symbol_id)
+                            .and_then(|symbol| symbol.content_hash.clone())
+                    })
+                    .or_else(|| {
+                        located_fingerprint(analysis, &workflow.file_id, &workflow.location)
+                    })
             }),
     }
 }
@@ -536,6 +553,7 @@ mod tests {
                 name: "checkout".to_owned(),
                 kind: SymbolKind::Function,
                 file_id: "f_main".to_owned(),
+                content_hash: Some("symbol_hash0".to_owned()),
                 location: Location {
                     start_line: 1,
                     start_column: 1,
@@ -733,6 +751,7 @@ mod tests {
         assert!(analysis.decisions[0].basis.is_some());
 
         analysis.files[0].content_hash = Some("hash1".to_owned());
+        analysis.symbols[0].content_hash = Some("symbol_hash1".to_owned());
         refresh_relationship_findings(&mut analysis);
 
         assert!(analysis.findings.iter().any(|finding| {
@@ -762,10 +781,41 @@ mod tests {
         assert!(analysis.verifications[0].basis.is_some());
 
         analysis.files[0].content_hash = Some("hash1".to_owned());
+        analysis.symbols[0].content_hash = Some("symbol_hash1".to_owned());
         refresh_relationship_findings(&mut analysis);
 
         assert!(analysis.findings.iter().any(|finding| {
             finding.rule_id == "SUS023" && finding.subject.as_deref() == Some("v_checkout")
         }));
+    }
+
+    #[test]
+    fn symbol_verification_ignores_unrelated_file_changes() {
+        let mut analysis = analysis_with_expectations(vec![expectation(
+            "e_checkout",
+            ExpectationTarget::Symbol,
+            Some("s_checkout"),
+        )]);
+        analysis.verifications.push(Verification {
+            id: "v_checkout".to_owned(),
+            expectation_id: "e_checkout".to_owned(),
+            status: VerificationStatus::Passed,
+            method: "manual review".to_owned(),
+            source: "human:test".to_owned(),
+            evidence: Some("review:test".to_owned()),
+            basis: None,
+            detail: "Checkout behavior matched the expectation.".to_owned(),
+        });
+
+        anchor_verification_bases(&mut analysis);
+        analysis.files[0].content_hash = Some("unrelated_file_change".to_owned());
+        refresh_relationship_findings(&mut analysis);
+
+        assert!(
+            !analysis
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id == "SUS023")
+        );
     }
 }

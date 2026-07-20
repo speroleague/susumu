@@ -84,6 +84,7 @@ pub(crate) fn scan_file(
         analysis,
         &file_id,
         &relative_string,
+        &source,
         pending_calls,
         pending_workflows,
         parsed,
@@ -159,11 +160,12 @@ fn record_parsed_file(
     analysis: &mut ProjectAnalysis,
     file_id: &str,
     relative_path: &str,
+    source: &str,
     pending_calls: &mut Vec<PendingCall>,
     pending_workflows: &mut Vec<PendingWorkflow>,
     parsed: crate::language::ParsedFile,
 ) {
-    let symbol_ids = record_symbols(analysis, file_id, relative_path, parsed.symbols);
+    let symbol_ids = record_symbols(analysis, file_id, relative_path, source, parsed.symbols);
     for dependency in parsed.dependencies {
         analysis.dependencies.push(Dependency {
             file_id: file_id.to_owned(),
@@ -196,6 +198,7 @@ fn record_symbols(
     analysis: &mut ProjectAnalysis,
     file_id: &str,
     relative_path: &str,
+    source: &str,
     parsed_symbols: Vec<crate::language::ParsedSymbol>,
 ) -> Vec<String> {
     let mut occurrences = HashMap::new();
@@ -214,11 +217,26 @@ fn record_symbols(
             name: parsed_symbol.name,
             kind: parsed_symbol.kind,
             file_id: file_id.to_owned(),
+            content_hash: source_region(source, &parsed_symbol.location).map(content_hash),
             location: parsed_symbol.location,
             entrypoint: parsed_symbol.entrypoint,
         });
     }
     symbol_ids
+}
+
+fn source_region<'a>(source: &'a str, location: &crate::model::Location) -> Option<&'a str> {
+    let mut line_offsets = vec![0];
+    for (offset, byte) in source.bytes().enumerate() {
+        if byte == b'\n' {
+            line_offsets.push(offset + 1);
+        }
+    }
+    let start = *line_offsets.get(location.start_line.saturating_sub(1))?
+        + location.start_column.saturating_sub(1);
+    let end = *line_offsets.get(location.end_line.saturating_sub(1))?
+        + location.end_column.saturating_sub(1);
+    (start <= end && end <= source.len()).then(|| &source[start..end])
 }
 
 fn content_hash(source: &str) -> String {

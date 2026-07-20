@@ -77,7 +77,7 @@ cargo run -- expectation remove --file expectations.susu e_docs
 The authoring commands write only expectation sidecars. If the target file looks like a full `.susu` scan artifact, they refuse to overwrite it.
 
 - `target` is `project`, `file`, `symbol`, or `workflow`.
-- `subject` is the target id, or `-` for project-wide expectations.
+- `subject` is the target id, or `-` for project-wide expectations. For file expectations, `expectation add --subject <path>` resolves a repository-relative path to its scanner id; `susumu resolve <path>` prints the id explicitly when scripting or reviewing a sidecar.
 - `status` is `proposed`, `accepted`, or `superseded`.
 - `source` records provenance, not authority. Examples: `human:product`, `policy:security`, `import:jira`, or `ai:draft`.
 

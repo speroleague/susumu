@@ -127,6 +127,9 @@ enum Command {
     /// Show expectation readiness from the latest review packet.
     Readiness(ReadinessArgs),
 
+    /// Resolve a source path to a scanner-assigned evidence id.
+    Resolve(ResolveArgs),
+
     /// Browse and search expectation ids for reviews, Git links, and verification.
     Expectations(ExpectationsArgs),
 
@@ -306,7 +309,7 @@ struct ReviewShortcutArgs {
     target: PathBuf,
 
     /// Directory for convention-based Susumu outputs.
-    #[arg(long, default_value = ".susumu", value_name = "DIR")]
+    #[arg(short = 'o', long, default_value = ".susumu", value_name = "DIR")]
     output_dir: PathBuf,
 
     /// Merge work records from a .susu artifact or work-only fragment.
@@ -597,6 +600,20 @@ struct ReadinessArgs {
 }
 
 #[derive(Debug, Args)]
+struct ResolveArgs {
+    /// Source path to resolve, relative to the project root.
+    path: PathBuf,
+
+    /// Project directory to scan.
+    #[arg(long, default_value = ".")]
+    target: PathBuf,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
 struct ExpectationsArgs {
     /// Directory to scan, or an existing .susu artifact to inspect.
     #[arg(default_value = ".")]
@@ -762,6 +779,10 @@ struct AddExpectation {
     /// Target id. Required for file, symbol, and workflow expectations.
     #[arg(long)]
     subject: Option<String>,
+
+    /// Project directory used to resolve a file path subject to its scanner id.
+    #[arg(long, default_value = ".")]
+    target_root: PathBuf,
 
     /// Status: proposed, accepted, or superseded.
     #[arg(long, default_value = "proposed")]
@@ -1165,9 +1186,9 @@ struct GitRewindArgs {
     #[arg(long)]
     from: String,
 
-    /// Current .susu artifact to compare against.
+    /// Current .susu artifact to compare against. If omitted, scan the repository now.
     #[arg(long)]
-    artifact: PathBuf,
+    artifact: Option<PathBuf>,
 
     /// Optionally write the generated old-ref artifact for inspection.
     #[arg(long)]
@@ -1245,6 +1266,7 @@ fn run_command(command: Command) -> Result<()> {
         Command::Open(args) => open_shortcut(&args),
         Command::Status(args) => status_shortcut(&args),
         Command::Readiness(args) => readiness_shortcut(&args),
+        Command::Resolve(args) => resolve_target(&args),
         Command::Expectations(args) => expectations_shortcut(&args),
         Command::Verify(args) => verify_shortcut(args),
         Command::Expectation { command } => match command {
@@ -3195,7 +3217,11 @@ fn git_rewind(args: &GitRewindArgs) -> Result<()> {
         let mut old = scan_project(&snapshot_dir)
             .with_context(|| format!("could not scan Git ref {}", args.from))?;
         old.project_name = format!("{}@{}", git_repo_label(&args.repo), args.from);
-        let new = read_analysis_artifact(&args.artifact)?;
+        let new = if let Some(artifact) = &args.artifact {
+            read_analysis_artifact(artifact)?
+        } else {
+            load_analysis(&args.repo, None, None, None, None, false)?
+        };
         if let Some(output) = &args.old_output {
             fs::write(output, write_susu(&old, args.minify)?)
                 .with_context(|| format!("could not write {}", output.display()))?;
@@ -3210,7 +3236,10 @@ fn git_rewind(args: &GitRewindArgs) -> Result<()> {
                 "Susumu git rewind: {}@{} -> {}",
                 args.repo.display(),
                 args.from,
-                args.artifact.display()
+                args.artifact.as_ref().map_or_else(
+                    || args.repo.display().to_string(),
+                    |path| path.display().to_string()
+                )
             );
             println!();
             print_diff_report(&old, &new, &report, args.max_items);
@@ -3333,7 +3362,7 @@ struct GitRewindJson<'a> {
 struct GitRewindGitJson {
     repo: String,
     from: String,
-    artifact: String,
+    artifact: Option<String>,
     old_output: Option<String>,
 }
 
@@ -3508,7 +3537,10 @@ fn print_git_rewind_json(
         git: GitRewindGitJson {
             repo: args.repo.display().to_string(),
             from: args.from.clone(),
-            artifact: args.artifact.display().to_string(),
+            artifact: args
+                .artifact
+                .as_ref()
+                .map(|path| path.display().to_string()),
             old_output: args
                 .old_output
                 .as_ref()
@@ -3629,7 +3661,10 @@ fn expectation_title(analysis: &ProjectAnalysis, id: &str) -> String {
 fn add_expectation(args: AddExpectation) -> Result<()> {
     let target = ExpectationTarget::from(args.target);
     let status = ExpectationStatus::from(args.status);
-    let subject = expectation_subject(target, args.subject)?;
+    let subject = expectation_subject(
+        target,
+        resolve_file_subject(&args.target_root, target, args.subject)?,
+    )?;
     let id = args.id.unwrap_or_else(|| {
         expectation_id(
             target,
@@ -3662,6 +3697,64 @@ fn add_expectation(args: AddExpectation) -> Result<()> {
         .with_context(|| format!("could not write {}", args.file.display()))?;
     eprintln!("wrote expectation {id} to {}", args.file.display());
     Ok(())
+}
+
+fn resolve_target(args: &ResolveArgs) -> Result<()> {
+    let analysis = scan_project(&args.target)
+        .with_context(|| format!("could not scan {}", args.target.display()))?;
+    let requested = normalize_git_path(&args.path.to_string_lossy());
+    let matches = analysis
+        .files
+        .iter()
+        .filter(|file| file.path == requested)
+        .collect::<Vec<_>>();
+    if matches.is_empty() {
+        bail!(
+            "could not resolve file path `{}` under {}; run `susumu resolve --help` for usage",
+            args.path.display(),
+            args.target.display()
+        );
+    }
+    if args.json {
+        println!(
+            "{}",
+            serde_json::json!({"path": matches[0].path, "id": matches[0].id})
+        );
+    } else {
+        println!("{}\t{}", matches[0].id, matches[0].path);
+    }
+    Ok(())
+}
+
+fn resolve_file_subject(
+    target_root: &Path,
+    target: ExpectationTarget,
+    subject: Option<String>,
+) -> Result<Option<String>> {
+    if target != ExpectationTarget::File {
+        return Ok(subject);
+    }
+    let Some(subject) = subject else {
+        return Ok(None);
+    };
+    if subject.starts_with("f_") {
+        return Ok(Some(subject));
+    }
+    let analysis = scan_project(target_root).with_context(|| {
+        format!(
+            "could not scan {} while resolving file subject",
+            target_root.display()
+        )
+    })?;
+    let requested = normalize_git_path(&subject);
+    let Some(file) = analysis.files.iter().find(|file| file.path == requested) else {
+        bail!(
+            "file subject `{subject}` did not resolve under {}; use `susumu resolve {subject}` or pass its f_ id",
+            target_root.display()
+        );
+    };
+    eprintln!("resolved file subject {subject} -> {}", file.id);
+    Ok(Some(file.id.clone()))
 }
 
 fn list_expectations(args: &ListExpectations) -> Result<()> {
@@ -7363,5 +7456,34 @@ mod tests {
         assert!(safe_snapshot_path(Path::new("snapshot"), "/secret.rs").is_err());
         assert!(safe_snapshot_path(Path::new("snapshot"), "C:/secret.rs").is_err());
         assert!(safe_snapshot_path(Path::new("snapshot"), "c:/secret.rs").is_err());
+    }
+
+    #[test]
+    fn file_expectation_paths_resolve_to_scanner_ids() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join("main.rs"), "fn main() {}\n").expect("write source");
+
+        let subject = resolve_file_subject(
+            temp.path(),
+            ExpectationTarget::File,
+            Some(".\\main.rs".to_owned()),
+        )
+        .expect("resolve file path");
+
+        assert_eq!(subject, Some("f_a4075800b4a04993".to_owned()));
+    }
+
+    #[test]
+    fn review_shortcut_accepts_output_shorthand() {
+        let cli = Cli::try_parse_from(["susumu", "review", "-o", "build/review"])
+            .expect("parse review output shorthand");
+        let Command::Review {
+            args,
+            command: None,
+        } = cli.command.expect("review command")
+        else {
+            panic!("expected review shortcut");
+        };
+        assert_eq!(args.output_dir, PathBuf::from("build/review"));
     }
 }

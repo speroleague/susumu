@@ -239,6 +239,8 @@ Create or update expectation sidecars:
 
 ```powershell
 cargo run -- expectation add --file expectations.susu --target project --source human:product --title "Keep architecture explainable" --detail "The project should keep scanner evidence, authored intent, and review feedback in the same portable artifact."
+cargo run -- resolve src/main.rs
+cargo run -- expectation add --file expectations.susu --target file --subject src/main.rs --target-root . --title "Keep the CLI explainable" --detail "The CLI should keep its review workflow understandable."
 cargo run -- expectation list --file expectations.susu
 cargo run -- expectation remove --file expectations.susu e_91bbd1
 ```
@@ -301,12 +303,13 @@ cargo run -- git link abc123 e_susumu_docs_teach_daily_workflow --kind documenta
 Compare the current artifact against code evidence from an older Git ref:
 
 ```powershell
-cargo run -- git rewind --from HEAD~1 --artifact project.susu
-cargo run -- git rewind --from main --artifact project.susu --json
+cargo run -- git rewind --from HEAD~1 --fail-on-stale
+cargo run -- git rewind --from main --json --fail-on-stale
+cargo run -- git rewind --from main --artifact .susumu/project.susu --json
 cargo run -- git rewind --from main --artifact project.susu --old-output old-main.susu
 ```
 
-`git rewind` reconstructs the selected ref into a temporary snapshot without checking out or mutating the repository, scans that snapshot, and runs the same comparison model as `diff`.
+`git rewind` reconstructs the selected ref into a temporary snapshot without checking out or mutating the repository, scans that snapshot, scans the current repository when `--artifact` is omitted, and runs the same comparison model as `diff`. `--fail-on-stale` makes it suitable for CI or a pre-merge gate.
 
 Check an artifact or project for review blockers:
 

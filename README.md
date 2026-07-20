@@ -250,6 +250,7 @@ Create or list verification sidecars:
 ```powershell
 cargo run -- verification add --file verifications.susu --expectation e_91bbd1 --status passed --method "cargo test checkout_order" --source ci:github-actions --evidence run:123456 --detail "The checkout order test passed in CI."
 cargo run -- verification add --file verifications.susu --expectation e_91bbd1 --status passed --method "test runner invocation" --evidence-file target/test-report.xml --detail "The locally retained report is content-addressed without copying its contents into the sidecar."
+cargo run -- verification add --file verifications.susu --expectation e_91bbd1 --status passed --method "test runner invocation" --evidence-file target/test-report.xml --execution-file target/execution.json --detail "Execution metadata is recorded as supplied by the runner and remains untrusted until separately authenticated."
 cargo run -- verification list --file verifications.susu
 cargo run -- verification add --file verifications.susu --expectation e_91bbd1 --status inconclusive --supersedes v_checkout_order --method "Await retained CI evidence" --source human:engineer --detail "The prior verification is no longer relied on for this review."
 ```
@@ -257,6 +258,8 @@ cargo run -- verification add --file verifications.susu --expectation e_91bbd1 -
 Verification sidecars are append-only through supported commands. `verification remove` fails so a prior assertion cannot be silently removed from the supported workflow; use a new record with `--supersedes` to document a replacement or retraction. This is workflow integrity, not tamper-proofing: ordinary text files remain subject to Git and filesystem controls until a future anchored integrity feature is used.
 
 `--evidence-file` records only a `sha256:<digest>` of a local artifact; Susumu does not upload, retain, or inspect the artifact contents. This is provider-neutral and works with any CI/CD system that can make an evidence file available to the command. A content hash proves only that the referenced bytes match later; it does not prove that a test ran, who produced the file, or that any compliance requirement was met. Retention, provenance, execution claims, and human review remain separate responsibilities.
+
+`--execution-file` accepts JSON with `result`, optional `exit_code`, `run_id`, `issued_at`, and `artifact_manifest`. Susumu records these as declared execution metadata; it does not authenticate the producer, timestamp, command, run, manifest, or compliance result.
 
 Susumu can support an organization's compliance process by organizing evidence, review state, provenance, and retention information. It does not certify compliance, determine that a control or regulation has been met, or promise that it will be met. Any compliance conclusion remains the responsibility of the relevant people, process, and organization.
 

@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::model::{Decision, Expectation, ProjectAnalysis, Verification, Work};
 
@@ -222,12 +222,20 @@ fn verification_statement(verification: &Verification) -> Result<String> {
         .as_deref()
         .map(|id| format!(" supersedes={id}"))
         .unwrap_or_default();
+    let execution = if let Some(metadata) = verification.execution.as_ref() {
+        let value = serde_json::to_string(metadata)
+            .context("could not serialize verification execution metadata")?;
+        format!(" execution={}", quote(&value)?)
+    } else {
+        String::new()
+    };
     Ok(format!(
-        "verification {} expectation={} status={}{} method={} source={} evidence={} basis={} detail={}",
+        "verification {} expectation={} status={}{}{} method={} source={} evidence={} basis={} detail={}",
         verification.id,
         verification.expectation_id,
         verification.status,
         supersedes,
+        execution,
         quote(&verification.method)?,
         quote(&verification.source)?,
         optional_quoted(verification.evidence.as_deref())?,

@@ -16,7 +16,8 @@ use susumu::{
     analysis::{anchor_decision_bases, anchor_verification_bases, refresh_derived_analysis},
     model::{
         Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget,
-        ProjectAnalysis, Verification, VerificationStatus, Work, WorkKind, WorkStatus,
+        ProjectAnalysis, Verification, VerificationExecution, VerificationStatus, Work, WorkKind,
+        WorkStatus,
     },
     parse_decisions, parse_expectations, parse_susu, parse_verifications, parse_works,
     scan_project, tui, write_decisions, write_expectations, write_susu, write_verifications,
@@ -697,6 +698,10 @@ struct VerifyArgs {
     #[arg(long, conflicts_with = "evidence")]
     evidence_file: Option<PathBuf>,
 
+    /// JSON execution metadata to record without authenticating its claims.
+    #[arg(long)]
+    execution_file: Option<PathBuf>,
+
     /// Optional evidence fingerprint this verification was based on.
     #[arg(long)]
     basis: Option<String>,
@@ -888,6 +893,10 @@ struct AddVerification {
     /// Local evidence artifact to hash as sha256:<digest>. The file is not copied into the record.
     #[arg(long, conflicts_with = "evidence")]
     evidence_file: Option<PathBuf>,
+
+    /// JSON execution metadata to record without authenticating its claims.
+    #[arg(long)]
+    execution_file: Option<PathBuf>,
 
     /// Optional evidence fingerprint this verification was based on.
     #[arg(long)]
@@ -1907,6 +1916,11 @@ fn verify_shortcut(args: VerifyArgs) -> Result<()> {
     } else {
         args.evidence.filter(|value| !value.trim().is_empty())
     };
+    let execution = args
+        .execution_file
+        .as_deref()
+        .map(read_execution_file)
+        .transpose()?;
     let detail = args.detail.unwrap_or_else(|| {
         format!(
             "Recorded by susumu verify. Expectation: {} - {}. Method: {}.",
@@ -1929,6 +1943,7 @@ fn verify_shortcut(args: VerifyArgs) -> Result<()> {
         expectation_id: expectation.id.clone(),
         status,
         supersedes: args.supersedes.filter(|value| !value.trim().is_empty()),
+        execution,
         method: args.method,
         source: args.source,
         evidence,
@@ -3885,6 +3900,11 @@ fn add_verification(args: AddVerification) -> Result<()> {
     } else {
         args.evidence.filter(|value| !value.trim().is_empty())
     };
+    let execution = args
+        .execution_file
+        .as_deref()
+        .map(read_execution_file)
+        .transpose()?;
     let id = args.id.unwrap_or_else(|| {
         verification_id(
             &args.expectation,
@@ -3901,6 +3921,7 @@ fn add_verification(args: AddVerification) -> Result<()> {
         expectation_id: args.expectation,
         status,
         supersedes: args.supersedes.filter(|value| !value.trim().is_empty()),
+        execution,
         method: args.method,
         source: args.source,
         evidence,
@@ -3949,6 +3970,14 @@ fn hash_evidence_file(path: &Path) -> Result<String> {
     let mut hash = Sha256::new();
     hash.update(bytes);
     Ok(format!("sha256:{:x}", hash.finalize()))
+}
+
+fn read_execution_file(path: &Path) -> Result<VerificationExecution> {
+    let source = fs::read_to_string(path)
+        .with_context(|| format!("could not read execution metadata file {}", path.display()))?;
+    let execution = serde_json::from_str(&source)
+        .with_context(|| format!("could not parse execution metadata file {}", path.display()))?;
+    Ok(execution)
 }
 
 fn inspect_attestation(args: &InspectAttestationArgs) -> Result<()> {
@@ -5911,6 +5940,7 @@ mod tests {
             file: output.clone(),
             id: None,
             supersedes: None,
+            execution_file: None,
             passed: true,
             failed: false,
             inconclusive: false,
@@ -5946,6 +5976,7 @@ mod tests {
             file: PathBuf::from("verifications.susu"),
             id: None,
             supersedes: None,
+            execution_file: None,
             passed: false,
             failed: false,
             inconclusive: false,
@@ -6135,6 +6166,7 @@ mod tests {
             expectation_id: "e_project_one".to_owned(),
             status: VerificationStatus::Passed,
             supersedes: None,
+            execution: None,
             method: "cargo test".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:1".to_owned()),
@@ -6146,6 +6178,7 @@ mod tests {
             expectation_id: "e_project_one".to_owned(),
             status: VerificationStatus::Failed,
             supersedes: None,
+            execution: None,
             method: "manual review".to_owned(),
             source: "human:test".to_owned(),
             evidence: Some("review:1".to_owned()),
@@ -6157,6 +6190,7 @@ mod tests {
             expectation_id: "e_project_one".to_owned(),
             status: VerificationStatus::Inconclusive,
             supersedes: None,
+            execution: None,
             method: "log review".to_owned(),
             source: "human:test".to_owned(),
             evidence: None,
@@ -6309,6 +6343,7 @@ mod tests {
             expectation_id: "e_checkout_sequence".to_owned(),
             status: VerificationStatus::Passed,
             supersedes: None,
+            execution: None,
             method: "cargo test checkout".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:checkout".to_owned()),
@@ -6592,6 +6627,7 @@ mod tests {
             expectation_id: "e_checkout_sequence".to_owned(),
             status: VerificationStatus::Passed,
             supersedes: None,
+            execution: None,
             method: "cargo test checkout".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:checkout".to_owned()),
@@ -7053,6 +7089,7 @@ mod tests {
             expectation_id: "e_checkout_sequence".to_owned(),
             status: VerificationStatus::Failed,
             supersedes: None,
+            execution: None,
             method: "manual review".to_owned(),
             source: "human:qa".to_owned(),
             evidence: Some("review:1".to_owned()),

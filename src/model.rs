@@ -229,11 +229,21 @@ pub struct Verification {
     pub expectation_id: String,
     pub status: VerificationStatus,
     pub supersedes: Option<String>,
+    pub execution: Option<VerificationExecution>,
     pub method: String,
     pub source: String,
     pub evidence: Option<String>,
     pub basis: Option<String>,
     pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VerificationExecution {
+    pub result: String,
+    pub exit_code: Option<i32>,
+    pub run_id: Option<String>,
+    pub issued_at: Option<String>,
+    pub artifact_manifest: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

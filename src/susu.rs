@@ -330,6 +330,12 @@ fn parse_verification_statement(statement: &[Token]) -> Result<Verification> {
             .parse()
             .map_err(|error: String| anyhow!(error))?,
         supersedes: optional_id(values.get("supersedes").map_or("-", String::as_str)),
+        execution: values
+            .get("execution")
+            .filter(|value| value.as_str() != "-")
+            .map(|value| serde_json::from_str(value))
+            .transpose()
+            .context("invalid verification execution metadata")?,
         method: required(&values, "method")?.to_owned(),
         source: required(&values, "source")?.to_owned(),
         evidence: optional_id(required(&values, "evidence")?),
@@ -562,6 +568,7 @@ mod tests {
                 expectation_id: "e0".to_owned(),
                 status: VerificationStatus::Passed,
                 supersedes: None,
+                execution: None,
                 method: "cargo test".to_owned(),
                 source: "human:engineer".to_owned(),
                 evidence: Some("ci:123".to_owned()),
@@ -680,6 +687,20 @@ finding SUS004 severity=info title="Ambiguous call targets" detail="Targets rema
 
         let encoded = write_verifications(&parsed, false).expect("write superseding verification");
         assert!(encoded.contains("supersedes=v_old"));
+        assert_eq!(parse_verifications(&encoded).unwrap(), parsed);
+    }
+
+    #[test]
+    fn parses_and_writes_verification_execution_metadata() {
+        let source = r#"verification v_exec expectation=e0 status=passed supersedes=- execution="{\"result\":\"passed\",\"exit_code\":0,\"run_id\":\"run-1\",\"issued_at\":\"2026-07-20T00:00:00Z\",\"artifact_manifest\":\"sha256:manifest\"}" method="cargo test" source="runner:local" evidence="sha256:artifact" basis=- detail="Execution metadata was supplied separately.";"#;
+        let parsed = parse_verifications(source).expect("parse execution metadata");
+        let execution = parsed[0].execution.as_ref().expect("execution metadata");
+        assert_eq!(execution.result, "passed");
+        assert_eq!(execution.exit_code, Some(0));
+        assert_eq!(execution.run_id.as_deref(), Some("run-1"));
+
+        let encoded = write_verifications(&parsed, false).expect("write execution metadata");
+        assert!(encoded.contains("execution="));
         assert_eq!(parse_verifications(&encoded).unwrap(), parsed);
     }
 

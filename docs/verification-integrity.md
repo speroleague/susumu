@@ -29,6 +29,8 @@ CI/CD integrations should produce a portable attestation input rather than a ven
 
 The envelope should reference artifacts by digest and stable external identifier. It should not require Susumu to upload source code, test output, secrets, or personal data. Retention and access to the referenced artifact remain the responsibility of the CI/CD and organizational systems that own it.
 
+Verification records may also carry execution metadata supplied through `--execution-file`. This makes result, exit code, run id, issuance time, and an artifact-manifest reference portable, but those values are declared until a configured verifier authenticates them.
+
 Provider adapters may translate GitHub, GitLab, Jenkins, Buildkite, a private runner, or another system into this contract, but the core Susumu model must not assume any one provider. An adapter that only copies a URL or accepts a user-supplied `ci:*` string is a convenience integration, not authentication.
 
 ## Review language

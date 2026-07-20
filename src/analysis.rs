@@ -1,132 +1,14 @@
-use std::collections::{HashMap, HashSet};
-
 use sha2::{Digest, Sha256};
 
 use crate::model::{
-    Confidence, Decision, Expectation, ExpectationStatus, ExpectationTarget, Finding,
-    ProjectAnalysis, Severity, Verification, VerificationStatus, Work, WorkflowPriority,
+    Decision, Expectation, ExpectationTarget, Finding, ProjectAnalysis, Severity, Verification,
+    Work,
 };
 
-const LARGE_FILE_LINES: usize = 600;
-const LARGE_SYMBOL_LINES: usize = 80;
-const HIGH_FAN_OUT: usize = 8;
-
 pub(crate) fn add_findings(analysis: &mut ProjectAnalysis) {
-    for file in &analysis.files {
-        if file.lines > LARGE_FILE_LINES {
-            analysis.findings.push(Finding {
-                rule_id: "SUS001".to_owned(),
-                source: "susumu:derived".to_owned(),
-                severity: Severity::Warning,
-                title: "Large source file".to_owned(),
-                detail: format!(
-                    "Observed {} with {} lines. Large files can reduce workflow and ownership clarity.",
-                    file.path, file.lines
-                ),
-                file_id: Some(file.id.clone()),
-                subject: None,
-                location: None,
-            });
-        }
-    }
-
-    for symbol in &analysis.symbols {
-        if symbol.name != "<module>" && symbol.location.line_span() > LARGE_SYMBOL_LINES {
-            analysis.findings.push(Finding {
-                rule_id: "SUS002".to_owned(),
-                source: "susumu:derived".to_owned(),
-                severity: Severity::Warning,
-                title: "Long workflow unit".to_owned(),
-                detail: format!(
-                    "Observed {} spanning {} lines. Long units can reduce independent workflow reviewability.",
-                    symbol.name,
-                    symbol.location.line_span()
-                ),
-                file_id: Some(symbol.file_id.clone()),
-                subject: Some(symbol.id.clone()),
-                location: Some(symbol.location.clone()),
-            });
-        }
-    }
-
-    let mut fan_out: HashMap<&str, HashSet<&str>> = HashMap::new();
-    for flow in &analysis.flows {
-        if let Some(to) = flow.to.as_deref() {
-            fan_out.entry(&flow.from).or_default().insert(to);
-        }
-    }
-    for (symbol_id, targets) in fan_out {
-        if targets.len() >= HIGH_FAN_OUT
-            && let Some(symbol) = analysis
-                .symbols
-                .iter()
-                .find(|symbol| symbol.id == symbol_id)
-        {
-            analysis.findings.push(Finding {
-                rule_id: "SUS003".to_owned(),
-                source: "susumu:derived".to_owned(),
-                severity: Severity::Warning,
-                title: "High fan-out".to_owned(),
-                detail: format!(
-                    "Observed {} coordinating {} internal units. High fan-out marks a code-change attention point.",
-                    symbol.name,
-                    targets.len()
-                ),
-                file_id: Some(symbol.file_id.clone()),
-                subject: Some(symbol.id.clone()),
-                location: Some(symbol.location.clone()),
-            });
-        }
-    }
-
-    let ambiguous = analysis
-        .flows
-        .iter()
-        .filter(|flow| flow.confidence == Confidence::Ambiguous)
-        .count();
-    if ambiguous > 0 {
-        analysis.findings.push(Finding {
-            rule_id: "SUS004".to_owned(),
-            source: "susumu:derived".to_owned(),
-            severity: Severity::Info,
-            title: "Ambiguous call targets".to_owned(),
-            detail: format!(
-                "{ambiguous} calls matched multiple symbols. Targets remain unresolved; no target was selected."
-            ),
-            file_id: None,
-            subject: None,
-            location: None,
-        });
-    }
-
-    add_cycle_findings(analysis);
+    crate::derived_findings::add_static_findings(analysis);
     refresh_relationship_findings(analysis);
     refresh_workflow_priorities(analysis);
-}
-
-fn add_cycle_findings(analysis: &mut ProjectAnalysis) {
-    for cycle in find_cycles(analysis) {
-        let names = cycle
-            .iter()
-            .filter_map(|id| analysis.symbols.iter().find(|symbol| &symbol.id == id))
-            .map(|symbol| symbol.name.as_str())
-            .collect::<Vec<_>>();
-        if let Some(first) = cycle
-            .first()
-            .and_then(|id| analysis.symbols.iter().find(|symbol| &symbol.id == id))
-        {
-            analysis.findings.push(Finding {
-                rule_id: "SUS005".to_owned(),
-                source: "susumu:derived".to_owned(),
-                severity: Severity::Warning,
-                title: "Call cycle".to_owned(),
-                detail: format!("Observed call cycle: {}", names.join(" -> ")),
-                file_id: Some(first.file_id.clone()),
-                subject: Some(first.id.clone()),
-                location: Some(first.location.clone()),
-            });
-        }
-    }
 }
 
 pub fn refresh_expectation_findings(analysis: &mut ProjectAnalysis) {
@@ -137,6 +19,8 @@ pub fn refresh_derived_analysis(analysis: &mut ProjectAnalysis) {
     refresh_relationship_findings(analysis);
     refresh_workflow_priorities(analysis);
 }
+
+pub use crate::workflow_priorities::refresh_workflow_priorities;
 
 pub fn refresh_relationship_findings(analysis: &mut ProjectAnalysis) {
     analysis.findings.retain(|finding| {
@@ -607,190 +491,6 @@ fn stale_subject_finding(
     }
 }
 
-pub fn refresh_workflow_priorities(analysis: &mut ProjectAnalysis) {
-    let mut priorities = analysis
-        .workflows
-        .iter()
-        .map(|workflow| {
-            let mut score = 10_u32;
-            let mut reasons = vec!["workflow trigger observed".to_owned()];
-
-            if workflow.entry_symbol.is_some() {
-                score += 25;
-                reasons.push("handler symbol resolved".to_owned());
-            }
-
-            if workflow.kind.to_string() == "http" {
-                score += 20;
-                reasons.push("HTTP route observed".to_owned());
-            }
-
-            if let Some(entry_symbol) = workflow.entry_symbol.as_deref() {
-                let outgoing = analysis
-                    .flows
-                    .iter()
-                    .filter(|flow| flow.from == entry_symbol)
-                    .count();
-                if outgoing >= 5 {
-                    score += 10;
-                    reasons.push(format!("{outgoing} outgoing call edges observed"));
-                }
-
-                let gaps = analysis
-                    .flows
-                    .iter()
-                    .filter(|flow| flow.from == entry_symbol && flow.to.is_none())
-                    .count();
-                if gaps > 0 {
-                    score += 8;
-                    reasons.push(unresolved_call_edge_reason(gaps));
-                }
-            }
-
-            for expectation in analysis.expectations.iter().filter(|expectation| {
-                expectation.target == ExpectationTarget::Workflow
-                    && expectation.subject.as_deref() == Some(workflow.id.as_str())
-            }) {
-                match expectation.status {
-                    ExpectationStatus::Accepted => {
-                        score += 20;
-                        reasons.push("accepted expectation linked".to_owned());
-                    }
-                    ExpectationStatus::Proposed => {
-                        score += 10;
-                        reasons.push("proposed expectation linked".to_owned());
-                    }
-                    ExpectationStatus::Superseded => {}
-                }
-
-                for verification in analysis
-                    .verifications
-                    .iter()
-                    .filter(|verification| verification.expectation_id == expectation.id)
-                {
-                    match verification.status {
-                        VerificationStatus::Failed => {
-                            score += 25;
-                            reasons.push("failed verification linked".to_owned());
-                        }
-                        VerificationStatus::Inconclusive => {
-                            score += 12;
-                            reasons.push("inconclusive verification linked".to_owned());
-                        }
-                        VerificationStatus::Passed => {
-                            score += 4;
-                            reasons.push("passed verification linked".to_owned());
-                        }
-                    }
-                }
-            }
-
-            let related_findings = related_finding_count(analysis, workflow);
-            if related_findings > 0 {
-                score += 6 * u32::try_from(related_findings).unwrap_or(u32::MAX);
-                reasons.push(format!("{related_findings} linked findings"));
-            }
-
-            WorkflowPriority {
-                workflow_id: workflow.id.clone(),
-                source: "susumu:derived".to_owned(),
-                score,
-                detail: reasons.join("; "),
-            }
-        })
-        .collect::<Vec<_>>();
-
-    priorities.sort_by(|left, right| {
-        right
-            .score
-            .cmp(&left.score)
-            .then_with(|| left.workflow_id.cmp(&right.workflow_id))
-    });
-    analysis.workflow_priorities = priorities;
-}
-
-fn related_finding_count(analysis: &ProjectAnalysis, workflow: &crate::model::Workflow) -> usize {
-    analysis
-        .findings
-        .iter()
-        .filter(|finding| {
-            finding.file_id.as_deref() == Some(workflow.file_id.as_str())
-                || workflow
-                    .entry_symbol
-                    .as_deref()
-                    .is_some_and(|entry| finding.subject.as_deref() == Some(entry))
-                || finding.subject.as_deref() == Some(workflow.id.as_str())
-        })
-        .count()
-}
-
-fn unresolved_call_edge_reason(gaps: usize) -> String {
-    let label = if gaps == 1 { "edge" } else { "edges" };
-    format!("{gaps} unresolved outgoing call {label}")
-}
-
-fn find_cycles(analysis: &ProjectAnalysis) -> Vec<Vec<String>> {
-    let mut graph: HashMap<&str, Vec<&str>> = HashMap::new();
-    for flow in &analysis.flows {
-        if let Some(to) = flow.to.as_deref() {
-            graph.entry(&flow.from).or_default().push(to);
-        }
-    }
-
-    let mut cycles = Vec::new();
-    let mut completed = HashSet::new();
-    let mut stack = Vec::new();
-    let mut active = HashSet::new();
-    for symbol in &analysis.symbols {
-        visit(
-            &symbol.id,
-            &graph,
-            &mut completed,
-            &mut active,
-            &mut stack,
-            &mut cycles,
-        );
-    }
-    cycles
-}
-
-fn visit<'a>(
-    node: &'a str,
-    graph: &HashMap<&'a str, Vec<&'a str>>,
-    completed: &mut HashSet<&'a str>,
-    active: &mut HashSet<&'a str>,
-    stack: &mut Vec<&'a str>,
-    cycles: &mut Vec<Vec<String>>,
-) {
-    if completed.contains(node) {
-        return;
-    }
-    if active.contains(node) {
-        if let Some(start) = stack.iter().position(|candidate| *candidate == node) {
-            let mut cycle: Vec<String> = stack[start..]
-                .iter()
-                .map(|value| (*value).to_owned())
-                .collect();
-            cycle.push(node.to_owned());
-            if !cycles.iter().any(|known| known == &cycle) {
-                cycles.push(cycle);
-            }
-        }
-        return;
-    }
-
-    active.insert(node);
-    stack.push(node);
-    if let Some(neighbors) = graph.get(node) {
-        for neighbor in neighbors {
-            visit(neighbor, graph, completed, active, stack, cycles);
-        }
-    }
-    stack.pop();
-    active.remove(node);
-    completed.insert(node);
-}
-
 fn expectation_subject_exists(
     analysis: &ProjectAnalysis,
     target: ExpectationTarget,
@@ -810,8 +510,8 @@ fn expectation_subject_exists(
 #[cfg(test)]
 mod tests {
     use crate::model::{
-        Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget, Language,
-        Location, ProjectAnalysis, SourceFile, Symbol, SymbolKind, Verification,
+        Confidence, Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget,
+        Language, Location, ProjectAnalysis, SourceFile, Symbol, SymbolKind, Verification,
         VerificationStatus, Work, WorkKind, WorkStatus, Workflow, WorkflowKind,
     };
 

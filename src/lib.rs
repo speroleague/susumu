@@ -1,9 +1,11 @@
 pub mod analysis;
+pub(crate) mod derived_findings;
 pub mod language;
 pub mod model;
 pub mod scanner;
 pub mod susu;
 pub mod tui;
+pub(crate) mod workflow_priorities;
 
 pub use scanner::scan_project;
 pub use susu::{

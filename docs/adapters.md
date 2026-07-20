@@ -19,7 +19,7 @@ The initial adapters are:
 | Rust | functions, methods, `use`, calls | Axum-compatible routes, Actix Web attributes |
 | PHP | functions, methods, namespace uses/includes, calls | Laravel `Route::...`, Symfony `#[Route]` |
 | Python | functions, imports, calls | FastAPI-style method decorators, Flask `route` |
-| JavaScript/TypeScript/TSX | functions, methods, imports, calls | Express-compatible `app`/`router` methods |
+| JavaScript/TypeScript/TSX/Vue | functions, methods, imports, calls | Express-compatible `app`/`router` methods; Vue script blocks use the TypeScript/TSX grammar |
 
 An adapter is deterministic. It may return incomplete or ambiguous evidence, but it may not guess silently. Unsupported metaprogramming, dependency injection, reflection, macros, or dynamic dispatch remains visible as a gap until a more specific adapter, runtime trace, configuration reader, or explicit declaration resolves it.
 

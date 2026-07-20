@@ -58,6 +58,7 @@ pub enum Language {
     JavaScript,
     TypeScript,
     Tsx,
+    Vue,
 }
 
 impl Language {
@@ -70,6 +71,7 @@ impl Language {
             "js" | "jsx" | "mjs" | "cjs" => Some(Self::JavaScript),
             "ts" | "mts" | "cts" => Some(Self::TypeScript),
             "tsx" => Some(Self::Tsx),
+            "vue" => Some(Self::Vue),
             _ => None,
         }
     }
@@ -84,6 +86,7 @@ impl fmt::Display for Language {
             Self::JavaScript => "javascript",
             Self::TypeScript => "typescript",
             Self::Tsx => "tsx",
+            Self::Vue => "vue",
         };
         formatter.write_str(value)
     }
@@ -100,6 +103,7 @@ impl std::str::FromStr for Language {
             "javascript" => Ok(Self::JavaScript),
             "typescript" => Ok(Self::TypeScript),
             "tsx" => Ok(Self::Tsx),
+            "vue" => Ok(Self::Vue),
             _ => Err(format!("unknown language: {value}")),
         }
     }

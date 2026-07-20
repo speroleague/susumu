@@ -39,6 +39,7 @@ pub(super) fn adapter_for(language: Language) -> &'static dyn LanguageAdapter {
         Language::JavaScript => &JAVASCRIPT,
         Language::TypeScript => &TYPESCRIPT,
         Language::Tsx => &TSX,
+        Language::Vue => &VUE,
     }
 }
 
@@ -48,6 +49,7 @@ static PYTHON: PythonAdapter = PythonAdapter;
 static JAVASCRIPT: JavaScriptAdapter = JavaScriptAdapter;
 static TYPESCRIPT: TypeScriptAdapter = TypeScriptAdapter;
 static TSX: TsxAdapter = TsxAdapter;
+static VUE: VueAdapter = VueAdapter;
 
 struct RustAdapter;
 struct PhpAdapter;
@@ -55,6 +57,7 @@ struct PythonAdapter;
 struct JavaScriptAdapter;
 struct TypeScriptAdapter;
 struct TsxAdapter;
+struct VueAdapter;
 
 impl LanguageAdapter for RustAdapter {
     fn grammar(&self) -> TreeLanguage {
@@ -207,6 +210,28 @@ impl LanguageAdapter for TypeScriptAdapter {
 }
 
 impl LanguageAdapter for TsxAdapter {
+    fn grammar(&self) -> TreeLanguage {
+        tree_sitter_typescript::LANGUAGE_TSX.into()
+    }
+
+    fn symbol(&self, node: Node<'_>, source: &[u8]) -> Option<(String, SymbolKind)> {
+        javascript_symbol(node, source)
+    }
+
+    fn is_call(&self, kind: &str) -> bool {
+        javascript_is_call(kind)
+    }
+
+    fn is_dependency(&self, kind: &str) -> bool {
+        kind == "import_statement"
+    }
+
+    fn workflows(&self, node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
+        javascript_workflow(node, source).into_iter().collect()
+    }
+}
+
+impl LanguageAdapter for VueAdapter {
     fn grammar(&self) -> TreeLanguage {
         tree_sitter_typescript::LANGUAGE_TSX.into()
     }

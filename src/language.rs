@@ -56,8 +56,13 @@ pub(crate) fn parse_file(
     parser
         .set_language(&grammar)
         .context("could not load the Tree-sitter grammar")?;
+    let parse_source = if language == Language::Vue {
+        vue_script_source(source)
+    } else {
+        source.to_owned()
+    };
     let tree = parser
-        .parse(source, None)
+        .parse(&parse_source, None)
         .context("Tree-sitter did not return a syntax tree")?;
 
     let mut parsed = ParsedFile {
@@ -74,6 +79,35 @@ pub(crate) fn parse_file(
     };
     walk(tree.root_node(), source.as_bytes(), adapter, 0, &mut parsed);
     Ok(parsed)
+}
+
+fn vue_script_source(source: &str) -> String {
+    let bytes = source.as_bytes();
+    let mut masked = vec![b' '; bytes.len()];
+    for (index, byte) in bytes.iter().enumerate() {
+        if *byte == b'\n' || *byte == b'\r' {
+            masked[index] = *byte;
+        }
+    }
+
+    let mut search_from = 0;
+    while let Some(open_offset) = source[search_from..].to_ascii_lowercase().find("<script") {
+        let open_start = search_from + open_offset;
+        let Some(open_end_offset) = source[open_start..].find('>') else {
+            break;
+        };
+        let content_start = open_start + open_end_offset + 1;
+        let Some(close_offset) = source[content_start..]
+            .to_ascii_lowercase()
+            .find("</script>")
+        else {
+            break;
+        };
+        let content_end = content_start + close_offset;
+        masked[content_start..content_end].copy_from_slice(&bytes[content_start..content_end]);
+        search_from = content_end + "</script>".len();
+    }
+    String::from_utf8(masked).expect("Vue source masking preserves UTF-8 boundaries")
 }
 
 fn walk(

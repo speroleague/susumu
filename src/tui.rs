@@ -1984,6 +1984,7 @@ fn syntax_for_language(
         Language::JavaScript => "js",
         Language::TypeScript => "ts",
         Language::Tsx => "tsx",
+        Language::Vue => "vue",
     };
     syntax_set
         .find_syntax_by_extension(extension)

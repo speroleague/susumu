@@ -293,6 +293,60 @@ fn load_order() {
     }
 
     #[test]
+    fn scans_vue_script_blocks_without_treating_template_or_style_as_code() {
+        let directory = tempdir().unwrap();
+        fs::write(
+            directory.path().join("App.vue"),
+            r#"<template>
+  <button @click="loadUsers">Load</button>
+</template>
+
+<script setup lang="ts">
+import { ref } from "vue";
+
+function loadUsers() {
+    return fetchUsers();
+}
+</script>
+
+<style>
+function not_source_code() {}
+</style>
+"#,
+        )
+        .unwrap();
+
+        let analysis = scan_project(directory.path()).unwrap();
+
+        assert_eq!(analysis.language_counts().get(&Language::Vue), Some(&1));
+        assert!(
+            analysis
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "loadUsers")
+        );
+        assert!(
+            !analysis
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "not_source_code")
+        );
+        assert!(
+            analysis
+                .dependencies
+                .iter()
+                .any(|dependency| dependency.name == "import { ref } from \"vue\"")
+        );
+        assert!(analysis.flows.iter().any(|flow| flow.call == "fetchUsers"));
+        assert!(
+            !analysis
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id == "SUS006")
+        );
+    }
+
+    #[test]
     fn evidence_ids_are_stable_across_scans() {
         let directory = tempdir().unwrap();
         fs::write(

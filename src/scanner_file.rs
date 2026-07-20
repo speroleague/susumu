@@ -239,7 +239,7 @@ fn is_module_entrypoint(relative: &Path, language: Language) -> bool {
         Language::Rust => normalized == "src/main.rs" || file_name == "main.rs",
         Language::Php => file_name == "index.php" || normalized.starts_with("routes/"),
         Language::Python => file_name == "__main__.py" || file_name == "main.py",
-        Language::JavaScript | Language::TypeScript | Language::Tsx => matches!(
+        Language::JavaScript | Language::TypeScript | Language::Tsx | Language::Vue => matches!(
             file_name,
             "index.js" | "index.ts" | "index.tsx" | "main.js" | "main.ts" | "app.js" | "app.ts"
         ),

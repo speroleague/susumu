@@ -214,6 +214,7 @@ fn syntax_for_review_language(syntax_set: &SyntaxSet, language: Language) -> &Sy
         Language::JavaScript => "js",
         Language::TypeScript => "ts",
         Language::Tsx => "tsx",
+        Language::Vue => "vue",
     };
     syntax_set
         .find_syntax_by_extension(extension)

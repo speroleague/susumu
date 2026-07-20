@@ -168,7 +168,7 @@ The scanner can determine support, not satisfaction. If a commit links to an exp
 
 ## Current capabilities
 
-- Scans Rust, PHP, Python, JavaScript, TypeScript, and TSX through language-specific adapters.
+- Scans Rust, PHP, Python, JavaScript, TypeScript, TSX, and Vue single-file components through language-specific adapters. Vue script blocks are parsed with the TypeScript/TSX Tree-sitter grammar while template and style blocks remain outside scanner evidence.
 - Keeps per-language parser behavior behind `src/language/adapters.rs`, so new ecosystems can be added without changing `.susu` consumers.
 - Respects `.gitignore`, `.ignore`, Git excludes, hidden-directory filtering, and a 2 MiB per-file safety limit.
 - Extracts modules, functions, methods, imports, and calls using Tree-sitter.
@@ -407,7 +407,7 @@ See [the artifact contract](docs/artifact.md), [the product architecture](docs/v
 
 ## Roadmap
 
-- Deepen deterministic adapters for Rust, PHP, Python, JavaScript, TypeScript, and TSX.
+- Deepen deterministic adapters for Rust, PHP, Python, JavaScript, TypeScript, TSX, and Vue.
 - Add more workflow types: jobs, queues, events, tests, database boundaries, policies, and deployment checks.
 - Expand `.susu` with threaded reviews, comments, ownership, source revisions, and migration support.
 - Improve dirty/stale review detection so changed code automatically flags affected expectations, verifications, and decisions.

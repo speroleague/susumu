@@ -22,6 +22,7 @@ use susumu::{
     scan_project, tui, write_decisions, write_expectations, write_susu, write_verifications,
     write_works,
 };
+mod attestation;
 mod checks;
 mod cli_values;
 mod expectation_readiness;
@@ -135,6 +136,12 @@ enum Command {
 
     /// Record verification evidence for an expectation.
     Verify(VerifyArgs),
+
+    /// Inspect a provider-neutral attestation envelope without trusting it.
+    Attestation {
+        #[command(subcommand)]
+        command: AttestationCommand,
+    },
 
     /// Author expectation sidecar records.
     Expectation {
@@ -733,6 +740,23 @@ enum VerificationCommand {
 }
 
 #[derive(Debug, Subcommand)]
+enum AttestationCommand {
+    /// Parse and structurally inspect an attestation envelope.
+    Inspect(InspectAttestationArgs),
+}
+
+#[derive(Debug, Args)]
+struct InspectAttestationArgs {
+    /// JSON attestation envelope to inspect.
+    #[arg(short, long)]
+    file: PathBuf,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Subcommand)]
 enum DecisionCommand {
     /// Add or replace one decision in a decision-only sidecar.
     Add(AddDecision),
@@ -1286,6 +1310,9 @@ fn run_command(command: Command) -> Result<()> {
         Command::Resolve(args) => resolve_target(&args),
         Command::Expectations(args) => expectations_shortcut(&args),
         Command::Verify(args) => verify_shortcut(args),
+        Command::Attestation { command } => match command {
+            AttestationCommand::Inspect(args) => inspect_attestation(&args),
+        },
         Command::Expectation { command } => match command {
             ExpectationCommand::Add(args) => add_expectation(args),
             ExpectationCommand::List(args) => list_expectations(&args),
@@ -3922,6 +3949,23 @@ fn hash_evidence_file(path: &Path) -> Result<String> {
     let mut hash = Sha256::new();
     hash.update(bytes);
     Ok(format!("sha256:{:x}", hash.finalize()))
+}
+
+fn inspect_attestation(args: &InspectAttestationArgs) -> Result<()> {
+    let inspection = attestation::inspect_file(&args.file)?;
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&inspection)
+                .context("could not serialize attestation inspection")?
+        );
+    } else {
+        println!("Attestation: {}", inspection.attestation_id);
+        println!("Posture: {}", inspection.posture);
+        println!("Trust: {}", inspection.trust_status);
+        println!("Note: {}", inspection.note);
+    }
+    Ok(())
 }
 
 fn add_decision(args: AddDecision) -> Result<()> {

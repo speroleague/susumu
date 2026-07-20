@@ -262,6 +262,14 @@ Susumu can support an organization's compliance process by organizing evidence, 
 
 The planned provenance model and provider-neutral attestation boundary are documented in [Verification integrity and provenance](docs/verification-integrity.md).
 
+Inspect a provider-neutral attestation envelope:
+
+```powershell
+cargo run -- attestation inspect --file .\target\attestation.json --json
+```
+
+Inspection validates the envelope shape and reports `posture=declared` with `trust_status=not_verified`. It does not verify a signature, issuer, execution claim, artifact retention, or compliance outcome.
+
 Create, list, or remove decision sidecars:
 
 ```powershell

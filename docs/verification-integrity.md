@@ -40,3 +40,5 @@ Verification sidecars can also carry a SHA-256 chain. The chain covers the order
 ## Review language
 
 Use language such as “declared,” “content hash recorded,” “attestation accepted under policy X,” or “human review recorded.” Avoid “certified,” “compliant,” “control met,” “audit approved,” and similar conclusions in Susumu-generated output. The next action should identify the missing organizational review, retention, provenance, or trust decision rather than silently promoting a record to compliance.
+
+The same posture is exposed in `check --json` per verification, in readiness records per expectation, and in the portal's evidence ladder. These are visibility surfaces, not additional trust decisions: `trust_status=not_authenticated` remains explicit until a configured verifier and policy establish something stronger.

@@ -4,6 +4,7 @@ use susumu::model::{
 
 use crate::review_types::{
     ExpectationReadiness, ExpectationSupport, ExpectationVerificationSupport,
+    verification_evidence_posture,
 };
 
 pub(crate) fn expectation_support(analysis: &ProjectAnalysis) -> Vec<ExpectationSupport> {
@@ -13,6 +14,7 @@ pub(crate) fn expectation_support(analysis: &ProjectAnalysis) -> Vec<Expectation
         .map(|expectation| {
             let target_observed = expectation_target_observed(analysis, expectation);
             let verification = expectation_verification_support(analysis, &expectation.id);
+            let evidence_posture = expectation_evidence_posture(analysis, &expectation.id);
             let work = expectation_work_support_count(analysis, expectation);
             let decisions = expectation_decision_support_count(analysis, expectation);
             let findings = expectation_finding_support_count(analysis, expectation);
@@ -35,6 +37,7 @@ pub(crate) fn expectation_support(analysis: &ProjectAnalysis) -> Vec<Expectation
                 decisions,
                 findings,
                 support_status,
+                evidence_posture,
                 reasons,
             }
         })
@@ -59,6 +62,7 @@ pub(crate) fn expectation_readiness(
                 bucket: bucket.to_owned(),
                 label: label.to_owned(),
                 support_status: support.support_status.clone(),
+                evidence_posture: support.evidence_posture.clone(),
                 next_action: expectation_readiness_next_action(analysis, support),
             }
         })
@@ -69,6 +73,22 @@ pub(crate) fn expectation_readiness(
             .then_with(|| left.expectation_id.cmp(&right.expectation_id))
     });
     readiness
+}
+
+fn expectation_evidence_posture(analysis: &ProjectAnalysis, expectation_id: &str) -> String {
+    let mut postures = analysis
+        .verifications
+        .iter()
+        .filter(|verification| verification.expectation_id == expectation_id)
+        .map(verification_evidence_posture)
+        .collect::<Vec<_>>();
+    postures.sort_unstable();
+    postures.dedup();
+    match postures.as_slice() {
+        [] => "none".to_owned(),
+        [posture] => (*posture).to_owned(),
+        _ => "mixed".to_owned(),
+    }
 }
 
 fn expectation_readiness_bucket(support: &ExpectationSupport) -> (&'static str, &'static str) {

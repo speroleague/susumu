@@ -34,6 +34,15 @@ pub(crate) struct CheckJson<'a> {
     pub(crate) review: CheckReviewJson,
     pub(crate) result: CheckResultJson<'a>,
     pub(crate) items: Vec<CheckItemJson<'a>>,
+    pub(crate) verification_posture: Vec<VerificationPostureJson>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct VerificationPostureJson {
+    pub(crate) id: String,
+    pub(crate) expectation_id: String,
+    pub(crate) posture: &'static str,
+    pub(crate) trust_status: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,6 +134,7 @@ pub(crate) struct ExpectationSupport {
     pub(crate) decisions: usize,
     pub(crate) findings: usize,
     pub(crate) support_status: String,
+    pub(crate) evidence_posture: String,
     pub(crate) reasons: Vec<String>,
 }
 
@@ -144,7 +154,27 @@ pub(crate) struct ExpectationReadiness {
     pub(crate) bucket: String,
     pub(crate) label: String,
     pub(crate) support_status: String,
+    pub(crate) evidence_posture: String,
     pub(crate) next_action: String,
+}
+
+pub(crate) fn verification_evidence_posture(
+    verification: &susumu::model::Verification,
+) -> &'static str {
+    match (
+        verification.evidence.is_some(),
+        verification.execution.is_some(),
+        verification.chain.is_some(),
+    ) {
+        (true, true, true) => "content_bound_with_declared_execution_and_chain",
+        (true, false, true) => "content_bound_with_self_contained_chain",
+        (true, true, false) => "content_bound_with_declared_execution",
+        (true, false, false) => "content_bound",
+        (false, true, true) => "declared_execution_with_self_contained_chain",
+        (false, true, false) => "declared_execution",
+        (false, false, true) => "self_contained_chain",
+        (false, false, false) => "declared",
+    }
 }
 
 pub(crate) const READINESS_BUCKETS: [(&str, &str); 5] = [

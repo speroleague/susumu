@@ -3,8 +3,8 @@ use susumu::model::{ProjectAnalysis, Severity, VerificationStatus, WorkStatus};
 
 use crate::review_types::{
     CheckEvidenceJson, CheckItem, CheckItemJson, CheckJson, CheckProjectJson, CheckRecordsJson,
-    CheckReport, CheckResultJson, CheckReviewJson, CheckSeverity, check_result_reason,
-    check_severity_label,
+    CheckReport, CheckResultJson, CheckReviewJson, CheckSeverity, VerificationPostureJson,
+    check_result_reason, check_severity_label, verification_evidence_posture,
 };
 
 pub(crate) fn check_report(analysis: &ProjectAnalysis, strict: bool) -> CheckReport {
@@ -237,6 +237,16 @@ pub(crate) fn check_json<'a>(
             reason: check_result_reason(report),
         },
         items: check_item_jsons(&report.items),
+        verification_posture: analysis
+            .verifications
+            .iter()
+            .map(|verification| VerificationPostureJson {
+                id: verification.id.clone(),
+                expectation_id: verification.expectation_id.clone(),
+                posture: verification_evidence_posture(verification),
+                trust_status: "not_authenticated",
+            })
+            .collect(),
     }
 }
 
@@ -313,5 +323,10 @@ mod tests {
         assert_eq!(report.critical, 1);
         assert_eq!(json.result.status, "failed");
         assert_eq!(json.items[0].title, "failed verification: Checkout works");
+        assert_eq!(json.verification_posture[0].posture, "content_bound");
+        assert_eq!(
+            json.verification_posture[0].trust_status,
+            "not_authenticated"
+        );
     }
 }

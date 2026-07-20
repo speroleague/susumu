@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -11,27 +10,12 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     analysis::add_findings,
-    language::{ParsedCall, ParsedWorkflow, parse_file},
     model::{
-        Confidence, Dependency, Finding, FlowEdge, Language, Location, ProjectAnalysis,
-        SCHEMA_VERSION, Severity, SourceFile, Symbol, Workflow, WorkflowKind,
+        Confidence, FlowEdge, Language, ProjectAnalysis, SCHEMA_VERSION, Symbol, Workflow,
+        WorkflowKind,
     },
+    scanner_file::{PendingCall, PendingWorkflow, scan_file},
 };
-
-const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
-
-#[derive(Debug)]
-struct PendingCall {
-    file_id: String,
-    caller_id: String,
-    call: ParsedCall,
-}
-
-#[derive(Debug)]
-struct PendingWorkflow {
-    file_id: String,
-    workflow: ParsedWorkflow,
-}
 
 /// Scans supported source files below `root` into a deterministic evidence model.
 ///
@@ -106,148 +90,6 @@ fn supported_paths(root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-#[allow(clippy::too_many_lines)]
-fn scan_file(
-    root: &Path,
-    path: &Path,
-    analysis: &mut ProjectAnalysis,
-    pending_calls: &mut Vec<PendingCall>,
-    pending_workflows: &mut Vec<PendingWorkflow>,
-) {
-    let relative = path.strip_prefix(root).unwrap_or(path);
-    let relative_string = relative.to_string_lossy().replace('\\', "/");
-    let file_id = stable_id("f", &[&relative_string]);
-    let Some(language) = path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .and_then(Language::from_extension)
-    else {
-        return;
-    };
-    let Ok(metadata) = fs::metadata(path) else {
-        return;
-    };
-    if metadata.len() > MAX_FILE_BYTES {
-        analysis.findings.push(Finding {
-            rule_id: "SUS000".to_owned(),
-            source: "susumu:scanner".to_owned(),
-            severity: Severity::Info,
-            title: "File skipped".to_owned(),
-            detail: format!("{relative_string} exceeds the 2 MiB scan limit"),
-            file_id: None,
-            subject: None,
-            location: None,
-        });
-        return;
-    }
-
-    let Ok(source) = fs::read_to_string(path) else {
-        analysis.findings.push(Finding {
-            rule_id: "SUS000".to_owned(),
-            source: "susumu:scanner".to_owned(),
-            severity: Severity::Info,
-            title: "File skipped".to_owned(),
-            detail: format!("{relative_string} is not readable UTF-8 text"),
-            file_id: None,
-            subject: None,
-            location: None,
-        });
-        return;
-    };
-    let lines = source.lines().count().max(1);
-    analysis.files.push(SourceFile {
-        id: file_id.clone(),
-        path: relative_string.clone(),
-        language,
-        lines,
-        bytes: metadata.len(),
-        content_hash: Some(content_hash(&source)),
-    });
-
-    let module_entrypoint = is_module_entrypoint(relative, language);
-    let parsed = match parse_file(language, &source, module_entrypoint) {
-        Ok(parsed) => parsed,
-        Err(error) => {
-            analysis.findings.push(Finding {
-                rule_id: "SUS000".to_owned(),
-                source: "susumu:scanner".to_owned(),
-                severity: Severity::Warning,
-                title: "Parser failed".to_owned(),
-                detail: format!("{relative_string}: {error:#}"),
-                file_id: Some(file_id),
-                subject: None,
-                location: None,
-            });
-            return;
-        }
-    };
-
-    if parsed.has_parse_errors {
-        analysis.findings.push(Finding {
-            rule_id: "SUS006".to_owned(),
-            source: "susumu:scanner".to_owned(),
-            severity: Severity::Info,
-            title: "Incomplete syntax tree".to_owned(),
-            detail: "Tree-sitter recovered from syntax it could not fully parse; evidence from this file may be incomplete.".to_owned(),
-            file_id: Some(file_id.clone()),
-            subject: None,
-            location: Some(Location {
-                start_line: 1,
-                start_column: 1,
-                end_line: lines,
-                end_column: 1,
-            }),
-        });
-    }
-
-    let mut occurrences = HashMap::new();
-    let mut symbol_ids = Vec::with_capacity(parsed.symbols.len());
-    for parsed_symbol in parsed.symbols {
-        let occurrence = occurrences
-            .entry((parsed_symbol.name.clone(), parsed_symbol.kind))
-            .or_insert(0_usize);
-        let kind = parsed_symbol.kind.to_string();
-        let ordinal = occurrence.to_string();
-        let id = stable_id(
-            "s",
-            &[&relative_string, &kind, &parsed_symbol.name, &ordinal],
-        );
-        *occurrence += 1;
-        symbol_ids.push(id.clone());
-        analysis.symbols.push(Symbol {
-            id,
-            name: parsed_symbol.name,
-            kind: parsed_symbol.kind,
-            file_id: file_id.clone(),
-            location: parsed_symbol.location,
-            entrypoint: parsed_symbol.entrypoint,
-        });
-    }
-    for dependency in parsed.dependencies {
-        analysis.dependencies.push(Dependency {
-            file_id: file_id.clone(),
-            name: dependency.name,
-            location: dependency.location,
-        });
-    }
-    for workflow in parsed.workflows {
-        pending_workflows.push(PendingWorkflow {
-            file_id: file_id.clone(),
-            workflow,
-        });
-    }
-    for call in parsed.calls {
-        let Some(caller_id) = symbol_ids.get(call.caller).cloned() else {
-            continue;
-        };
-        pending_calls.push(PendingCall {
-            file_id: file_id.clone(),
-            caller_id,
-            call,
-        });
-    }
-}
-
 fn resolve_workflows(analysis: &mut ProjectAnalysis, pending: Vec<PendingWorkflow>) {
     let mut by_name: HashMap<&str, Vec<&Symbol>> = HashMap::new();
     for symbol in &analysis.symbols {
@@ -302,7 +144,7 @@ fn resolve_workflows(analysis: &mut ProjectAnalysis, pending: Vec<PendingWorkflo
     }
 }
 
-fn stable_id(prefix: &str, parts: &[&str]) -> String {
+pub(crate) fn stable_id(prefix: &str, parts: &[&str]) -> String {
     let mut digest = Sha256::new();
     for part in parts {
         digest.update(part.as_bytes());
@@ -312,13 +154,7 @@ fn stable_id(prefix: &str, parts: &[&str]) -> String {
     format!("{prefix}_{}", hex_prefix(&hash, 8))
 }
 
-fn content_hash(source: &str) -> String {
-    let mut digest = Sha256::new();
-    digest.update(source.as_bytes());
-    hex_prefix(&digest.finalize(), 16)
-}
-
-fn hex_prefix(bytes: &[u8], count: usize) -> String {
+pub(crate) fn hex_prefix(bytes: &[u8], count: usize) -> String {
     use std::fmt::Write as _;
 
     let mut output = String::with_capacity(count * 2);
@@ -359,23 +195,6 @@ fn resolve_calls(analysis: &mut ProjectAnalysis, pending: Vec<PendingCall>) {
             confidence,
             location: pending_call.call.location,
         });
-    }
-}
-
-fn is_module_entrypoint(relative: &Path, language: Language) -> bool {
-    let normalized = relative.to_string_lossy().replace('\\', "/");
-    let file_name = relative
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or_default();
-    match language {
-        Language::Rust => normalized == "src/main.rs" || file_name == "main.rs",
-        Language::Php => file_name == "index.php" || normalized.starts_with("routes/"),
-        Language::Python => file_name == "__main__.py" || file_name == "main.py",
-        Language::JavaScript | Language::TypeScript | Language::Tsx => matches!(
-            file_name,
-            "index.js" | "index.ts" | "index.tsx" | "main.js" | "main.ts" | "app.js" | "app.ts"
-        ),
     }
 }
 

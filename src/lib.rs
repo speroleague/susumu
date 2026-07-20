@@ -5,6 +5,7 @@ pub mod model;
 pub mod scanner;
 pub(crate) mod scanner_file;
 pub mod susu;
+pub(crate) mod susu_parse;
 pub(crate) mod susu_write;
 pub mod tui;
 pub(crate) mod workflow_priorities;

@@ -3,17 +3,18 @@ use std::collections::HashMap;
 use anyhow::{Context, Result, anyhow, bail};
 
 use crate::model::{
-    Decision, Dependency, Expectation, Finding, FlowEdge, Location, ProjectAnalysis, SourceFile,
-    Symbol, Verification, Work, Workflow, WorkflowPriority,
+    Decision, Dependency, Expectation, Finding, FlowEdge, ProjectAnalysis, SourceFile, Symbol,
+    Verification, Work, Workflow, WorkflowPriority,
 };
 
+use crate::susu_parse::{optional_id, parse_location, parse_number, required};
 pub use crate::susu_write::{
     write_decisions, write_expectations, write_susu, write_verifications, write_works,
 };
 
 #[cfg(test)]
 use crate::model::{
-    Confidence, DecisionStatus, ExpectationStatus, ExpectationTarget, Language, Severity,
+    Confidence, DecisionStatus, ExpectationStatus, ExpectationTarget, Language, Location, Severity,
     SymbolKind, VerificationStatus, WorkKind, WorkStatus, WorkflowKind,
 };
 
@@ -356,45 +357,6 @@ fn parse_work_statement(statement: &[Token]) -> Result<Work> {
         title: required(&values, "title")?.to_owned(),
         detail: required(&values, "detail")?.to_owned(),
     })
-}
-
-fn optional_id(value: &str) -> Option<String> {
-    (value != "-").then(|| value.to_owned())
-}
-
-fn required<'a>(fields: &'a HashMap<String, String>, name: &str) -> Result<&'a str> {
-    fields
-        .get(name)
-        .map(String::as_str)
-        .with_context(|| format!("missing field {name}"))
-}
-
-fn parse_number<T>(value: &str, field: &str) -> Result<T>
-where
-    T: std::str::FromStr,
-    T::Err: std::error::Error + Send + Sync + 'static,
-{
-    value
-        .parse()
-        .with_context(|| format!("invalid number for {field}: {value}"))
-}
-
-fn parse_location(values: &HashMap<String, String>) -> Result<Location> {
-    let (start_line, start_column) = parse_point(required(values, "start")?)?;
-    let (end_line, end_column) = parse_point(required(values, "end")?)?;
-    Ok(Location {
-        start_line,
-        start_column,
-        end_line,
-        end_column,
-    })
-}
-
-fn parse_point(value: &str) -> Result<(usize, usize)> {
-    let (line, column) = value
-        .split_once(':')
-        .with_context(|| format!("invalid source point: {value}"))?;
-    Ok((parse_number(line, "line")?, parse_number(column, "column")?))
 }
 
 fn atom_at(tokens: &[Token], index: usize, label: &str) -> Result<String> {

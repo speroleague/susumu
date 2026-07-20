@@ -686,6 +686,10 @@ struct VerifyArgs {
     #[arg(long)]
     evidence: Option<String>,
 
+    /// Local evidence artifact to hash as sha256:<digest>. The file is not copied into the record.
+    #[arg(long, conflicts_with = "evidence")]
+    evidence_file: Option<PathBuf>,
+
     /// Optional evidence fingerprint this verification was based on.
     #[arg(long)]
     basis: Option<String>,
@@ -716,6 +720,7 @@ enum ExpectationCommand {
 }
 
 #[derive(Debug, Subcommand)]
+#[allow(clippy::large_enum_variant)]
 enum VerificationCommand {
     /// Add or replace one verification in a verification-only sidecar.
     Add(AddVerification),
@@ -855,6 +860,10 @@ struct AddVerification {
     /// Optional evidence id or external evidence reference.
     #[arg(long)]
     evidence: Option<String>,
+
+    /// Local evidence artifact to hash as sha256:<digest>. The file is not copied into the record.
+    #[arg(long, conflicts_with = "evidence")]
+    evidence_file: Option<PathBuf>,
 
     /// Optional evidence fingerprint this verification was based on.
     #[arg(long)]
@@ -1866,7 +1875,11 @@ fn verify_shortcut(args: VerifyArgs) -> Result<()> {
                 args.expectation
             )
         })?;
-    let evidence = args.evidence.filter(|value| !value.trim().is_empty());
+    let evidence = if let Some(path) = args.evidence_file.as_deref() {
+        Some(hash_evidence_file(path)?)
+    } else {
+        args.evidence.filter(|value| !value.trim().is_empty())
+    };
     let detail = args.detail.unwrap_or_else(|| {
         format!(
             "Recorded by susumu verify. Expectation: {} - {}. Method: {}.",
@@ -3840,7 +3853,11 @@ fn remove_expectation(args: &RemoveExpectation) -> Result<()> {
 
 fn add_verification(args: AddVerification) -> Result<()> {
     let status = VerificationStatus::from(args.status);
-    let evidence = args.evidence.filter(|value| !value.trim().is_empty());
+    let evidence = if let Some(path) = args.evidence_file.as_deref() {
+        Some(hash_evidence_file(path)?)
+    } else {
+        args.evidence.filter(|value| !value.trim().is_empty())
+    };
     let id = args.id.unwrap_or_else(|| {
         verification_id(
             &args.expectation,
@@ -3893,6 +3910,18 @@ fn remove_verification(args: &RemoveVerification) -> Result<()> {
         args.file.display(),
         args.id
     )
+}
+
+fn hash_evidence_file(path: &Path) -> Result<String> {
+    let bytes = fs::read(path).with_context(|| {
+        format!(
+            "could not read verification evidence file {}",
+            path.display()
+        )
+    })?;
+    let mut hash = Sha256::new();
+    hash.update(bytes);
+    Ok(format!("sha256:{:x}", hash.finalize()))
 }
 
 fn add_decision(args: AddDecision) -> Result<()> {
@@ -5844,6 +5873,7 @@ mod tests {
             method: "cargo test".to_owned(),
             source: "human:test".to_owned(),
             evidence: Some("run:123".to_owned()),
+            evidence_file: None,
             basis: None,
             detail: None,
             minify: false,
@@ -5878,6 +5908,7 @@ mod tests {
             method: "manual review".to_owned(),
             source: "human:test".to_owned(),
             evidence: None,
+            evidence_file: None,
             basis: None,
             detail: None,
             minify: false,
@@ -5904,6 +5935,24 @@ mod tests {
 
         assert!(result.is_err());
         assert!(fs::read_to_string(file).unwrap().contains("v_old"));
+    }
+
+    #[test]
+    fn evidence_file_hash_is_content_only() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let file = temp.path().join("junit.xml");
+        let other_file = temp.path().join("renamed.xml");
+        fs::write(&file, b"<testsuite tests=\"1\" failures=\"0\"/>").expect("write evidence");
+        fs::write(&other_file, b"<testsuite tests=\"1\" failures=\"0\"/>")
+            .expect("write second evidence");
+
+        let hash = hash_evidence_file(&file).expect("hash evidence");
+        assert!(hash.starts_with("sha256:"));
+        assert_eq!(hash.len(), "sha256:".len() + 64);
+        assert_eq!(
+            hash,
+            hash_evidence_file(&other_file).expect("hash second evidence")
+        );
     }
 
     #[test]

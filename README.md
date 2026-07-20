@@ -308,6 +308,14 @@ cargo run -- git connect --artifact project.susu --since main --export-work work
 
 `git connect` is read-only unless `--export-work` is supplied. It correlates commits with the current artifact by changed workflow files, explicit Susumu ids in commit messages, expectation targets, verification/decision targets, and existing work records with `evidence="commit:<sha>"`.
 
+Inspect Git commit signature identity and integrity:
+
+```powershell
+cargo run -- git signature --repo . --commit HEAD --json
+```
+
+This delegates to Git's configured signature verification and reports signer/fingerprint status when available. A verified signature authenticates the commit identity and integrity only; it does not prove that tests ran, that an artifact was retained, or that a compliance requirement was met. The command does not make GitHub, GPG, or SSH a required Susumu provider.
+
 For unconnected commits, `git connect` also prints a `next:` section. If it can infer likely expectation candidates, it includes ready-to-copy `susumu git link <commit> <expectation-id>` commands. If it cannot infer candidates, it still shows the generic link command and suggests listing expectations.
 
 When a commit is valid work but Susumu refuses to guess which expectation it supports, link it explicitly:

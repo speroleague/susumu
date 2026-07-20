@@ -28,6 +28,7 @@ mod checks;
 mod cli_values;
 mod expectation_readiness;
 mod git_connect;
+mod git_signature;
 mod handoff;
 mod review_packet;
 mod review_types;
@@ -798,6 +799,24 @@ enum GitCommand {
 
     /// Compare the current artifact to code evidence from an older Git ref.
     Rewind(GitRewindArgs),
+
+    /// Inspect Git commit signature identity and integrity.
+    Signature(GitSignatureArgs),
+}
+
+#[derive(Debug, Args)]
+struct GitSignatureArgs {
+    /// Git repository to inspect.
+    #[arg(long, default_value = ".")]
+    repo: PathBuf,
+
+    /// Commit to inspect.
+    #[arg(long)]
+    commit: String,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1349,6 +1368,7 @@ fn run_command(command: Command) -> Result<()> {
                     GitCommand::Link(args) => git_link(&args),
                     GitCommand::Import(args) => import_git_work(&args),
                     GitCommand::Rewind(args) => git_rewind(&args),
+                    GitCommand::Signature(args) => inspect_git_signature(&args),
                 }
             } else {
                 git_shortcut(&args)
@@ -3992,6 +4012,31 @@ fn inspect_attestation(args: &InspectAttestationArgs) -> Result<()> {
         println!("Attestation: {}", inspection.attestation_id);
         println!("Posture: {}", inspection.posture);
         println!("Trust: {}", inspection.trust_status);
+        println!("Note: {}", inspection.note);
+    }
+    Ok(())
+}
+
+fn inspect_git_signature(args: &GitSignatureArgs) -> Result<()> {
+    let inspection = git_signature::inspect(&args.repo, &args.commit)?;
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&inspection)
+                .context("could not serialize Git signature inspection")?
+        );
+    } else {
+        println!("Commit: {}", inspection.commit);
+        println!("Signature: {}", inspection.status);
+        println!(
+            "Signer: {}",
+            inspection.signer.as_deref().unwrap_or("unknown")
+        );
+        println!(
+            "Fingerprint: {}",
+            inspection.fingerprint.as_deref().unwrap_or("unknown")
+        );
+        println!("Execution: {}", inspection.execution_status);
         println!("Note: {}", inspection.note);
     }
     Ok(())

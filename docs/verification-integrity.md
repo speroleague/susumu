@@ -33,6 +33,8 @@ Verification records may also carry execution metadata supplied through `--execu
 
 Provider adapters may translate GitHub, GitLab, Jenkins, Buildkite, a private runner, or another system into this contract, but the core Susumu model must not assume any one provider. An adapter that only copies a URL or accepts a user-supplied `ci:*` string is a convenience integration, not authentication.
 
+Susumu can inspect a commit with `git signature`. This reuses Git's configured GPG/SSH signature verification and records signer/integrity posture without adding a Susumu-specific key infrastructure. A valid signature authenticates the commit, not the execution of tests or the satisfaction of a control. A repository owner must still decide which keys, identities, and branch protections are trusted.
+
 ## Review language
 
 Use language such as “declared,” “content hash recorded,” “attestation accepted under policy X,” or “human review recorded.” Avoid “certified,” “compliant,” “control met,” “audit approved,” and similar conclusions in Susumu-generated output. The next action should identify the missing organizational review, retention, provenance, or trust decision rather than silently promoting a record to compliance.

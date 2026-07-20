@@ -155,6 +155,7 @@ The portal should answer:
 - What decisions or exceptions were recorded?
 - Which expectation evidence ladders are ready, partial, missing work, or still unverified?
 - Which verification or decision records are dirty because their underlying source evidence changed?
+- Which verification or decision records became dirty because an expectation or linked work record changed?
 - What changed and may need review?
 
 Long term, this is where comments, approvals, questions, release snapshots, and decision history should live.

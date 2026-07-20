@@ -193,8 +193,8 @@ fn add_work_relationship_findings(analysis: &mut ProjectAnalysis) {
     }
 }
 
-/// Records the current target fingerprint on decisions that do not yet carry a
-/// basis. Existing bases are preserved so later scans can detect changed review
+/// Records the current review basis on decisions that do not yet carry one.
+/// Existing bases are preserved so later scans can detect changed review
 /// evidence.
 pub fn anchor_decision_bases(analysis: &mut ProjectAnalysis) {
     let fingerprints = analysis
@@ -204,7 +204,7 @@ pub fn anchor_decision_bases(analysis: &mut ProjectAnalysis) {
             decision
                 .basis
                 .is_none()
-                .then(|| target_fingerprint(analysis, decision.target, decision.subject.as_deref()))
+                .then(|| current_decision_basis(analysis, decision))
         })
         .collect::<Vec<_>>();
 
@@ -217,9 +217,9 @@ pub fn anchor_decision_bases(analysis: &mut ProjectAnalysis) {
     }
 }
 
-/// Records the current expectation target fingerprint on verifications that do
-/// not yet carry a basis. Existing bases are preserved so later scans can
-/// detect when a check result may need to be rerun or reviewed.
+/// Records the current review basis on verifications that do not yet carry one.
+/// Existing bases are preserved so later scans can detect when a check result
+/// may need to be rerun or reviewed.
 pub fn anchor_verification_bases(analysis: &mut ProjectAnalysis) {
     let fingerprints = analysis
         .verifications
@@ -227,7 +227,7 @@ pub fn anchor_verification_bases(analysis: &mut ProjectAnalysis) {
         .map(|verification| {
             verification.basis.is_none().then(|| {
                 verification_expectation(analysis, verification).and_then(|expectation| {
-                    target_fingerprint(analysis, expectation.target, expectation.subject.as_deref())
+                    current_verification_basis(analysis, verification, expectation)
                 })
             })
         })
@@ -244,14 +244,21 @@ pub fn anchor_verification_bases(analysis: &mut ProjectAnalysis) {
 
 fn decision_basis_finding(analysis: &ProjectAnalysis, decision: &Decision) -> Option<Finding> {
     let basis = decision.basis.as_deref()?;
-    let current = target_fingerprint(analysis, decision.target, decision.subject.as_deref())?;
-    (basis != current).then(|| Finding {
+    let current = current_decision_basis(analysis, decision)?;
+    (!basis_matches_current(
+        basis,
+        current.as_str(),
+        analysis,
+        decision.target,
+        decision.subject.as_deref(),
+    ))
+    .then(|| Finding {
         rule_id: "SUS033".to_owned(),
         source: "susumu:derived".to_owned(),
         severity: Severity::Warning,
         title: "Decision review evidence changed".to_owned(),
         detail: format!(
-            "{} targets {} with basis `{basis}`, but current evidence fingerprint is `{current}`.",
+            "{} targets {} with basis `{basis}`, but the current review basis is `{current}`. Target code, expectations, or linked work may have changed.",
             decision.id, decision.target
         ),
         file_id: decision_file_id(analysis, decision),
@@ -266,20 +273,168 @@ fn verification_basis_finding(
     expectation: &Expectation,
 ) -> Option<Finding> {
     let basis = verification.basis.as_deref()?;
-    let current = target_fingerprint(analysis, expectation.target, expectation.subject.as_deref())?;
-    (basis != current).then(|| Finding {
+    let current = current_verification_basis(analysis, verification, expectation)?;
+    (!basis_matches_current(
+        basis,
+        current.as_str(),
+        analysis,
+        expectation.target,
+        expectation.subject.as_deref(),
+    ))
+    .then(|| Finding {
         rule_id: "SUS023".to_owned(),
         source: "susumu:derived".to_owned(),
         severity: Severity::Warning,
         title: "Verification evidence changed".to_owned(),
         detail: format!(
-            "{} checks expectation `{}` with basis `{basis}`, but current target evidence fingerprint is `{current}`.",
+            "{} checks expectation `{}` with basis `{basis}`, but the current review basis is `{current}`. Target code, expectation details, or linked work may have changed.",
             verification.id, verification.expectation_id
         ),
         file_id: target_file_id(analysis, expectation.target, expectation.subject.as_deref()),
         subject: Some(verification.id.clone()),
         location: target_location(analysis, expectation.target, expectation.subject.as_deref()),
     })
+}
+
+const REVIEW_BASIS_PREFIX: &str = "review-v2:";
+
+fn current_verification_basis(
+    analysis: &ProjectAnalysis,
+    verification: &Verification,
+    expectation: &Expectation,
+) -> Option<String> {
+    review_basis(
+        analysis,
+        expectation.target,
+        expectation.subject.as_deref(),
+        std::iter::once(expectation),
+        analysis.works.iter().filter(|work| {
+            work.expectation_id.as_deref() == Some(expectation.id.as_str())
+                || same_target(
+                    work.target,
+                    work.subject.as_deref(),
+                    expectation.target,
+                    expectation.subject.as_deref(),
+                )
+        }),
+        Some(verification.id.as_str()),
+    )
+}
+
+fn current_decision_basis(analysis: &ProjectAnalysis, decision: &Decision) -> Option<String> {
+    let expectations = analysis.expectations.iter().filter(|expectation| {
+        same_target(
+            expectation.target,
+            expectation.subject.as_deref(),
+            decision.target,
+            decision.subject.as_deref(),
+        )
+    });
+    let expectation_ids = analysis
+        .expectations
+        .iter()
+        .filter(|expectation| {
+            same_target(
+                expectation.target,
+                expectation.subject.as_deref(),
+                decision.target,
+                decision.subject.as_deref(),
+            )
+        })
+        .map(|expectation| expectation.id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let works = analysis.works.iter().filter(|work| {
+        expectation_ids.contains(work.expectation_id.as_deref().unwrap_or_default())
+            || same_target(
+                work.target,
+                work.subject.as_deref(),
+                decision.target,
+                decision.subject.as_deref(),
+            )
+    });
+    review_basis(
+        analysis,
+        decision.target,
+        decision.subject.as_deref(),
+        expectations,
+        works,
+        Some(decision.id.as_str()),
+    )
+}
+
+fn review_basis<'a>(
+    analysis: &ProjectAnalysis,
+    target: ExpectationTarget,
+    subject: Option<&str>,
+    expectations: impl Iterator<Item = &'a Expectation>,
+    works: impl Iterator<Item = &'a Work>,
+    record_id: Option<&str>,
+) -> Option<String> {
+    let target_hash = target_fingerprint(analysis, target, subject)?;
+    let mut parts = vec![format!("target={target_hash}")];
+    let mut expectation_parts = expectations
+        .map(|expectation| {
+            format!(
+                "{}|{}|{}|{}|{}|{}|{}",
+                expectation.id,
+                expectation.target,
+                expectation.subject.as_deref().unwrap_or("-"),
+                expectation.status,
+                expectation.source,
+                expectation.title,
+                expectation.detail
+            )
+        })
+        .collect::<Vec<_>>();
+    expectation_parts.sort_unstable();
+    parts.extend(expectation_parts);
+
+    let mut work_parts = works
+        .map(|work| {
+            format!(
+                "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+                work.id,
+                work.target,
+                work.subject.as_deref().unwrap_or("-"),
+                work.expectation_id.as_deref().unwrap_or("-"),
+                work.kind,
+                work.status,
+                work.source,
+                work.evidence.as_deref().unwrap_or("-"),
+                work.title,
+                work.detail
+            )
+        })
+        .collect::<Vec<_>>();
+    work_parts.sort_unstable();
+    parts.extend(work_parts);
+    if let Some(record_id) = record_id {
+        parts.push(format!("record={record_id}"));
+    }
+
+    let references = parts.iter().map(String::as_str).collect::<Vec<_>>();
+    Some(format!("{REVIEW_BASIS_PREFIX}{}", hash_parts(&references)))
+}
+
+fn same_target(
+    left_target: ExpectationTarget,
+    left_subject: Option<&str>,
+    right_target: ExpectationTarget,
+    right_subject: Option<&str>,
+) -> bool {
+    left_target == right_target && left_subject == right_subject
+}
+
+fn basis_matches_current(
+    stored: &str,
+    current: &str,
+    analysis: &ProjectAnalysis,
+    target: ExpectationTarget,
+    subject: Option<&str>,
+) -> bool {
+    stored == current
+        || (!stored.starts_with(REVIEW_BASIS_PREFIX)
+            && target_fingerprint(analysis, target, subject).as_deref() == Some(stored))
 }
 
 fn verification_expectation<'a>(
@@ -795,6 +950,100 @@ mod tests {
 
         assert!(analysis.findings.iter().any(|finding| {
             finding.rule_id == "SUS023" && finding.subject.as_deref() == Some("v_checkout")
+        }));
+    }
+
+    #[test]
+    fn expectation_changes_dirty_verifications_and_decisions() {
+        let mut analysis = analysis_with_expectations(vec![expectation(
+            "e_checkout",
+            ExpectationTarget::Workflow,
+            Some("w_checkout"),
+        )]);
+        analysis.verifications.push(Verification {
+            id: "v_checkout".to_owned(),
+            expectation_id: "e_checkout".to_owned(),
+            status: VerificationStatus::Passed,
+            supersedes: None,
+            execution: None,
+            chain: None,
+            method: "manual review".to_owned(),
+            source: "human:test".to_owned(),
+            evidence: None,
+            basis: None,
+            detail: "Checked.".to_owned(),
+        });
+        analysis.decisions.push(Decision {
+            id: "d_checkout".to_owned(),
+            target: ExpectationTarget::Workflow,
+            subject: Some("w_checkout".to_owned()),
+            status: DecisionStatus::Accepted,
+            source: "human:test".to_owned(),
+            basis: None,
+            title: "Accept checkout shape".to_owned(),
+            detail: "Accepted.".to_owned(),
+        });
+
+        anchor_verification_bases(&mut analysis);
+        anchor_decision_bases(&mut analysis);
+        analysis.expectations[0].detail = "Changed expectation detail.".to_owned();
+        refresh_relationship_findings(&mut analysis);
+
+        assert!(analysis.findings.iter().any(|finding| {
+            finding.rule_id == "SUS023" && finding.subject.as_deref() == Some("v_checkout")
+        }));
+        assert!(analysis.findings.iter().any(|finding| {
+            finding.rule_id == "SUS033" && finding.subject.as_deref() == Some("d_checkout")
+        }));
+    }
+
+    #[test]
+    fn linked_work_changes_dirty_verifications_and_decisions() {
+        let mut analysis = analysis_with_expectations(vec![expectation(
+            "e_checkout",
+            ExpectationTarget::Workflow,
+            Some("w_checkout"),
+        )]);
+        analysis.verifications.push(Verification {
+            id: "v_checkout".to_owned(),
+            expectation_id: "e_checkout".to_owned(),
+            status: VerificationStatus::Passed,
+            supersedes: None,
+            execution: None,
+            chain: None,
+            method: "manual review".to_owned(),
+            source: "human:test".to_owned(),
+            evidence: None,
+            basis: None,
+            detail: "Checked.".to_owned(),
+        });
+        analysis.decisions.push(Decision {
+            id: "d_checkout".to_owned(),
+            target: ExpectationTarget::Workflow,
+            subject: Some("w_checkout".to_owned()),
+            status: DecisionStatus::Accepted,
+            source: "human:test".to_owned(),
+            basis: None,
+            title: "Accept checkout shape".to_owned(),
+            detail: "Accepted.".to_owned(),
+        });
+
+        anchor_verification_bases(&mut analysis);
+        anchor_decision_bases(&mut analysis);
+        let mut linked_work = work(
+            "work_checkout",
+            ExpectationTarget::Workflow,
+            Some("w_checkout"),
+        );
+        linked_work.expectation_id = Some("e_checkout".to_owned());
+        analysis.works.push(linked_work);
+        refresh_relationship_findings(&mut analysis);
+
+        assert!(analysis.findings.iter().any(|finding| {
+            finding.rule_id == "SUS023" && finding.subject.as_deref() == Some("v_checkout")
+        }));
+        assert!(analysis.findings.iter().any(|finding| {
+            finding.rule_id == "SUS033" && finding.subject.as_deref() == Some("d_checkout")
         }));
     }
 

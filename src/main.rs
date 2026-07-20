@@ -2199,7 +2199,6 @@ fn load_analysis(
         })?;
         let count = imported.len();
         merge_verifications(&mut analysis.verifications, imported);
-        anchor_verification_bases(&mut analysis);
         refresh_derived_analysis(&mut analysis);
         if log_merges {
             eprintln!(
@@ -2216,7 +2215,6 @@ fn load_analysis(
             .with_context(|| format!("could not parse decisions from {}", decisions.display()))?;
         let count = imported.len();
         merge_decisions(&mut analysis.decisions, imported);
-        anchor_decision_bases(&mut analysis);
         refresh_derived_analysis(&mut analysis);
         if log_merges {
             eprintln!("merged {count} decisions from {}", decisions.display());
@@ -2235,6 +2233,10 @@ fn load_analysis(
             eprintln!("merged {count} work records from {}", work.display());
         }
     }
+
+    anchor_verification_bases(&mut analysis);
+    anchor_decision_bases(&mut analysis);
+    refresh_derived_analysis(&mut analysis);
 
     Ok(analysis)
 }

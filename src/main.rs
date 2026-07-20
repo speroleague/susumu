@@ -30,6 +30,7 @@ mod expectation_readiness;
 mod git_connect;
 mod git_signature;
 mod handoff;
+mod readiness_command;
 mod review_packet;
 mod review_types;
 
@@ -48,11 +49,11 @@ use handoff::{
     handoff_report, print_handoff_json, print_handoff_records, print_handoff_report,
     print_handoff_workflows, print_string_section,
 };
+use readiness_command::ReadinessArgs;
 use review_packet::review_packet;
 use review_types::{
-    CheckItem, CheckItemJson, CheckReport, CheckSeverity, ExpectationReadiness, ExpectationSupport,
-    ExpectationVerificationSupport, READINESS_BUCKETS, ReviewItemStored, ReviewPacketStored,
-    check_result_reason,
+    CheckItem, CheckItemJson, CheckReport, CheckSeverity, ExpectationSupport,
+    ExpectationVerificationSupport, ReviewItemStored, ReviewPacketStored, check_result_reason,
 };
 
 #[derive(Debug, Parser)]
@@ -574,34 +575,6 @@ struct StatusArgs {
     /// Maximum review items to print.
     #[arg(long, default_value_t = 10)]
     max_items: usize,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Args)]
-struct ReadinessArgs {
-    /// Review packet to inspect.
-    #[arg(
-        short,
-        long,
-        default_value = ".susumu/review.susu",
-        value_name = "FILE"
-    )]
-    packet: PathBuf,
-
-    /// Maximum readiness items to print.
-    #[arg(long, default_value_t = 20)]
-    max_items: usize,
-
-    /// Filter by readiness bucket.
-    #[arg(long, value_name = "BUCKET")]
-    bucket: Option<String>,
-
-    /// Search expectation id, title, target, subject, label, or status.
-    #[arg(short, long)]
-    search: Option<String>,
 
     /// Emit machine-readable JSON.
     #[arg(long)]
@@ -1352,7 +1325,7 @@ fn run_command(command: Command) -> Result<()> {
         }
         Command::Open(args) => open_shortcut(&args),
         Command::Status(args) => status_shortcut(&args),
-        Command::Readiness(args) => readiness_shortcut(&args),
+        Command::Readiness(args) => readiness_command::run(&args),
         Command::Resolve(args) => resolve_target(&args),
         Command::Expectations(args) => expectations_shortcut(&args),
         Command::Verify(args) => verify_shortcut(args),
@@ -1500,208 +1473,6 @@ fn status_shortcut(args: &StatusArgs) -> Result<()> {
         max_items: args.max_items,
         json: args.json,
     })
-}
-
-fn readiness_shortcut(args: &ReadinessArgs) -> Result<()> {
-    let packet = read_review_packet(&args.packet).with_context(|| {
-        format!(
-            "could not read readiness from {}; run `susumu review` first",
-            args.packet.display()
-        )
-    })?;
-    let bucket = canonical_readiness_bucket(args.bucket.as_deref())?;
-    let items = filtered_readiness_items(
-        &packet.expectation_readiness,
-        bucket,
-        args.search.as_deref(),
-    );
-    if args.json {
-        print_readiness_json(
-            &args.packet,
-            &packet,
-            &items,
-            bucket,
-            args.search.as_deref(),
-        )?;
-    } else {
-        print_readiness_report(
-            &args.packet,
-            &packet,
-            &items,
-            bucket,
-            args.search.as_deref(),
-            args.max_items,
-        );
-    }
-    Ok(())
-}
-
-fn print_readiness_report(
-    packet_path: &Path,
-    packet: &ReviewPacketStored,
-    items: &[ExpectationReadiness],
-    bucket: Option<&str>,
-    search: Option<&str>,
-    max_items: usize,
-) {
-    println!("Susumu readiness: {}", packet.project.name);
-    println!("Packet: {}", packet_path.display());
-    println!(
-        "Result: {} ({})",
-        packet.result.status, packet.result.reason
-    );
-    println!(
-        "Showing: {} of {} expectations",
-        items.len(),
-        packet.expectation_readiness.len()
-    );
-    if bucket.is_some() || search.is_some() {
-        println!(
-            "Filters: bucket={} search={}",
-            bucket.unwrap_or("any"),
-            search.unwrap_or("any")
-        );
-    }
-    println!();
-    print_readiness_counts(items);
-    println!();
-    print_expectation_readiness(items, max_items);
-}
-
-fn print_readiness_counts(items: &[ExpectationReadiness]) {
-    println!("Readiness counts");
-    for (bucket, label) in READINESS_BUCKETS {
-        let count = items.iter().filter(|item| item.bucket == bucket).count();
-        println!("  - {label}: {count}");
-    }
-}
-
-fn print_readiness_json(
-    packet_path: &Path,
-    packet: &ReviewPacketStored,
-    items: &[ExpectationReadiness],
-    bucket: Option<&str>,
-    search: Option<&str>,
-) -> Result<()> {
-    let output = readiness_json(packet_path, packet, items, bucket, search);
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&output).context("could not serialize readiness report")?
-    );
-    Ok(())
-}
-
-fn readiness_json(
-    packet_path: &Path,
-    packet: &ReviewPacketStored,
-    items: &[ExpectationReadiness],
-    bucket: Option<&str>,
-    search: Option<&str>,
-) -> serde_json::Value {
-    let counts = READINESS_BUCKETS
-        .iter()
-        .map(|(bucket, label)| {
-            serde_json::json!({
-                "bucket": bucket,
-                "label": label,
-                "count": items
-                    .iter()
-                    .filter(|item| item.bucket == *bucket)
-                    .count(),
-            })
-        })
-        .collect::<Vec<_>>();
-    serde_json::json!({
-        "packet": packet_path.display().to_string(),
-        "project": &packet.project,
-        "result": &packet.result,
-        "total": packet.expectation_readiness.len(),
-        "shown": items.len(),
-        "filters": {
-            "bucket": bucket,
-            "search": search,
-        },
-        "counts": counts,
-        "items": items,
-    })
-}
-
-fn canonical_readiness_bucket(bucket: Option<&str>) -> Result<Option<&'static str>> {
-    let Some(bucket) = bucket else {
-        return Ok(None);
-    };
-    let normalized = normalize_readiness_filter(bucket);
-    let canonical = READINESS_BUCKETS
-        .iter()
-        .find(|(candidate, label)| {
-            normalize_readiness_filter(candidate) == normalized
-                || normalize_readiness_filter(label) == normalized
-        })
-        .map(|(candidate, _)| *candidate);
-    canonical.map(Some).with_context(|| {
-        format!(
-            "unknown readiness bucket `{bucket}`; expected one of: {}",
-            readiness_bucket_help()
-        )
-    })
-}
-
-fn readiness_bucket_help() -> String {
-    READINESS_BUCKETS
-        .iter()
-        .map(|(bucket, _)| *bucket)
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-fn normalize_readiness_filter(value: &str) -> String {
-    let mut normalized = String::new();
-    let mut last_was_separator = false;
-    for ch in value.trim().chars().flat_map(char::to_lowercase) {
-        if ch.is_ascii_alphanumeric() {
-            normalized.push(ch);
-            last_was_separator = false;
-        } else if !last_was_separator && !normalized.is_empty() {
-            normalized.push('_');
-            last_was_separator = true;
-        }
-    }
-    if normalized.ends_with('_') {
-        normalized.pop();
-    }
-    normalized
-}
-
-fn filtered_readiness_items(
-    items: &[ExpectationReadiness],
-    bucket: Option<&str>,
-    search: Option<&str>,
-) -> Vec<ExpectationReadiness> {
-    let search = search.map(str::to_lowercase);
-    items
-        .iter()
-        .filter(|item| bucket.is_none_or(|bucket| item.bucket == bucket))
-        .filter(|item| {
-            search
-                .as_deref()
-                .is_none_or(|search| readiness_item_matches_search(item, search))
-        })
-        .cloned()
-        .collect()
-}
-
-fn readiness_item_matches_search(item: &ExpectationReadiness, search: &str) -> bool {
-    [
-        item.expectation_id.as_str(),
-        item.title.as_str(),
-        item.target.as_str(),
-        item.subject.as_deref().unwrap_or_default(),
-        item.bucket.as_str(),
-        item.label.as_str(),
-        item.support_status.as_str(),
-    ]
-    .iter()
-    .any(|value| value.to_lowercase().contains(search))
 }
 
 #[derive(Debug, Serialize)]
@@ -3156,7 +2927,7 @@ fn print_review_packet(packet: &ReviewPacketStored, max_items: usize) {
     println!();
     print_handoff_workflows(&packet.top_workflows, max_items);
     print_stored_review_items(&packet.review_items, max_items);
-    print_expectation_readiness(&packet.expectation_readiness, max_items);
+    readiness_command::print_items(&packet.expectation_readiness, max_items);
     print_expectation_support(&packet.expectation_support, max_items);
     print_handoff_records(
         "Expectations without verification",
@@ -3170,25 +2941,6 @@ fn print_review_packet(packet: &ReviewPacketStored, max_items: usize) {
     );
     print_string_section("Caveats", &packet.caveats, max_items);
     print_string_section("Suggested next actions", &packet.next_actions, max_items);
-}
-
-fn print_expectation_readiness(items: &[ExpectationReadiness], max_items: usize) {
-    println!();
-    println!("Expectation readiness");
-    if items.is_empty() {
-        println!("  none");
-        return;
-    }
-    for item in items.iter().take(max_items) {
-        println!(
-            "  - {} [{}] {}",
-            item.title, item.label, item.expectation_id
-        );
-        println!("    next: {}", item.next_action);
-    }
-    if items.len() > max_items {
-        println!("  ... {} more", items.len() - max_items);
-    }
 }
 
 fn print_expectation_support(items: &[ExpectationSupport], max_items: usize) {
@@ -7001,12 +6753,12 @@ mod tests {
         });
         let packet = stored_review_packet("fixture.review.susu", 1, &artifact);
 
-        let items = filtered_readiness_items(
+        let items = readiness_command::filtered_items(
             &packet.expectation_readiness,
             Some("needs_verification"),
             Some("checkout"),
         );
-        let json = readiness_json(
+        let json = readiness_command::readiness_json(
             Path::new("fixture.review.susu"),
             &packet,
             &items,
@@ -7049,16 +6801,19 @@ mod tests {
                 .to_owned(),
         });
         let packet = stored_review_packet("fixture.review.susu", 1, &artifact);
-        let bucket =
-            canonical_readiness_bucket(Some("Has work, needs verification")).expect("bucket");
+        let bucket = readiness_command::canonical_bucket(Some("Has work, needs verification"))
+            .expect("bucket");
 
-        let filtered =
-            filtered_readiness_items(&packet.expectation_readiness, bucket, Some("checkout"));
+        let filtered = readiness_command::filtered_items(
+            &packet.expectation_readiness,
+            bucket,
+            Some("checkout"),
+        );
 
         assert_eq!(bucket, Some("needs_verification"));
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].expectation_id, "e_checkout_sequence");
-        assert!(canonical_readiness_bucket(Some("unknown")).is_err());
+        assert!(readiness_command::canonical_bucket(Some("unknown")).is_err());
     }
 
     #[test]

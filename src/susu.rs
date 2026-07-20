@@ -336,6 +336,7 @@ fn parse_verification_statement(statement: &[Token]) -> Result<Verification> {
             .map(|value| serde_json::from_str(value))
             .transpose()
             .context("invalid verification execution metadata")?,
+        chain: optional_id(values.get("chain").map_or("-", String::as_str)),
         method: required(&values, "method")?.to_owned(),
         source: required(&values, "source")?.to_owned(),
         evidence: optional_id(required(&values, "evidence")?),
@@ -569,6 +570,7 @@ mod tests {
                 status: VerificationStatus::Passed,
                 supersedes: None,
                 execution: None,
+                chain: None,
                 method: "cargo test".to_owned(),
                 source: "human:engineer".to_owned(),
                 evidence: Some("ci:123".to_owned()),

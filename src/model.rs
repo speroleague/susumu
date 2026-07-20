@@ -230,6 +230,7 @@ pub struct Verification {
     pub status: VerificationStatus,
     pub supersedes: Option<String>,
     pub execution: Option<VerificationExecution>,
+    pub chain: Option<String>,
     pub method: String,
     pub source: String,
     pub evidence: Option<String>,

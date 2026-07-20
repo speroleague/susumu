@@ -743,6 +743,24 @@ enum VerificationCommand {
 
     /// Remove one verification from a verification-only sidecar.
     Remove(RemoveVerification),
+
+    /// Inspect or initialize the verification hash chain.
+    Chain(ChainVerificationArgs),
+}
+
+#[derive(Debug, Args)]
+struct ChainVerificationArgs {
+    /// Verification sidecar to inspect or initialize.
+    #[arg(short, long, default_value = "verifications.susu")]
+    file: PathBuf,
+
+    /// Add chain hashes to an unchained sidecar.
+    #[arg(long)]
+    initialize: bool,
+
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1350,6 +1368,7 @@ fn run_command(command: Command) -> Result<()> {
             VerificationCommand::Add(args) => add_verification(args),
             VerificationCommand::List(args) => list_verifications(&args),
             VerificationCommand::Remove(args) => remove_verification(&args),
+            VerificationCommand::Chain(args) => verification_chain(&args),
         },
         Command::Decision { command } => match command {
             DecisionCommand::Add(args) => add_decision(args),
@@ -1964,6 +1983,7 @@ fn verify_shortcut(args: VerifyArgs) -> Result<()> {
         status,
         supersedes: args.supersedes.filter(|value| !value.trim().is_empty()),
         execution,
+        chain: None,
         method: args.method,
         source: args.source,
         evidence,
@@ -3942,6 +3962,7 @@ fn add_verification(args: AddVerification) -> Result<()> {
         status,
         supersedes: args.supersedes.filter(|value| !value.trim().is_empty()),
         execution,
+        chain: None,
         method: args.method,
         source: args.source,
         evidence,
@@ -3978,6 +3999,136 @@ fn remove_verification(args: &RemoveVerification) -> Result<()> {
         args.file.display(),
         args.id
     )
+}
+
+#[derive(Debug, Serialize)]
+struct VerificationChainReport {
+    file: String,
+    status: &'static str,
+    records: usize,
+    broken_at: Option<String>,
+    tip: Option<String>,
+    anchor_status: &'static str,
+    note: &'static str,
+}
+
+fn verification_chain(args: &ChainVerificationArgs) -> Result<()> {
+    let mut verifications = read_verification_sidecar(&args.file)?;
+    if args.initialize {
+        if verifications
+            .iter()
+            .any(|verification| verification.chain.is_some())
+        {
+            let report = verify_verification_chain(&args.file, &verifications);
+            if report.status != "unchained" && report.status != "valid" {
+                bail!(
+                    "{} has a broken verification chain; repair it manually before reinitializing",
+                    args.file.display()
+                );
+            }
+            if report.status == "valid" {
+                bail!("{} already has a verification chain", args.file.display());
+            }
+        }
+        let mut previous = None;
+        for verification in &mut verifications {
+            let chain = verification_chain_digest(previous.as_deref(), verification);
+            verification.chain = Some(chain.clone());
+            previous = Some(chain);
+        }
+        fs::write(&args.file, write_verifications(&verifications, false)?)
+            .with_context(|| format!("could not write {}", args.file.display()))?;
+    }
+
+    let report = verify_verification_chain(&args.file, &verifications);
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .context("could not serialize verification chain report")?
+        );
+    } else {
+        println!("Verification chain: {}", report.status);
+        println!("Records: {}", report.records);
+        println!("Anchor: {}", report.anchor_status);
+        if let Some(broken_at) = report.broken_at {
+            println!("Broken at: {broken_at}");
+        }
+        println!("Note: {}", report.note);
+    }
+    Ok(())
+}
+
+fn verify_verification_chain(
+    file: &Path,
+    verifications: &[Verification],
+) -> VerificationChainReport {
+    if verifications.is_empty()
+        || verifications
+            .iter()
+            .all(|verification| verification.chain.is_none())
+    {
+        return VerificationChainReport {
+            file: file.display().to_string(),
+            status: "unchained",
+            records: verifications.len(),
+            broken_at: None,
+            tip: None,
+            anchor_status: "none",
+            note: "No chain is present. Initialize one for accidental-edit detection; a self-contained chain still needs an external trust anchor.",
+        };
+    }
+    let mut previous = None;
+    for verification in verifications {
+        let expected = verification_chain_digest(previous.as_deref(), verification);
+        if verification.chain.as_deref() != Some(expected.as_str()) {
+            return VerificationChainReport {
+                file: file.display().to_string(),
+                status: "broken",
+                records: verifications.len(),
+                broken_at: Some(verification.id.clone()),
+                tip: previous,
+                anchor_status: "none",
+                note: "The chain detects a changed, deleted, or reordered record, but it is not externally anchored.",
+            };
+        }
+        previous.clone_from(&verification.chain);
+    }
+    VerificationChainReport {
+        file: file.display().to_string(),
+        status: "valid",
+        records: verifications.len(),
+        broken_at: None,
+        tip: previous,
+        anchor_status: "self_contained",
+        note: "The chain is internally consistent and detects casual history changes; an external or signed tip is required to resist deliberate rewriting.",
+    }
+}
+
+fn verification_chain_digest(previous: Option<&str>, verification: &Verification) -> String {
+    let execution = verification
+        .execution
+        .as_ref()
+        .map(|metadata| serde_json::to_string(metadata).unwrap_or_default())
+        .unwrap_or_default();
+    let mut hash = Sha256::new();
+    for part in [
+        previous.unwrap_or("-"),
+        &verification.id,
+        &verification.expectation_id,
+        &verification.status.to_string(),
+        verification.supersedes.as_deref().unwrap_or("-"),
+        &verification.method,
+        &verification.source,
+        verification.evidence.as_deref().unwrap_or("-"),
+        verification.basis.as_deref().unwrap_or("-"),
+        &execution,
+        &verification.detail,
+    ] {
+        hash.update(part.as_bytes());
+        hash.update([0]);
+    }
+    format!("sha256:{:x}", hash.finalize())
 }
 
 fn hash_evidence_file(path: &Path) -> Result<String> {
@@ -6058,6 +6209,26 @@ mod tests {
     }
 
     #[test]
+    fn verification_chain_detects_tampering_after_initialization() {
+        let source = "verification v_one expectation=e_verify status=passed method=\"cargo test\" source=\"human:test\" evidence=- basis=- detail=\"First.\";\nverification v_two expectation=e_verify status=failed method=\"cargo test\" source=\"human:test\" evidence=- basis=- detail=\"Second.\";\n";
+        let mut records = parse_verifications(source).expect("parse chain records");
+        let mut previous = None;
+        for record in &mut records {
+            let chain = verification_chain_digest(previous.as_deref(), record);
+            record.chain = Some(chain.clone());
+            previous = Some(chain);
+        }
+
+        let report = verify_verification_chain(Path::new("verifications.susu"), &records);
+        assert_eq!(report.status, "valid");
+
+        records[0].detail = "Edited after initialization.".to_owned();
+        let tampered = verify_verification_chain(Path::new("verifications.susu"), &records);
+        assert_eq!(tampered.status, "broken");
+        assert_eq!(tampered.broken_at.as_deref(), Some("v_one"));
+    }
+
+    #[test]
     fn evidence_file_hash_is_content_only() {
         let temp = tempfile::tempdir().expect("tempdir");
         let file = temp.path().join("junit.xml");
@@ -6212,6 +6383,7 @@ mod tests {
             status: VerificationStatus::Passed,
             supersedes: None,
             execution: None,
+            chain: None,
             method: "cargo test".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:1".to_owned()),
@@ -6224,6 +6396,7 @@ mod tests {
             status: VerificationStatus::Failed,
             supersedes: None,
             execution: None,
+            chain: None,
             method: "manual review".to_owned(),
             source: "human:test".to_owned(),
             evidence: Some("review:1".to_owned()),
@@ -6236,6 +6409,7 @@ mod tests {
             status: VerificationStatus::Inconclusive,
             supersedes: None,
             execution: None,
+            chain: None,
             method: "log review".to_owned(),
             source: "human:test".to_owned(),
             evidence: None,
@@ -6389,6 +6563,7 @@ mod tests {
             status: VerificationStatus::Passed,
             supersedes: None,
             execution: None,
+            chain: None,
             method: "cargo test checkout".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:checkout".to_owned()),
@@ -6673,6 +6848,7 @@ mod tests {
             status: VerificationStatus::Passed,
             supersedes: None,
             execution: None,
+            chain: None,
             method: "cargo test checkout".to_owned(),
             source: "ci:test".to_owned(),
             evidence: Some("run:checkout".to_owned()),
@@ -7135,6 +7311,7 @@ mod tests {
             status: VerificationStatus::Failed,
             supersedes: None,
             execution: None,
+            chain: None,
             method: "manual review".to_owned(),
             source: "human:qa".to_owned(),
             evidence: Some("review:1".to_owned()),

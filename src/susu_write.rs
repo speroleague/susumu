@@ -229,13 +229,19 @@ fn verification_statement(verification: &Verification) -> Result<String> {
     } else {
         String::new()
     };
+    let chain = verification
+        .chain
+        .as_deref()
+        .map(|value| format!(" chain={value}"))
+        .unwrap_or_default();
     Ok(format!(
-        "verification {} expectation={} status={}{}{} method={} source={} evidence={} basis={} detail={}",
+        "verification {} expectation={} status={}{}{}{} method={} source={} evidence={} basis={} detail={}",
         verification.id,
         verification.expectation_id,
         verification.status,
         supersedes,
         execution,
+        chain,
         quote(&verification.method)?,
         quote(&verification.source)?,
         optional_quoted(verification.evidence.as_deref())?,

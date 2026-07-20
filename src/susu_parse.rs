@@ -42,3 +42,22 @@ fn parse_point(value: &str) -> Result<(usize, usize)> {
         .with_context(|| format!("invalid source point: {value}"))?;
     Ok((parse_number(line, "line")?, parse_number(column, "column")?))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parser_primitives_preserve_optional_ids_and_locations() {
+        let fields = HashMap::from([
+            ("start".to_owned(), "2:3".to_owned()),
+            ("end".to_owned(), "4:5".to_owned()),
+        ]);
+
+        assert_eq!(optional_id("-"), None);
+        assert_eq!(optional_id("s_main"), Some("s_main".to_owned()));
+        assert_eq!(parse_location(&fields).unwrap().start_line, 2);
+        assert!(required(&fields, "missing").is_err());
+        assert!(parse_number::<usize>("not-a-number", "line").is_err());
+    }
+}

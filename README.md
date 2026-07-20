@@ -260,6 +260,8 @@ Verification sidecars are append-only through supported commands. `verification 
 
 Susumu can support an organization's compliance process by organizing evidence, review state, provenance, and retention information. It does not certify compliance, determine that a control or regulation has been met, or promise that it will be met. Any compliance conclusion remains the responsibility of the relevant people, process, and organization.
 
+The planned provenance model and provider-neutral attestation boundary are documented in [Verification integrity and provenance](docs/verification-integrity.md).
+
 Create, list, or remove decision sidecars:
 
 ```powershell

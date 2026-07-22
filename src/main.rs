@@ -1237,11 +1237,28 @@ fn load_analysis(
     work: Option<&PathBuf>,
     log_merges: bool,
 ) -> Result<ProjectAnalysis> {
+    let (mut analysis, is_artifact) = load_base_analysis(target)?;
+    refresh_derived_analysis(&mut analysis);
+
+    let expectations = sidecar_path(target, expectations, is_artifact, "expectations.susu");
+    let verifications = sidecar_path(target, verifications, is_artifact, "verifications.susu");
+    merge_expectation_sidecar(&mut analysis, expectations.as_deref(), log_merges)?;
+    merge_verification_sidecar(&mut analysis, verifications.as_deref(), log_merges)?;
+    merge_decision_sidecar(&mut analysis, decisions, log_merges)?;
+    merge_work_sidecar(&mut analysis, work, log_merges)?;
+
+    anchor_verification_bases(&mut analysis);
+    anchor_decision_bases(&mut analysis);
+    refresh_derived_analysis(&mut analysis);
+
+    Ok(analysis)
+}
+
+fn load_base_analysis(target: &PathBuf) -> Result<(ProjectAnalysis, bool)> {
     let is_artifact = target
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("susu"));
-
-    let mut analysis = if is_artifact {
+    let analysis = if is_artifact {
         let source = fs::read_to_string(target)
             .with_context(|| format!("could not read {}", target.display()))?;
         parse_susu(&source).with_context(|| format!("could not parse {}", target.display()))?
@@ -1251,94 +1268,96 @@ fn load_analysis(
         }
         scan_project(target)?
     };
-    refresh_derived_analysis(&mut analysis);
+    Ok((analysis, is_artifact))
+}
 
-    let discovered_expectations = if expectations.is_none() && !is_artifact {
-        let candidate = target.join("expectations.susu");
-        candidate.exists().then_some(candidate)
-    } else {
-        None
-    };
-    let expectations = expectations.or(discovered_expectations.as_ref());
-    let discovered_verifications = if verifications.is_none() && !is_artifact {
-        let candidate = target.join("verifications.susu");
-        candidate.exists().then_some(candidate)
-    } else {
-        None
-    };
-    let verifications = verifications.or(discovered_verifications.as_ref());
+fn sidecar_path(
+    target: &Path,
+    explicit: Option<&PathBuf>,
+    is_artifact: bool,
+    filename: &str,
+) -> Option<PathBuf> {
+    explicit.cloned().or_else(|| {
+        (!is_artifact)
+            .then(|| target.join(filename))
+            .filter(|candidate| candidate.exists())
+    })
+}
 
-    if let Some(expectations) = expectations {
-        let source = fs::read_to_string(expectations)
-            .with_context(|| format!("could not read {}", expectations.display()))?;
-        let imported = parse_expectations(&source).with_context(|| {
-            format!(
-                "could not parse expectations from {}",
-                expectations.display()
-            )
-        })?;
-        let count = imported.len();
-        merge_expectations(&mut analysis.expectations, imported);
-        refresh_derived_analysis(&mut analysis);
-        if log_merges {
-            eprintln!(
-                "merged {count} expectations from {}",
-                expectations.display()
-            );
-        }
+fn merge_expectation_sidecar(
+    analysis: &mut ProjectAnalysis,
+    path: Option<&Path>,
+    log_merges: bool,
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let source =
+        fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
+    let imported = parse_expectations(&source)
+        .with_context(|| format!("could not parse expectations from {}", path.display()))?;
+    let count = imported.len();
+    merge_expectations(&mut analysis.expectations, imported);
+    refresh_derived_analysis(analysis);
+    if log_merges {
+        eprintln!("merged {count} expectations from {}", path.display());
     }
+    Ok(())
+}
 
-    if let Some(verifications) = verifications {
-        let source = fs::read_to_string(verifications)
-            .with_context(|| format!("could not read {}", verifications.display()))?;
-        let imported = parse_verifications(&source).with_context(|| {
-            format!(
-                "could not parse verifications from {}",
-                verifications.display()
-            )
-        })?;
-        let count = imported.len();
-        merge_verifications(&mut analysis.verifications, imported);
-        refresh_derived_analysis(&mut analysis);
-        if log_merges {
-            eprintln!(
-                "merged {count} verifications from {}",
-                verifications.display()
-            );
-        }
+fn merge_verification_sidecar(
+    analysis: &mut ProjectAnalysis,
+    path: Option<&Path>,
+    log_merges: bool,
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let source =
+        fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
+    let imported = parse_verifications(&source)
+        .with_context(|| format!("could not parse verifications from {}", path.display()))?;
+    let count = imported.len();
+    merge_verifications(&mut analysis.verifications, imported);
+    refresh_derived_analysis(analysis);
+    if log_merges {
+        eprintln!("merged {count} verifications from {}", path.display());
     }
+    Ok(())
+}
 
-    if let Some(decisions) = decisions {
-        let source = fs::read_to_string(decisions)
-            .with_context(|| format!("could not read {}", decisions.display()))?;
-        let imported = parse_decisions(&source)
-            .with_context(|| format!("could not parse decisions from {}", decisions.display()))?;
-        let count = imported.len();
-        merge_decisions(&mut analysis.decisions, imported);
-        refresh_derived_analysis(&mut analysis);
-        if log_merges {
-            eprintln!("merged {count} decisions from {}", decisions.display());
-        }
+fn merge_decision_sidecar(
+    analysis: &mut ProjectAnalysis,
+    path: Option<&PathBuf>,
+    log_merges: bool,
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let source = fs::read_to_string(path)
+        .with_context(|| format!("could not read decisions from {}", path.display()))?;
+    let imported = parse_decisions(&source)
+        .with_context(|| format!("could not parse decisions from {}", path.display()))?;
+    let count = imported.len();
+    merge_decisions(&mut analysis.decisions, imported);
+    refresh_derived_analysis(analysis);
+    if log_merges {
+        eprintln!("merged {count} decisions from {}", path.display());
     }
+    Ok(())
+}
 
-    if let Some(work) = work {
-        let source = fs::read_to_string(work)
-            .with_context(|| format!("could not read {}", work.display()))?;
-        let imported = parse_works(&source)
-            .with_context(|| format!("could not parse work from {}", work.display()))?;
-        let count = imported.len();
-        merge_works(&mut analysis.works, imported);
-        refresh_derived_analysis(&mut analysis);
-        if log_merges {
-            eprintln!("merged {count} work records from {}", work.display());
-        }
+fn merge_work_sidecar(
+    analysis: &mut ProjectAnalysis,
+    path: Option<&PathBuf>,
+    log_merges: bool,
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let source = fs::read_to_string(path)
+        .with_context(|| format!("could not read work from {}", path.display()))?;
+    let imported = parse_works(&source)
+        .with_context(|| format!("could not parse work from {}", path.display()))?;
+    let count = imported.len();
+    merge_works(&mut analysis.works, imported);
+    refresh_derived_analysis(analysis);
+    if log_merges {
+        eprintln!("merged {count} work records from {}", path.display());
     }
-
-    anchor_verification_bases(&mut analysis);
-    anchor_decision_bases(&mut analysis);
-    refresh_derived_analysis(&mut analysis);
-
-    Ok(analysis)
+    Ok(())
 }
 
 fn init_repository(args: &InitArgs) -> Result<()> {

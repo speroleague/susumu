@@ -5029,31 +5029,34 @@ mod tests {
         assert!(has_records_other_than(work, "expectation"));
     }
 
-    #[test]
-    #[allow(clippy::too_many_lines)]
-    fn expectation_support_counts_expectation_specific_work_only_once() {
-        let mut artifact = test_artifact();
-        artifact.expectations = vec![
-            Expectation {
-                id: "e_project_one".to_owned(),
-                target: ExpectationTarget::Project,
-                subject: None,
-                status: ExpectationStatus::Accepted,
-                source: "human:test".to_owned(),
-                title: "First project expectation".to_owned(),
-                detail: "First expectation.".to_owned(),
-            },
-            Expectation {
-                id: "e_project_two".to_owned(),
-                target: ExpectationTarget::Project,
-                subject: None,
-                status: ExpectationStatus::Accepted,
-                source: "human:test".to_owned(),
-                title: "Second project expectation".to_owned(),
-                detail: "Second expectation.".to_owned(),
-            },
-        ];
-        artifact.works.push(Work {
+    fn project_expectations() -> Vec<Expectation> {
+        [
+            (
+                "e_project_one",
+                "First project expectation",
+                "First expectation.",
+            ),
+            (
+                "e_project_two",
+                "Second project expectation",
+                "Second expectation.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, title, detail)| Expectation {
+            id: id.to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            status: ExpectationStatus::Accepted,
+            source: "human:test".to_owned(),
+            title: title.to_owned(),
+            detail: detail.to_owned(),
+        })
+        .collect()
+    }
+
+    fn expectation_support_work() -> Work {
+        Work {
             id: "wk_one".to_owned(),
             target: ExpectationTarget::Project,
             subject: None,
@@ -5064,7 +5067,13 @@ mod tests {
             evidence: Some("commit:abc123".to_owned()),
             title: "Support first expectation".to_owned(),
             detail: "Only the explicitly linked expectation should count this work.".to_owned(),
-        });
+        }
+    }
+
+    fn expectation_support_fixture() -> ProjectAnalysis {
+        let mut artifact = test_artifact();
+        artifact.expectations = project_expectations();
+        artifact.works.push(expectation_support_work());
         artifact.verifications.push(Verification {
             id: "v_one_passed".to_owned(),
             expectation_id: "e_project_one".to_owned(),
@@ -5135,6 +5144,13 @@ mod tests {
             subject: Some("w_checkout".to_owned()),
             location: Some(test_location()),
         });
+
+        artifact
+    }
+
+    #[test]
+    fn expectation_support_counts_expectation_specific_work_only_once() {
+        let artifact = expectation_support_fixture();
 
         let support = expectation_support(&artifact);
         let first = support

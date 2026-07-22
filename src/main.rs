@@ -25,6 +25,7 @@ use susumu::{
 mod attestation;
 mod checks;
 mod cli_values;
+mod daily_cli;
 mod expectation_readiness;
 mod git_cli;
 mod git_connect;
@@ -37,9 +38,10 @@ mod review_packet;
 mod review_types;
 
 use checks::{check_item_jsons, check_json, check_report, print_check_json, print_check_report};
-use cli_values::{ExpectationStatusArg, GitTargetDepth};
+use cli_values::GitTargetDepth;
 #[cfg(test)]
 use cli_values::{WorkKindArg, WorkStatusArg};
+use daily_cli::{ExpectationsArgs, ResolveArgs, StatusArgs, VerifyArgs};
 use expectation_readiness::expectation_support;
 use git_cli::{
     GitCommand, GitConnectArgs, GitImportArgs, GitLinkArgs, GitRewindArgs, GitShortcutArgs,
@@ -571,141 +573,6 @@ struct OpenArgs {
     max_items: usize,
 
     /// Emit the stored review packet JSON instead of opening the portal.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Args)]
-struct StatusArgs {
-    /// Directory to scan, or an existing .susu artifact to check.
-    #[arg(default_value = ".")]
-    target: PathBuf,
-
-    /// Directory for convention-based Susumu outputs.
-    #[arg(long, default_value = ".susumu", value_name = "DIR")]
-    output_dir: PathBuf,
-
-    /// Fail on warnings as well as critical items.
-    #[arg(long)]
-    strict: bool,
-
-    /// Maximum review items to print.
-    #[arg(long, default_value_t = 10)]
-    max_items: usize,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Args)]
-struct ResolveArgs {
-    /// Source path to resolve, relative to the project root.
-    path: PathBuf,
-
-    /// Project directory to scan.
-    #[arg(long, default_value = ".")]
-    target: PathBuf,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Args)]
-struct ExpectationsArgs {
-    /// Directory to scan, or an existing .susu artifact to inspect.
-    #[arg(default_value = ".")]
-    target: PathBuf,
-
-    /// Read expectations from a specific sidecar or artifact instead of scanning/loading target.
-    #[arg(short, long, value_name = "FILE")]
-    file: Option<PathBuf>,
-
-    /// Search expectation id, title, detail, source, target, subject, or support status.
-    #[arg(short, long)]
-    search: Option<String>,
-
-    /// Filter by expectation status: proposed, accepted, or superseded.
-    #[arg(long)]
-    status: Option<ExpectationStatusArg>,
-
-    /// Maximum expectations to print.
-    #[arg(long, default_value_t = 50)]
-    max_items: usize,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Args)]
-#[allow(clippy::struct_excessive_bools)]
-struct VerifyArgs {
-    /// Expectation id being checked.
-    expectation: String,
-
-    /// Directory or artifact used to validate the expectation id.
-    #[arg(long, default_value = ".")]
-    target: PathBuf,
-
-    /// Verification sidecar to update.
-    #[arg(short, long, default_value = "verifications.susu")]
-    file: PathBuf,
-
-    /// Optional explicit id. Omit to derive a stable id from the record.
-    #[arg(long)]
-    id: Option<String>,
-
-    /// Verification id this record supersedes.
-    #[arg(long)]
-    supersedes: Option<String>,
-
-    /// Mark the verification as passed.
-    #[arg(long, conflicts_with_all = ["failed", "inconclusive"])]
-    passed: bool,
-
-    /// Mark the verification as failed.
-    #[arg(long, conflicts_with_all = ["passed", "inconclusive"])]
-    failed: bool,
-
-    /// Mark the verification as inconclusive.
-    #[arg(long, conflicts_with_all = ["passed", "failed"])]
-    inconclusive: bool,
-
-    /// Method used to check the expectation.
-    #[arg(long)]
-    method: String,
-
-    /// Provenance label such as human:engineer or ci:github-actions.
-    #[arg(long, default_value = "human:local")]
-    source: String,
-
-    /// Optional evidence id or external evidence reference.
-    #[arg(long)]
-    evidence: Option<String>,
-
-    /// Local evidence artifact to hash as sha256:<digest>. The file is not copied into the record.
-    #[arg(long, conflicts_with = "evidence")]
-    evidence_file: Option<PathBuf>,
-
-    /// JSON execution metadata to record without authenticating its claims.
-    #[arg(long)]
-    execution_file: Option<PathBuf>,
-
-    /// Optional evidence fingerprint this verification was based on.
-    #[arg(long)]
-    basis: Option<String>,
-
-    /// Verification detail. Defaults to a generated summary.
-    #[arg(long)]
-    detail: Option<String>,
-
-    /// Emit compact .susu syntax.
-    #[arg(long)]
-    minify: bool,
-
-    /// Emit machine-readable JSON.
     #[arg(long)]
     json: bool,
 }

@@ -1086,33 +1086,39 @@ fn verify_shortcut(args: VerifyArgs) -> Result<()> {
     };
     let written = write_verification_record(&args.file, verification, args.minify)?;
 
-    if args.json {
+    print_verification_result(&args.file, expectation, &written, args.json)?;
+
+    Ok(())
+}
+
+fn print_verification_result(
+    file: &Path,
+    expectation: &Expectation,
+    written: &Verification,
+    json: bool,
+) -> Result<()> {
+    if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&VerifyJson {
-                file: args.file.display().to_string(),
-                id: written.id,
-                expectation: written.expectation_id,
+                file: file.display().to_string(),
+                id: written.id.clone(),
+                expectation: written.expectation_id.clone(),
                 status: written.status.to_string(),
-                method: written.method,
-                evidence: written.evidence,
-                source: written.source,
+                method: written.method.clone(),
+                evidence: written.evidence.clone(),
+                source: written.source.clone(),
             })
             .context("could not serialize verification report")?
         );
     } else {
-        println!(
-            "wrote verification {} to {}",
-            written.id,
-            args.file.display()
-        );
+        println!("wrote verification {} to {}", written.id, file.display());
         println!("Expectation: {}  {}", expectation.id, expectation.title);
         println!("Status: {}", written.status);
         println!("Method: {}", written.method);
         println!("next:");
         println!("  susumu review");
     }
-
     Ok(())
 }
 

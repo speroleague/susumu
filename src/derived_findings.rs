@@ -120,12 +120,24 @@ fn add_cycle_findings(analysis: &mut ProjectAnalysis) {
             .first()
             .and_then(|id| analysis.symbols.iter().find(|symbol| &symbol.id == id))
         {
+            let recursive = cycle.len() == 2 && cycle.first() == cycle.last();
+            let (title, detail) = if recursive {
+                (
+                    "Recursive call",
+                    format!("Observed recursive call: {} calls itself.", names[0]),
+                )
+            } else {
+                (
+                    "Call cycle",
+                    format!("Observed call cycle: {}", names.join(" -> ")),
+                )
+            };
             analysis.findings.push(Finding {
                 rule_id: "SUS005".to_owned(),
                 source: "susumu:derived".to_owned(),
                 severity: Severity::Warning,
-                title: "Call cycle".to_owned(),
-                detail: format!("Observed call cycle: {}", names.join(" -> ")),
+                title: title.to_owned(),
+                detail,
                 file_id: Some(first.file_id.clone()),
                 subject: Some(first.id.clone()),
                 location: Some(first.location.clone()),
@@ -194,4 +206,86 @@ fn visit<'a>(
     stack.pop();
     active.remove(node);
     completed.insert(node);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{FlowEdge, Language, Location, SourceFile, Symbol, SymbolKind};
+
+    fn symbol(id: &str, name: &str) -> Symbol {
+        Symbol {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            kind: SymbolKind::Function,
+            file_id: "file".to_owned(),
+            content_hash: None,
+            location: Location {
+                start_line: 1,
+                start_column: 1,
+                end_line: 2,
+                end_column: 1,
+            },
+            entrypoint: false,
+        }
+    }
+
+    fn analysis(symbols: Vec<Symbol>, flows: Vec<FlowEdge>) -> ProjectAnalysis {
+        ProjectAnalysis {
+            schema_version: 1,
+            project_name: "test".to_owned(),
+            root: ".".to_owned(),
+            generated_unix_seconds: 0,
+            files: vec![SourceFile {
+                id: "file".to_owned(),
+                path: "test.rs".to_owned(),
+                language: Language::Rust,
+                lines: 2,
+                bytes: 0,
+                content_hash: None,
+            }],
+            symbols,
+            dependencies: Vec::new(),
+            workflows: Vec::new(),
+            workflow_priorities: Vec::new(),
+            flows,
+            expectations: Vec::new(),
+            verifications: Vec::new(),
+            decisions: Vec::new(),
+            works: Vec::new(),
+            findings: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn classifies_self_cycles_as_recursive_calls() {
+        let mut analysis = analysis(
+            vec![symbol("a", "walk")],
+            vec![FlowEdge {
+                from: "a".to_owned(),
+                to: Some("a".to_owned()),
+                call: "walk".to_owned(),
+                confidence: Confidence::Exact,
+                location: Location {
+                    start_line: 1,
+                    start_column: 1,
+                    end_line: 1,
+                    end_column: 1,
+                },
+            }],
+        );
+
+        add_static_findings(&mut analysis);
+
+        let finding = analysis
+            .findings
+            .iter()
+            .find(|finding| finding.rule_id == "SUS005")
+            .expect("recursive finding");
+        assert_eq!(finding.title, "Recursive call");
+        assert_eq!(
+            finding.detail,
+            "Observed recursive call: walk calls itself."
+        );
+    }
 }

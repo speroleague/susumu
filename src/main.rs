@@ -5427,8 +5427,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn review_packet_embeds_artifact_and_handoff_state() {
+    fn review_packet_fixture() -> (tempfile::TempDir, ProjectAnalysis) {
         let mut artifact = test_artifact();
         let temp = tempfile::tempdir().expect("tempdir");
         fs::create_dir_all(temp.path().join("src")).expect("create source dir");
@@ -5457,6 +5456,12 @@ mod tests {
             detail: "Checkout implementation touched the workflow and now needs verification."
                 .to_owned(),
         });
+        (temp, artifact)
+    }
+
+    #[test]
+    fn review_packet_embeds_artifact_and_handoff_state() {
+        let (_temp, artifact) = review_packet_fixture();
         let check = check_report(&artifact, false);
         let handoff = handoff_report(&artifact, &check);
 

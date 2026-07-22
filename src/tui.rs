@@ -1671,24 +1671,7 @@ fn render_files(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
         .analysis
         .files
         .iter()
-        .map(|file| {
-            let available = source_file_available(&app.analysis, file);
-            let marker = if available { "*" } else { "-" };
-            let marker_color = if available {
-                Color::LightGreen
-            } else {
-                Color::DarkGray
-            };
-            ListItem::new(Line::from(vec![
-                Span::styled(marker, Style::default().fg(marker_color)),
-                Span::raw(" "),
-                Span::styled(
-                    format!("{:10}", file.language),
-                    Style::default().fg(Color::LightCyan),
-                ),
-                Span::raw(&file.path),
-            ]))
-        })
+        .map(|file| file_list_item(&app.analysis, file))
         .collect::<Vec<_>>();
     frame.render_stateful_widget(
         List::new(items)
@@ -1709,37 +1692,7 @@ fn render_files(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
         .and_then(|index| app.analysis.files.get(index));
     let detail = selected_file.map_or_else(
         || vec![Line::raw("No supported source files found.")],
-        |file| {
-            let symbols = app
-                .analysis
-                .symbols
-                .iter()
-                .filter(|symbol| symbol.file_id == file.id && symbol.name != "<module>")
-                .count();
-            let dependencies = app
-                .analysis
-                .dependencies
-                .iter()
-                .filter(|dependency| dependency.file_id == file.id)
-                .count();
-            vec![
-                Line::styled(file.path.clone(), Style::default().fg(Color::White).bold()),
-                Line::raw(""),
-                label("language", &file.language.to_string()),
-                label("lines", &file.lines.to_string()),
-                label("bytes", &file.bytes.to_string()),
-                label("symbols", &symbols.to_string()),
-                label("dependencies", &dependencies.to_string()),
-                label(
-                    "source",
-                    if source_file_available(&app.analysis, file) {
-                        "available"
-                    } else {
-                        "unavailable"
-                    },
-                ),
-            ]
-        },
+        |file| file_detail(&app.analysis, file),
     );
     let source = selected_file.map(file_source_target);
     render_detail_with_source(
@@ -1750,6 +1703,55 @@ fn render_files(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
         columns[1],
         " File evidence ",
     );
+}
+
+fn file_list_item(analysis: &ProjectAnalysis, file: &SourceFile) -> ListItem<'static> {
+    let available = source_file_available(analysis, file);
+    let marker = if available { "*" } else { "-" };
+    let marker_color = if available {
+        Color::LightGreen
+    } else {
+        Color::DarkGray
+    };
+    ListItem::new(Line::from(vec![
+        Span::styled(marker, Style::default().fg(marker_color)),
+        Span::raw(" "),
+        Span::styled(
+            format!("{:10}", file.language),
+            Style::default().fg(Color::LightCyan),
+        ),
+        Span::raw(file.path.clone()),
+    ]))
+}
+
+fn file_detail(analysis: &ProjectAnalysis, file: &SourceFile) -> Vec<Line<'static>> {
+    let symbols = analysis
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.file_id == file.id && symbol.name != "<module>")
+        .count();
+    let dependencies = analysis
+        .dependencies
+        .iter()
+        .filter(|dependency| dependency.file_id == file.id)
+        .count();
+    vec![
+        Line::styled(file.path.clone(), Style::default().fg(Color::White).bold()),
+        Line::raw(""),
+        label("language", &file.language.to_string()),
+        label("lines", &file.lines.to_string()),
+        label("bytes", &file.bytes.to_string()),
+        label("symbols", &symbols.to_string()),
+        label("dependencies", &dependencies.to_string()),
+        label(
+            "source",
+            if source_file_available(analysis, file) {
+                "available"
+            } else {
+                "unavailable"
+            },
+        ),
+    ]
 }
 
 fn render_footer(frame: &mut Frame<'_>, app: &App, area: Rect) {

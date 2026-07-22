@@ -263,9 +263,7 @@ fn html_escape(value: &str) -> String {
         .replace('"', "&quot;")
 }
 
-#[allow(clippy::too_many_lines)]
-fn review_portal_template() -> &'static str {
-    r#"<!doctype html>
+const REVIEW_PORTAL_TEMPLATE: &str = r#"<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -425,5 +423,8 @@ function filter(){const q=$('search').value.toLowerCase();document.querySelector
 render();
 </script>
 </body>
-</html>"#
+</html>"#;
+
+fn review_portal_template() -> &'static str {
+    REVIEW_PORTAL_TEMPLATE
 }

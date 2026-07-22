@@ -26,6 +26,7 @@ mod attestation;
 mod checks;
 mod cli_values;
 mod expectation_readiness;
+mod git_cli;
 mod git_connect;
 mod git_signature;
 mod handoff;
@@ -37,9 +38,13 @@ mod review_types;
 use checks::{check_item_jsons, check_json, check_report, print_check_json, print_check_report};
 use cli_values::{
     DecisionStatusArg, ExpectationStatusArg, ExpectationTargetArg, GitTargetDepth,
-    GitTargetDepthArg, VerificationStatusArg, WorkKindArg, WorkStatusArg,
+    VerificationStatusArg, WorkKindArg, WorkStatusArg,
 };
 use expectation_readiness::expectation_support;
+use git_cli::{
+    GitCommand, GitConnectArgs, GitImportArgs, GitLinkArgs, GitRewindArgs, GitShortcutArgs,
+    GitSignatureArgs,
+};
 use git_connect::{
     GitConnectReport, GitConnectedRecord, GitConnection, build_git_connect_report, contains_token,
     matched_artifact_file_ids, missing_expectation_work_records,
@@ -783,39 +788,6 @@ enum WorkCommand {
     Remove(RemoveWork),
 }
 
-#[derive(Debug, Subcommand)]
-enum GitCommand {
-    /// Connect commits to workflows, records, and expectations.
-    Connect(GitConnectArgs),
-
-    /// Explicitly link one commit to one expectation as a work record.
-    Link(GitLinkArgs),
-
-    /// Import commits as work records.
-    Import(GitImportArgs),
-
-    /// Compare the current artifact to code evidence from an older Git ref.
-    Rewind(GitRewindArgs),
-
-    /// Inspect Git commit signature identity and integrity.
-    Signature(GitSignatureArgs),
-}
-
-#[derive(Debug, Args)]
-struct GitSignatureArgs {
-    /// Git repository to inspect.
-    #[arg(long, default_value = ".")]
-    repo: PathBuf,
-
-    /// Commit to inspect.
-    #[arg(long)]
-    commit: String,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
 #[derive(Debug, Args)]
 struct AddExpectation {
     /// Expectation sidecar to update.
@@ -1058,223 +1030,6 @@ struct RemoveWork {
 
     /// Work id to remove.
     id: String,
-}
-
-#[derive(Debug, Args)]
-struct GitConnectArgs {
-    /// Git repository to inspect.
-    #[arg(long, default_value = ".")]
-    repo: PathBuf,
-
-    /// Current .susu artifact to connect against.
-    #[arg(long)]
-    artifact: PathBuf,
-
-    /// Starting revision or ref, such as main or HEAD~10.
-    #[arg(long)]
-    since: Option<String>,
-
-    /// Ending revision or ref. Defaults to HEAD when --since is used.
-    #[arg(long)]
-    until: Option<String>,
-
-    /// Maximum number of commits to inspect.
-    #[arg(long)]
-    limit: Option<usize>,
-
-    /// Maximum commit connections to print.
-    #[arg(long, default_value_t = 20)]
-    max_items: usize,
-
-    /// Write work records for commits marked `needs_record`.
-    #[arg(long)]
-    export_work: Option<PathBuf>,
-
-    /// Provenance label for exported work records.
-    #[arg(long, default_value = "import:git-connect")]
-    source: String,
-
-    /// Emit compact .susu syntax when exporting work.
-    #[arg(long)]
-    minify: bool,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Args)]
-struct GitShortcutArgs {
-    /// Git repository to inspect.
-    #[arg(long, default_value = ".")]
-    repo: PathBuf,
-
-    /// Current .susu artifact to connect against.
-    #[arg(long, default_value = ".susumu/project.susu")]
-    artifact: PathBuf,
-
-    /// Work sidecar to update with connected commits.
-    #[arg(short, long, default_value = ".susumu/work.susu")]
-    output: PathBuf,
-
-    /// Starting revision or ref, such as main or HEAD~10.
-    #[arg(long)]
-    since: Option<String>,
-
-    /// Ending revision or ref. Defaults to HEAD when --since is used.
-    #[arg(long)]
-    until: Option<String>,
-
-    /// Maximum number of commits to inspect.
-    #[arg(long, default_value_t = 25)]
-    limit: usize,
-
-    /// Maximum commit connections to print.
-    #[arg(long, default_value_t = 20)]
-    max_items: usize,
-
-    /// Do not write work records; only print the connections.
-    #[arg(long)]
-    no_export: bool,
-
-    /// Provenance label for exported work records.
-    #[arg(long, default_value = "import:git-connect")]
-    source: String,
-
-    /// Emit compact .susu syntax when exporting work.
-    #[arg(long)]
-    minify: bool,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Args)]
-struct GitLinkArgs {
-    /// Git repository to inspect.
-    #[arg(long, default_value = ".")]
-    repo: PathBuf,
-
-    /// Current .susu artifact containing the expectation.
-    #[arg(long, default_value = ".susumu/project.susu")]
-    artifact: PathBuf,
-
-    /// Work sidecar to update.
-    #[arg(short, long, default_value = ".susumu/work.susu")]
-    output: PathBuf,
-
-    /// Commit hash or ref to link.
-    commit: String,
-
-    /// Expectation id this commit supports.
-    expectation: String,
-
-    /// Provenance label for the linked work record.
-    #[arg(long, default_value = "human:git-link")]
-    source: String,
-
-    /// Kind: implementation, verification, documentation, infrastructure, review, or other.
-    #[arg(long, default_value = "implementation")]
-    kind: WorkKindArg,
-
-    /// Status: proposed, `in_progress`, completed, blocked, or superseded.
-    #[arg(long, default_value = "completed")]
-    status: WorkStatusArg,
-
-    /// Override the work record title. Defaults to the commit subject.
-    #[arg(long)]
-    title: Option<String>,
-
-    /// Add a note to the generated work detail.
-    #[arg(long)]
-    detail: Option<String>,
-
-    /// Emit compact .susu syntax.
-    #[arg(long)]
-    minify: bool,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Args)]
-struct GitImportArgs {
-    /// Git repository to read.
-    #[arg(long, default_value = ".")]
-    repo: PathBuf,
-
-    /// Work sidecar to update.
-    #[arg(short, long, default_value = "work.susu")]
-    output: PathBuf,
-
-    /// Optional .susu artifact used to map changed files to evidence ids.
-    #[arg(long)]
-    artifact: Option<PathBuf>,
-
-    /// How far imported commits should be targeted: project, file, or workflow.
-    #[arg(long, default_value = "file")]
-    target_depth: GitTargetDepthArg,
-
-    /// Starting revision or ref, such as main or HEAD~10.
-    #[arg(long)]
-    since: Option<String>,
-
-    /// Ending revision or ref. Defaults to HEAD when --since is used.
-    #[arg(long)]
-    until: Option<String>,
-
-    /// Maximum number of commits to import.
-    #[arg(long)]
-    limit: Option<usize>,
-
-    /// Provenance label for imported work records.
-    #[arg(long, default_value = "import:git")]
-    source: String,
-
-    /// Emit compact .susu syntax.
-    #[arg(long)]
-    minify: bool,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Args)]
-struct GitRewindArgs {
-    /// Git repository to inspect.
-    #[arg(long, default_value = ".")]
-    repo: PathBuf,
-
-    /// Older revision or ref to scan, such as HEAD~1 or main.
-    #[arg(long)]
-    from: String,
-
-    /// Current .susu artifact to compare against. If omitted, scan the repository now.
-    #[arg(long)]
-    artifact: Option<PathBuf>,
-
-    /// Optionally write the generated old-ref artifact for inspection.
-    #[arg(long)]
-    old_output: Option<PathBuf>,
-
-    /// Emit compact .susu syntax when writing --old-output.
-    #[arg(long)]
-    minify: bool,
-
-    /// Exit nonzero when stale verification or decision evidence is present.
-    #[arg(long)]
-    fail_on_stale: bool,
-
-    /// Maximum changed items to print per section.
-    #[arg(long, default_value_t = 10)]
-    max_items: usize,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
 }
 
 fn main() -> Result<()> {

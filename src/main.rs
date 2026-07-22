@@ -32,14 +32,14 @@ mod git_signature;
 mod handoff;
 mod portal;
 mod readiness_command;
+mod record_cli;
 mod review_packet;
 mod review_types;
 
 use checks::{check_item_jsons, check_json, check_report, print_check_json, print_check_report};
-use cli_values::{
-    DecisionStatusArg, ExpectationStatusArg, ExpectationTargetArg, GitTargetDepth,
-    VerificationStatusArg, WorkKindArg, WorkStatusArg,
-};
+use cli_values::{ExpectationStatusArg, GitTargetDepth};
+#[cfg(test)]
+use cli_values::{WorkKindArg, WorkStatusArg};
 use expectation_readiness::expectation_support;
 use git_cli::{
     GitCommand, GitConnectArgs, GitImportArgs, GitLinkArgs, GitRewindArgs, GitShortcutArgs,
@@ -61,6 +61,12 @@ use portal::{
     load_for_target as load_portal_config_for_target, review_portal_html_with_config,
 };
 use readiness_command::ReadinessArgs;
+use record_cli::{
+    AddDecision, AddExpectation, AddVerification, AddWork, ChainVerificationArgs, DecisionCommand,
+    ExpectationCommand, ListDecisions, ListExpectations, ListVerifications, ListWorks,
+    RemoveDecision, RemoveExpectation, RemoveVerification, RemoveWork, VerificationCommand,
+    WorkCommand,
+};
 use review_packet::review_packet;
 use review_types::{
     CheckItem, CheckItemJson, CheckReport, CheckSeverity, ExpectationSupport,
@@ -705,49 +711,6 @@ struct VerifyArgs {
 }
 
 #[derive(Debug, Subcommand)]
-enum ExpectationCommand {
-    /// Add or replace one expectation in an expectation-only sidecar.
-    Add(AddExpectation),
-
-    /// List expectations from a sidecar or artifact.
-    List(ListExpectations),
-
-    /// Remove one expectation from an expectation-only sidecar.
-    Remove(RemoveExpectation),
-}
-
-#[derive(Debug, Subcommand)]
-#[allow(clippy::large_enum_variant)]
-enum VerificationCommand {
-    /// Add or replace one verification in a verification-only sidecar.
-    Add(AddVerification),
-
-    /// List verifications from a sidecar or artifact.
-    List(ListVerifications),
-
-    /// Remove one verification from a verification-only sidecar.
-    Remove(RemoveVerification),
-
-    /// Inspect or initialize the verification hash chain.
-    Chain(ChainVerificationArgs),
-}
-
-#[derive(Debug, Args)]
-struct ChainVerificationArgs {
-    /// Verification sidecar to inspect or initialize.
-    #[arg(short, long, default_value = "verifications.susu")]
-    file: PathBuf,
-
-    /// Add chain hashes to an unchained sidecar.
-    #[arg(long)]
-    initialize: bool,
-
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Debug, Subcommand)]
 enum AttestationCommand {
     /// Parse and structurally inspect an attestation envelope.
     Inspect(InspectAttestationArgs),
@@ -762,274 +725,6 @@ struct InspectAttestationArgs {
     /// Emit machine-readable JSON.
     #[arg(long)]
     json: bool,
-}
-
-#[derive(Debug, Subcommand)]
-enum DecisionCommand {
-    /// Add or replace one decision in a decision-only sidecar.
-    Add(AddDecision),
-
-    /// List decisions from a sidecar or artifact.
-    List(ListDecisions),
-
-    /// Remove one decision from a decision-only sidecar.
-    Remove(RemoveDecision),
-}
-
-#[derive(Debug, Subcommand)]
-enum WorkCommand {
-    /// Add or replace one work record in a work-only sidecar.
-    Add(AddWork),
-
-    /// List work records from a sidecar or artifact.
-    List(ListWorks),
-
-    /// Remove one work record from a work-only sidecar.
-    Remove(RemoveWork),
-}
-
-#[derive(Debug, Args)]
-struct AddExpectation {
-    /// Expectation sidecar to update.
-    #[arg(short, long, default_value = "expectations.susu")]
-    file: PathBuf,
-
-    /// Optional explicit id. Omit to derive a stable id from the record.
-    #[arg(long)]
-    id: Option<String>,
-
-    /// Target kind: project, file, symbol, or workflow.
-    #[arg(long)]
-    target: ExpectationTargetArg,
-
-    /// Target id. Required for file, symbol, and workflow expectations.
-    #[arg(long)]
-    subject: Option<String>,
-
-    /// Project directory used to resolve a file path subject to its scanner id.
-    #[arg(long, default_value = ".")]
-    target_root: PathBuf,
-
-    /// Status: proposed, accepted, or superseded.
-    #[arg(long, default_value = "proposed")]
-    status: ExpectationStatusArg,
-
-    /// Provenance label such as human:product or policy:security.
-    #[arg(long, default_value = "human:local")]
-    source: String,
-
-    /// Short expectation title.
-    #[arg(long)]
-    title: String,
-
-    /// Full expectation detail.
-    #[arg(long)]
-    detail: String,
-}
-
-#[derive(Debug, Args)]
-struct ListExpectations {
-    /// Expectation sidecar or full .susu artifact to read.
-    #[arg(short, long, default_value = "expectations.susu")]
-    file: PathBuf,
-}
-
-#[derive(Debug, Args)]
-struct RemoveExpectation {
-    /// Expectation sidecar to update.
-    #[arg(short, long, default_value = "expectations.susu")]
-    file: PathBuf,
-
-    /// Expectation id to remove.
-    id: String,
-}
-
-#[derive(Debug, Args)]
-struct AddVerification {
-    /// Verification sidecar to update.
-    #[arg(short, long, default_value = "verifications.susu")]
-    file: PathBuf,
-
-    /// Optional explicit id. Omit to derive a stable id from the record.
-    #[arg(long)]
-    id: Option<String>,
-
-    /// Verification id this record supersedes.
-    #[arg(long)]
-    supersedes: Option<String>,
-
-    /// Expectation id being checked.
-    #[arg(long)]
-    expectation: String,
-
-    /// Result: passed, failed, or inconclusive.
-    #[arg(long)]
-    status: VerificationStatusArg,
-
-    /// Method used to check the expectation.
-    #[arg(long)]
-    method: String,
-
-    /// Provenance label such as human:engineer or ci:github-actions.
-    #[arg(long, default_value = "human:local")]
-    source: String,
-
-    /// Optional evidence id or external evidence reference.
-    #[arg(long)]
-    evidence: Option<String>,
-
-    /// Local evidence artifact to hash as sha256:<digest>. The file is not copied into the record.
-    #[arg(long, conflicts_with = "evidence")]
-    evidence_file: Option<PathBuf>,
-
-    /// JSON execution metadata to record without authenticating its claims.
-    #[arg(long)]
-    execution_file: Option<PathBuf>,
-
-    /// Optional evidence fingerprint this verification was based on.
-    #[arg(long)]
-    basis: Option<String>,
-
-    /// Verification detail.
-    #[arg(long)]
-    detail: String,
-}
-
-#[derive(Debug, Args)]
-struct ListVerifications {
-    /// Verification sidecar or full .susu artifact to read.
-    #[arg(short, long, default_value = "verifications.susu")]
-    file: PathBuf,
-}
-
-#[derive(Debug, Args)]
-struct RemoveVerification {
-    /// Verification sidecar to update.
-    #[arg(short, long, default_value = "verifications.susu")]
-    file: PathBuf,
-
-    /// Verification id to remove.
-    id: String,
-}
-
-#[derive(Debug, Args)]
-struct AddDecision {
-    /// Decision sidecar to update.
-    #[arg(short, long, default_value = "decisions.susu")]
-    file: PathBuf,
-
-    /// Optional explicit id. Omit to derive a stable id from the record.
-    #[arg(long)]
-    id: Option<String>,
-
-    /// Target kind: project, file, symbol, or workflow.
-    #[arg(long)]
-    target: ExpectationTargetArg,
-
-    /// Target id. Required for file, symbol, and workflow decisions.
-    #[arg(long)]
-    subject: Option<String>,
-
-    /// Status: proposed, accepted, rejected, or superseded.
-    #[arg(long, default_value = "proposed")]
-    status: DecisionStatusArg,
-
-    /// Provenance label such as human:director or import:jira.
-    #[arg(long, default_value = "human:local")]
-    source: String,
-
-    /// Optional evidence fingerprint this decision was based on.
-    #[arg(long)]
-    basis: Option<String>,
-
-    /// Short decision title.
-    #[arg(long)]
-    title: String,
-
-    /// Full decision detail.
-    #[arg(long)]
-    detail: String,
-}
-
-#[derive(Debug, Args)]
-struct ListDecisions {
-    /// Decision sidecar or full .susu artifact to read.
-    #[arg(short, long, default_value = "decisions.susu")]
-    file: PathBuf,
-}
-
-#[derive(Debug, Args)]
-struct RemoveDecision {
-    /// Decision sidecar to update.
-    #[arg(short, long, default_value = "decisions.susu")]
-    file: PathBuf,
-
-    /// Decision id to remove.
-    id: String,
-}
-
-#[derive(Debug, Args)]
-struct AddWork {
-    /// Work sidecar to update.
-    #[arg(short, long, default_value = "work.susu")]
-    file: PathBuf,
-
-    /// Optional explicit id. Omit to derive a stable id from the record.
-    #[arg(long)]
-    id: Option<String>,
-
-    /// Target kind: project, file, symbol, or workflow.
-    #[arg(long)]
-    target: ExpectationTargetArg,
-
-    /// Target id. Required for file, symbol, and workflow work records.
-    #[arg(long)]
-    subject: Option<String>,
-
-    /// Optional expectation id this work addresses.
-    #[arg(long)]
-    expectation: Option<String>,
-
-    /// Kind: implementation, verification, documentation, infrastructure, review, or other.
-    #[arg(long, default_value = "implementation")]
-    kind: WorkKindArg,
-
-    /// Status: proposed, `in_progress`, completed, blocked, or superseded.
-    #[arg(long, default_value = "completed")]
-    status: WorkStatusArg,
-
-    /// Provenance label such as human:engineer, agent:codex, or import:git.
-    #[arg(long, default_value = "human:local")]
-    source: String,
-
-    /// Optional evidence id or external reference such as commit:abc123.
-    #[arg(long)]
-    evidence: Option<String>,
-
-    /// Short work title.
-    #[arg(long)]
-    title: String,
-
-    /// Full work detail.
-    #[arg(long)]
-    detail: String,
-}
-
-#[derive(Debug, Args)]
-struct ListWorks {
-    /// Work sidecar or full .susu artifact to read.
-    #[arg(short, long, default_value = "work.susu")]
-    file: PathBuf,
-}
-
-#[derive(Debug, Args)]
-struct RemoveWork {
-    /// Work sidecar to update.
-    #[arg(short, long, default_value = "work.susu")]
-    file: PathBuf,
-
-    /// Work id to remove.
-    id: String,
 }
 
 fn main() -> Result<()> {

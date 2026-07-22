@@ -699,7 +699,11 @@ fn add_workflow_gap_review_items(analysis: &ProjectAnalysis, items: &mut Vec<Rev
         let gaps = analysis
             .flows
             .iter()
-            .filter(|flow| flow.from == entry_symbol && flow.to.is_none())
+            .filter(|flow| {
+                flow.from == entry_symbol
+                    && flow.to.is_none()
+                    && flow.confidence != Confidence::External
+            })
             .count();
         if gaps == 0 {
             continue;

@@ -1,6 +1,6 @@
 use crate::model::{
-    ExpectationStatus, ExpectationTarget, ProjectAnalysis, VerificationStatus, Workflow,
-    WorkflowPriority,
+    Confidence, ExpectationStatus, ExpectationTarget, ProjectAnalysis, VerificationStatus,
+    Workflow, WorkflowPriority,
 };
 
 pub fn refresh_workflow_priorities(analysis: &mut ProjectAnalysis) {
@@ -71,7 +71,11 @@ fn add_call_edge_priority(
     let gaps = analysis
         .flows
         .iter()
-        .filter(|flow| flow.from == entry_symbol && flow.to.is_none())
+        .filter(|flow| {
+            flow.from == entry_symbol
+                && flow.to.is_none()
+                && flow.confidence != Confidence::External
+        })
         .count();
     if gaps > 0 {
         *score += 8;

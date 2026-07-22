@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use anyhow::{Context, Result};
-use susumu::model::{ExpectationTarget, ProjectAnalysis};
+use susumu::model::{Confidence, ExpectationTarget, ProjectAnalysis};
 
 use crate::{
     checks::check_item_jsons,
@@ -136,7 +136,7 @@ fn handoff_caveats(analysis: &ProjectAnalysis, check: &CheckReport) -> Vec<Strin
     let unresolved = analysis
         .flows
         .iter()
-        .filter(|flow| flow.to.is_none())
+        .filter(|flow| flow.to.is_none() && flow.confidence != Confidence::External)
         .count();
     if unresolved > 0 {
         caveats.push(format!(

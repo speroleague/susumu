@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use susumu::model::{ProjectAnalysis, Severity, VerificationStatus, WorkStatus};
+use susumu::model::{Confidence, ProjectAnalysis, Severity, VerificationStatus, WorkStatus};
 
 use crate::review_types::{
     CheckEvidenceJson, CheckItem, CheckItemJson, CheckJson, CheckProjectJson, CheckRecordsJson,
@@ -119,7 +119,11 @@ fn add_workflow_gap_check_items(analysis: &ProjectAnalysis, items: &mut Vec<Chec
         let gaps = analysis
             .flows
             .iter()
-            .filter(|flow| flow.from == entry_symbol && flow.to.is_none())
+            .filter(|flow| {
+                flow.from == entry_symbol
+                    && flow.to.is_none()
+                    && flow.confidence != Confidence::External
+            })
             .count();
         if gaps == 0 {
             continue;
@@ -273,7 +277,10 @@ fn expectation_title(analysis: &ProjectAnalysis, id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use susumu::model::{Expectation, ExpectationStatus, ExpectationTarget, Verification};
+    use susumu::model::{
+        Expectation, ExpectationStatus, ExpectationTarget, FlowEdge, Location, Verification,
+        Workflow, WorkflowKind,
+    };
 
     #[test]
     fn check_report_flags_failed_verifications() {
@@ -328,5 +335,60 @@ mod tests {
             json.verification_posture[0].trust_status,
             "not_authenticated"
         );
+    }
+
+    #[test]
+    fn external_workflow_calls_do_not_look_unresolved() {
+        let mut artifact = ProjectAnalysis {
+            schema_version: susumu::model::SCHEMA_VERSION,
+            project_name: "fixture".to_owned(),
+            root: ".".to_owned(),
+            generated_unix_seconds: 0,
+            files: Vec::new(),
+            symbols: Vec::new(),
+            dependencies: Vec::new(),
+            workflows: vec![Workflow {
+                id: "w_users".to_owned(),
+                kind: WorkflowKind::Http,
+                framework: "test".to_owned(),
+                trigger: "GET /users".to_owned(),
+                handler: Some("users".to_owned()),
+                entry_symbol: Some("s_users".to_owned()),
+                file_id: "file".to_owned(),
+                confidence: Confidence::Exact,
+                location: Location {
+                    start_line: 1,
+                    start_column: 1,
+                    end_line: 1,
+                    end_column: 1,
+                },
+            }],
+            workflow_priorities: Vec::new(),
+            flows: vec![FlowEdge {
+                from: "s_users".to_owned(),
+                to: None,
+                call: "load_users".to_owned(),
+                confidence: Confidence::External,
+                location: Location {
+                    start_line: 2,
+                    start_column: 1,
+                    end_line: 2,
+                    end_column: 1,
+                },
+            }],
+            expectations: Vec::new(),
+            verifications: Vec::new(),
+            decisions: Vec::new(),
+            works: Vec::new(),
+            findings: Vec::new(),
+        };
+
+        let report = check_report(&artifact, false);
+
+        assert_eq!(report.attention, 0);
+        assert!(report.items.is_empty());
+        artifact.flows[0].confidence = Confidence::Ambiguous;
+        let report = check_report(&artifact, false);
+        assert_eq!(report.attention, 1);
     }
 }

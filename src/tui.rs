@@ -983,17 +983,7 @@ fn render_works(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
         .analysis
         .works
         .iter()
-        .map(|work| {
-            let color = work_status_color(work.status);
-            ListItem::new(Line::from(vec![
-                Span::styled(format!("{:11}", work.status), Style::default().fg(color)),
-                Span::styled(
-                    format!(" {:14} ", work.kind),
-                    Style::default().fg(Color::LightCyan),
-                ),
-                Span::raw(&work.title),
-            ]))
-        })
+        .map(work_list_item)
         .collect::<Vec<_>>();
     frame.render_stateful_widget(
         List::new(items)
@@ -1013,43 +1003,8 @@ fn render_works(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
         .selected()
         .and_then(|index| app.analysis.works.get(index))
         .map_or_else(
-            || {
-                vec![
-                    Line::raw("No work records in this artifact."),
-                    Line::raw(""),
-                    Line::styled(
-                        "Work records describe activity performed by humans, agents, imports, or automation. They do not prove verification by themselves.",
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                ]
-            },
-            |work| {
-                let expectation = work
-                    .expectation_id
-                    .as_deref()
-                    .map_or_else(|| "-".to_owned(), |id| expectation_title(&app.analysis, id));
-                vec![
-                    Line::styled(&work.title, Style::default().fg(Color::White).bold()),
-                    Line::raw(""),
-                    Line::raw(&work.detail),
-                    Line::raw(""),
-                    label("id", &work.id),
-                    label("kind", &work.kind.to_string()),
-                    label("status", &work.status.to_string()),
-                    label("target", &work.target.to_string()),
-                    label(
-                        "subject",
-                        &expectation_subject(
-                            &app.analysis,
-                            work.target,
-                            work.subject.as_deref(),
-                        ),
-                    ),
-                    label("expectation", &expectation),
-                    label("source", &work.source),
-                    label("evidence", work.evidence.as_deref().unwrap_or("-")),
-                ]
-            },
+            || empty_work_detail(),
+            |work| work_detail(&app.analysis, work),
         );
     frame.render_widget(
         Paragraph::new(detail).wrap(Wrap { trim: true }).block(
@@ -1059,6 +1014,53 @@ fn render_works(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
         ),
         columns[1],
     );
+}
+
+fn work_list_item(work: &Work) -> ListItem<'static> {
+    let color = work_status_color(work.status);
+    ListItem::new(Line::from(vec![
+        Span::styled(format!("{:11}", work.status), Style::default().fg(color)),
+        Span::styled(
+            format!(" {:14} ", work.kind),
+            Style::default().fg(Color::LightCyan),
+        ),
+        Span::raw(work.title.clone()),
+    ]))
+}
+
+fn empty_work_detail() -> Vec<Line<'static>> {
+    vec![
+        Line::raw("No work records in this artifact."),
+        Line::raw(""),
+        Line::styled(
+            "Work records describe activity performed by humans, agents, imports, or automation. They do not prove verification by themselves.",
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]
+}
+
+fn work_detail<'a>(analysis: &'a ProjectAnalysis, work: &'a Work) -> Vec<Line<'a>> {
+    let expectation = work
+        .expectation_id
+        .as_deref()
+        .map_or_else(|| "-".to_owned(), |id| expectation_title(analysis, id));
+    vec![
+        Line::styled(&work.title, Style::default().fg(Color::White).bold()),
+        Line::raw(""),
+        Line::raw(&work.detail),
+        Line::raw(""),
+        label("id", &work.id),
+        label("kind", &work.kind.to_string()),
+        label("status", &work.status.to_string()),
+        label("target", &work.target.to_string()),
+        label(
+            "subject",
+            &expectation_subject(analysis, work.target, work.subject.as_deref()),
+        ),
+        label("expectation", &expectation),
+        label("source", &work.source),
+        label("evidence", work.evidence.as_deref().unwrap_or("-")),
+    ]
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

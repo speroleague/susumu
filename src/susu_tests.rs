@@ -1,13 +1,31 @@
 use super::*;
 
-#[allow(clippy::too_many_lines)]
 fn fixture() -> ProjectAnalysis {
+    let (files, symbols) = fixture_source_model();
+    let (workflow_priorities, flows) = fixture_flow_model();
+    let (expectations, verifications) = fixture_expectation_records();
     ProjectAnalysis {
         schema_version: 1,
         project_name: "demo".to_owned(),
         root: "C:\\demo".to_owned(),
         generated_unix_seconds: 42,
-        files: vec![SourceFile {
+        files,
+        symbols,
+        dependencies: Vec::new(),
+        workflows: fixture_workflows(),
+        workflow_priorities,
+        flows,
+        expectations,
+        verifications,
+        decisions: fixture_decisions(),
+        works: fixture_works(),
+        findings: fixture_findings(),
+    }
+}
+
+fn fixture_source_model() -> (Vec<SourceFile>, Vec<Symbol>) {
+    (
+        vec![SourceFile {
             id: "f0".to_owned(),
             path: "src/main.rs".to_owned(),
             language: Language::Rust,
@@ -15,7 +33,7 @@ fn fixture() -> ProjectAnalysis {
             bytes: 24,
             content_hash: Some("hash0".to_owned()),
         }],
-        symbols: vec![Symbol {
+        vec![Symbol {
             id: "s0".to_owned(),
             name: "main".to_owned(),
             kind: SymbolKind::Function,
@@ -29,30 +47,37 @@ fn fixture() -> ProjectAnalysis {
             },
             entrypoint: true,
         }],
-        dependencies: Vec::new(),
-        workflows: vec![Workflow {
-            id: "w0".to_owned(),
-            kind: WorkflowKind::Http,
-            framework: "axum-compatible".to_owned(),
-            trigger: "GET /health".to_owned(),
-            handler: Some("main".to_owned()),
-            entry_symbol: Some("s0".to_owned()),
-            file_id: "f0".to_owned(),
-            confidence: Confidence::Exact,
-            location: Location {
-                start_line: 2,
-                start_column: 5,
-                end_line: 2,
-                end_column: 18,
-            },
-        }],
-        workflow_priorities: vec![WorkflowPriority {
+    )
+}
+
+fn fixture_workflows() -> Vec<Workflow> {
+    vec![Workflow {
+        id: "w0".to_owned(),
+        kind: WorkflowKind::Http,
+        framework: "axum-compatible".to_owned(),
+        trigger: "GET /health".to_owned(),
+        handler: Some("main".to_owned()),
+        entry_symbol: Some("s0".to_owned()),
+        file_id: "f0".to_owned(),
+        confidence: Confidence::Exact,
+        location: Location {
+            start_line: 2,
+            start_column: 5,
+            end_line: 2,
+            end_column: 18,
+        },
+    }]
+}
+
+fn fixture_flow_model() -> (Vec<WorkflowPriority>, Vec<FlowEdge>) {
+    (
+        vec![WorkflowPriority {
             workflow_id: "w0".to_owned(),
             source: "susumu:derived".to_owned(),
             score: 55,
             detail: "workflow trigger observed; handler symbol resolved".to_owned(),
         }],
-        flows: vec![FlowEdge {
+        vec![FlowEdge {
             from: "s0".to_owned(),
             to: None,
             call: "println".to_owned(),
@@ -64,7 +89,12 @@ fn fixture() -> ProjectAnalysis {
                 end_column: 18,
             },
         }],
-        expectations: vec![Expectation {
+    )
+}
+
+fn fixture_expectation_records() -> (Vec<Expectation>, Vec<Verification>) {
+    (
+        vec![Expectation {
             id: "e0".to_owned(),
             target: ExpectationTarget::Workflow,
             subject: Some("w0".to_owned()),
@@ -73,7 +103,7 @@ fn fixture() -> ProjectAnalysis {
             title: "Health checks remain cheap".to_owned(),
             detail: "The health route must not call external services.".to_owned(),
         }],
-        verifications: vec![Verification {
+        vec![Verification {
             id: "v0".to_owned(),
             expectation_id: "e0".to_owned(),
             status: VerificationStatus::Passed,
@@ -86,39 +116,48 @@ fn fixture() -> ProjectAnalysis {
             basis: Some("basis-v0".to_owned()),
             detail: "The health test checks local-only behavior.".to_owned(),
         }],
-        decisions: vec![Decision {
-            id: "d0".to_owned(),
-            target: ExpectationTarget::Workflow,
-            subject: Some("w0".to_owned()),
-            status: DecisionStatus::Accepted,
-            source: "human:lead".to_owned(),
-            basis: Some("basis0".to_owned()),
-            title: "Health route accepted".to_owned(),
-            detail: "The team accepts the local-only health check evidence.".to_owned(),
-        }],
-        works: vec![Work {
-            id: "wk0".to_owned(),
-            target: ExpectationTarget::Workflow,
-            subject: Some("w0".to_owned()),
-            expectation_id: Some("e0".to_owned()),
-            kind: WorkKind::Implementation,
-            status: WorkStatus::Completed,
-            source: "agent:codex".to_owned(),
-            evidence: Some("commit:abc123".to_owned()),
-            title: "Keep health check local".to_owned(),
-            detail: "Updated the health workflow so it stays local-only.".to_owned(),
-        }],
-        findings: vec![Finding {
-            rule_id: "SUS004".to_owned(),
-            source: "susumu:derived".to_owned(),
-            severity: Severity::Info,
-            title: "A title".to_owned(),
-            detail: "A detail with \"quotes\"".to_owned(),
-            file_id: None,
-            subject: None,
-            location: None,
-        }],
-    }
+    )
+}
+
+fn fixture_decisions() -> Vec<Decision> {
+    vec![Decision {
+        id: "d0".to_owned(),
+        target: ExpectationTarget::Workflow,
+        subject: Some("w0".to_owned()),
+        status: DecisionStatus::Accepted,
+        source: "human:lead".to_owned(),
+        basis: Some("basis0".to_owned()),
+        title: "Health route accepted".to_owned(),
+        detail: "The team accepts the local-only health check evidence.".to_owned(),
+    }]
+}
+
+fn fixture_works() -> Vec<Work> {
+    vec![Work {
+        id: "wk0".to_owned(),
+        target: ExpectationTarget::Workflow,
+        subject: Some("w0".to_owned()),
+        expectation_id: Some("e0".to_owned()),
+        kind: WorkKind::Implementation,
+        status: WorkStatus::Completed,
+        source: "agent:codex".to_owned(),
+        evidence: Some("commit:abc123".to_owned()),
+        title: "Keep health check local".to_owned(),
+        detail: "Updated the health workflow so it stays local-only.".to_owned(),
+    }]
+}
+
+fn fixture_findings() -> Vec<Finding> {
+    vec![Finding {
+        rule_id: "SUS004".to_owned(),
+        source: "susumu:derived".to_owned(),
+        severity: Severity::Info,
+        title: "A title".to_owned(),
+        detail: "A detail with \"quotes\"".to_owned(),
+        file_id: None,
+        subject: None,
+        location: None,
+    }]
 }
 
 #[test]

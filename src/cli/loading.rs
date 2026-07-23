@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn load_analysis(
+pub(crate) fn load_analysis(
     target: &PathBuf,
     expectations: Option<&PathBuf>,
     verifications: Option<&PathBuf>,

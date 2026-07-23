@@ -22,14 +22,9 @@ use susumu::{
     scan_project, tui, write_decisions, write_expectations, write_susu, write_verifications,
     write_works,
 };
-#[path = "analysis_loading.rs"]
-mod analysis_loading;
 mod attestation;
 mod checks;
-mod cli_values;
-mod daily_cli;
-#[path = "daily_commands.rs"]
-mod daily_commands;
+mod cli;
 mod diff_commands;
 mod expectation_readiness;
 mod git_cli;
@@ -37,40 +32,45 @@ mod git_connect;
 mod git_signature;
 mod handoff;
 mod portal;
-#[path = "project_commands.rs"]
-mod project_commands;
 mod readiness_command;
-mod record_cli;
-mod record_commands;
 mod review_commands;
 mod review_packet;
 mod review_types;
 
-use diff_commands::{
-    diff_report, git_rewind, print_diff_json, print_diff_report, read_analysis_artifact,
+#[allow(clippy::wildcard_imports)]
+use cli::daily::*;
+use cli::daily_options::{ExpectationsArgs, ResolveArgs, StatusArgs, VerifyArgs};
+use cli::loading::load_analysis;
+use cli::project::{
+    check, current_unix_seconds, diff, expectation_title, handoff, init_repository, write_text_file,
 };
-use record_commands::{
+use cli::record_options::{
+    AddDecision, AddExpectation, AddVerification, AddWork, ChainVerificationArgs, DecisionCommand,
+    ExpectationCommand, ListDecisions, ListExpectations, ListVerifications, ListWorks,
+    RemoveDecision, RemoveExpectation, RemoveVerification, RemoveWork, VerificationCommand,
+    WorkCommand,
+};
+use cli::records::{
     add_decision, add_expectation, add_verification, add_work, hash_evidence_file,
     inspect_attestation, inspect_git_signature, list_decisions, list_expectations,
     list_verifications, list_works, read_execution_file, remove_decision, remove_expectation,
     remove_verification, remove_work, resolve_target, verification_chain,
 };
 #[cfg(test)]
-use record_commands::{resolve_file_subject, verification_chain_digest, verify_verification_chain};
+use cli::records::{resolve_file_subject, verification_chain_digest, verify_verification_chain};
+use cli::values::GitTargetDepth;
+#[cfg(test)]
+use cli::values::{WorkKindArg, WorkStatusArg};
+use diff_commands::{
+    diff_report, git_rewind, print_diff_json, print_diff_report, read_analysis_artifact,
+};
 use review_commands::{
     build_review, create_review, diff_reviews, export_review_html, open_review, serve_review,
 };
 #[cfg(test)]
 use review_commands::{read_review_packet, review_diff_regressed, review_diff_report};
 
-use analysis_loading::load_analysis;
 use checks::{check_item_jsons, check_json, check_report, print_check_json, print_check_report};
-use cli_values::GitTargetDepth;
-#[cfg(test)]
-use cli_values::{WorkKindArg, WorkStatusArg};
-use daily_cli::{ExpectationsArgs, ResolveArgs, StatusArgs, VerifyArgs};
-#[allow(clippy::wildcard_imports)]
-use daily_commands::*;
 use expectation_readiness::expectation_support;
 use git_cli::{
     GitCommand, GitConnectArgs, GitImportArgs, GitLinkArgs, GitRewindArgs, GitShortcutArgs,
@@ -91,16 +91,7 @@ use portal::{
     handle_review_request, load_for_packet as load_portal_config_for_packet,
     load_for_target as load_portal_config_for_target, review_portal_html_with_config,
 };
-use project_commands::{
-    check, current_unix_seconds, diff, expectation_title, handoff, init_repository, write_text_file,
-};
 use readiness_command::ReadinessArgs;
-use record_cli::{
-    AddDecision, AddExpectation, AddVerification, AddWork, ChainVerificationArgs, DecisionCommand,
-    ExpectationCommand, ListDecisions, ListExpectations, ListVerifications, ListWorks,
-    RemoveDecision, RemoveExpectation, RemoveVerification, RemoveWork, VerificationCommand,
-    WorkCommand,
-};
 use review_packet::review_packet;
 use review_types::{
     CheckItem, CheckItemJson, CheckReport, CheckSeverity, ExpectationSupport,

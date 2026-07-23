@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use crate::cli_values::ExpectationStatusArg;
+use super::values::ExpectationStatusArg;
 
 #[derive(Debug, Args)]
 pub(crate) struct StatusArgs {

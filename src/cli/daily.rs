@@ -3,7 +3,7 @@
 use super::*;
 
 #[derive(Debug)]
-pub(super) struct DailyReviewPaths {
+pub(crate) struct DailyReviewPaths {
     artifact: PathBuf,
     packet: PathBuf,
     check_json: PathBuf,
@@ -12,12 +12,12 @@ pub(super) struct DailyReviewPaths {
 }
 
 #[derive(Debug)]
-pub(super) struct ReviewBuildState {
-    pub(super) project_name: String,
-    pub(super) check: CheckReport,
+pub(crate) struct ReviewBuildState {
+    pub(crate) project_name: String,
+    pub(crate) check: CheckReport,
 }
 
-pub(super) fn review_shortcut(args: &ReviewShortcutArgs) -> Result<()> {
+pub(crate) fn review_shortcut(args: &ReviewShortcutArgs) -> Result<()> {
     let paths = daily_review_paths(&args.target, &args.output_dir);
     let work = args
         .work
@@ -42,7 +42,7 @@ pub(super) fn review_shortcut(args: &ReviewShortcutArgs) -> Result<()> {
     })
 }
 
-pub(super) fn open_shortcut(args: &OpenArgs) -> Result<()> {
+pub(crate) fn open_shortcut(args: &OpenArgs) -> Result<()> {
     if args.summary || args.tui || args.json {
         return open_review(&ReviewOpenArgs {
             packet: args.packet.clone(),
@@ -63,7 +63,7 @@ pub(super) fn open_shortcut(args: &OpenArgs) -> Result<()> {
     open_static_review(&args.packet)
 }
 
-pub(super) fn open_static_review(packet: &Path) -> Result<()> {
+pub(crate) fn open_static_review(packet: &Path) -> Result<()> {
     let html = packet.with_extension("html");
     if !html.is_file() {
         bail!(
@@ -93,7 +93,7 @@ pub(super) fn open_static_review(packet: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn status_shortcut(args: &StatusArgs) -> Result<()> {
+pub(crate) fn status_shortcut(args: &StatusArgs) -> Result<()> {
     let paths = daily_review_paths(&args.target, &args.output_dir);
     let work = paths.work.exists().then_some(paths.work);
     check(&CheckArgs {
@@ -109,7 +109,7 @@ pub(super) fn status_shortcut(args: &StatusArgs) -> Result<()> {
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct ExpectationsJson {
+pub(crate) struct ExpectationsJson {
     source: String,
     total: usize,
     shown: usize,
@@ -119,23 +119,23 @@ pub(super) struct ExpectationsJson {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(super) struct ExpectationBrowseRow {
-    pub(super) id: String,
-    pub(super) title: String,
-    pub(super) detail: String,
-    pub(super) target: String,
-    pub(super) subject: Option<String>,
-    pub(super) status: String,
-    pub(super) source: String,
-    pub(super) support_status: Option<String>,
-    pub(super) target_observed: Option<bool>,
-    pub(super) verification: Option<ExpectationVerificationSupport>,
-    pub(super) work: Option<usize>,
-    pub(super) decisions: Option<usize>,
-    pub(super) findings: Option<usize>,
+pub(crate) struct ExpectationBrowseRow {
+    pub(crate) id: String,
+    pub(crate) title: String,
+    pub(crate) detail: String,
+    pub(crate) target: String,
+    pub(crate) subject: Option<String>,
+    pub(crate) status: String,
+    pub(crate) source: String,
+    pub(crate) support_status: Option<String>,
+    pub(crate) target_observed: Option<bool>,
+    pub(crate) verification: Option<ExpectationVerificationSupport>,
+    pub(crate) work: Option<usize>,
+    pub(crate) decisions: Option<usize>,
+    pub(crate) findings: Option<usize>,
 }
 
-pub(super) fn expectations_shortcut(args: &ExpectationsArgs) -> Result<()> {
+pub(crate) fn expectations_shortcut(args: &ExpectationsArgs) -> Result<()> {
     let (source, rows) = expectation_browse_rows(args)?;
     let status = args.status.clone().map(ExpectationStatus::from);
     let filtered = filter_expectation_rows(
@@ -174,7 +174,7 @@ pub(super) fn expectations_shortcut(args: &ExpectationsArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn expectation_browse_rows(
+pub(crate) fn expectation_browse_rows(
     args: &ExpectationsArgs,
 ) -> Result<(String, Vec<ExpectationBrowseRow>)> {
     if let Some(file) = &args.file {
@@ -205,7 +205,7 @@ pub(super) fn expectation_browse_rows(
     ))
 }
 
-pub(super) fn expectation_browse_row(
+pub(crate) fn expectation_browse_row(
     expectation: &Expectation,
     support: Option<&ExpectationSupport>,
 ) -> ExpectationBrowseRow {
@@ -226,7 +226,7 @@ pub(super) fn expectation_browse_row(
     }
 }
 
-pub(super) fn filter_expectation_rows(
+pub(crate) fn filter_expectation_rows(
     mut rows: Vec<ExpectationBrowseRow>,
     search: Option<&str>,
     status: Option<&str>,
@@ -246,7 +246,7 @@ pub(super) fn filter_expectation_rows(
     rows
 }
 
-pub(super) fn expectation_row_matches(row: &ExpectationBrowseRow, search: &str) -> bool {
+pub(crate) fn expectation_row_matches(row: &ExpectationBrowseRow, search: &str) -> bool {
     [
         row.id.as_str(),
         row.title.as_str(),
@@ -261,7 +261,7 @@ pub(super) fn expectation_row_matches(row: &ExpectationBrowseRow, search: &str) 
     .any(|value| value.to_ascii_lowercase().contains(search))
 }
 
-pub(super) fn print_expectations_shortcut(
+pub(crate) fn print_expectations_shortcut(
     source: &str,
     filtered: &[ExpectationBrowseRow],
     shown: &[ExpectationBrowseRow],
@@ -322,7 +322,7 @@ pub(super) fn print_expectations_shortcut(
     }
 }
 
-pub(super) fn expectation_status_heading(status: &str) -> &'static str {
+pub(crate) fn expectation_status_heading(status: &str) -> &'static str {
     match status {
         "accepted" => "Accepted",
         "proposed" => "Proposed",
@@ -332,7 +332,7 @@ pub(super) fn expectation_status_heading(status: &str) -> &'static str {
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct VerifyJson {
+pub(crate) struct VerifyJson {
     file: String,
     id: String,
     expectation: String,
@@ -342,7 +342,7 @@ pub(super) struct VerifyJson {
     source: String,
 }
 
-pub(super) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
+pub(crate) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
     let status = verification_status_from_flags(&args)?;
     let analysis = load_analysis(&args.target, None, None, None, None, false)?;
     let expectation = analysis
@@ -403,7 +403,7 @@ pub(super) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn print_verification_result(
+pub(crate) fn print_verification_result(
     file: &Path,
     expectation: &Expectation,
     written: &Verification,
@@ -434,7 +434,7 @@ pub(super) fn print_verification_result(
     Ok(())
 }
 
-pub(super) fn verification_status_from_flags(args: &VerifyArgs) -> Result<VerificationStatus> {
+pub(crate) fn verification_status_from_flags(args: &VerifyArgs) -> Result<VerificationStatus> {
     match (args.passed, args.failed, args.inconclusive) {
         (true, false, false) => Ok(VerificationStatus::Passed),
         (false, true, false) => Ok(VerificationStatus::Failed),
@@ -446,7 +446,7 @@ pub(super) fn verification_status_from_flags(args: &VerifyArgs) -> Result<Verifi
     }
 }
 
-pub(super) fn write_verification_record(
+pub(crate) fn write_verification_record(
     file: &Path,
     verification: Verification,
     minify: bool,
@@ -493,18 +493,18 @@ pub(super) fn write_verification_record(
     Ok(verification)
 }
 
-pub(super) fn git_shortcut(args: &GitShortcutArgs) -> Result<()> {
+pub(crate) fn git_shortcut(args: &GitShortcutArgs) -> Result<()> {
     let artifact = git_shortcut_artifact(args)?;
     let connect_args = git_shortcut_connect_args(args);
     run_git_connect(&connect_args, &artifact)
 }
 
-pub(super) fn git_shortcut_artifact(args: &GitShortcutArgs) -> Result<ProjectAnalysis> {
+pub(crate) fn git_shortcut_artifact(args: &GitShortcutArgs) -> Result<ProjectAnalysis> {
     let work = args.output.exists().then_some(&args.output);
     load_analysis(&args.artifact, None, None, None, work, false)
 }
 
-pub(super) fn git_shortcut_connect_args(args: &GitShortcutArgs) -> GitConnectArgs {
+pub(crate) fn git_shortcut_connect_args(args: &GitShortcutArgs) -> GitConnectArgs {
     GitConnectArgs {
         repo: args.repo.clone(),
         artifact: args.artifact.clone(),
@@ -519,7 +519,7 @@ pub(super) fn git_shortcut_connect_args(args: &GitShortcutArgs) -> GitConnectArg
     }
 }
 
-pub(super) fn daily_review_paths(target: &Path, output_dir: &Path) -> DailyReviewPaths {
+pub(crate) fn daily_review_paths(target: &Path, output_dir: &Path) -> DailyReviewPaths {
     let base = conventional_output_dir(target, output_dir);
     DailyReviewPaths {
         artifact: base.join("project.susu"),
@@ -530,7 +530,7 @@ pub(super) fn daily_review_paths(target: &Path, output_dir: &Path) -> DailyRevie
     }
 }
 
-pub(super) fn conventional_output_dir(target: &Path, output_dir: &Path) -> PathBuf {
+pub(crate) fn conventional_output_dir(target: &Path, output_dir: &Path) -> PathBuf {
     if output_dir.is_absolute() {
         return output_dir.to_path_buf();
     }

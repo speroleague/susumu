@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 use super::*;
 
-pub(super) fn add_expectation(args: AddExpectation) -> Result<()> {
+pub(crate) fn add_expectation(args: AddExpectation) -> Result<()> {
     let target = ExpectationTarget::from(args.target);
     let status = ExpectationStatus::from(args.status);
     let subject = expectation_subject(
@@ -42,7 +42,7 @@ pub(super) fn add_expectation(args: AddExpectation) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn resolve_target(args: &ResolveArgs) -> Result<()> {
+pub(crate) fn resolve_target(args: &ResolveArgs) -> Result<()> {
     let analysis = scan_project(&args.target)
         .with_context(|| format!("could not scan {}", args.target.display()))?;
     let requested = normalize_git_path(&args.path.to_string_lossy());
@@ -69,7 +69,7 @@ pub(super) fn resolve_target(args: &ResolveArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn resolve_file_subject(
+pub(crate) fn resolve_file_subject(
     target_root: &Path,
     target: ExpectationTarget,
     subject: Option<String>,
@@ -100,7 +100,7 @@ pub(super) fn resolve_file_subject(
     Ok(Some(file.id.clone()))
 }
 
-pub(super) fn list_expectations(args: &ListExpectations) -> Result<()> {
+pub(crate) fn list_expectations(args: &ListExpectations) -> Result<()> {
     let expectations = read_expectations_file(&args.file)?;
     if expectations.is_empty() {
         println!("No expectations in {}", args.file.display());
@@ -117,7 +117,7 @@ pub(super) fn list_expectations(args: &ListExpectations) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn remove_expectation(args: &RemoveExpectation) -> Result<()> {
+pub(crate) fn remove_expectation(args: &RemoveExpectation) -> Result<()> {
     let mut expectations = read_expectation_sidecar(&args.file)?;
     let original_len = expectations.len();
     expectations.retain(|expectation| expectation.id != args.id);
@@ -139,7 +139,7 @@ pub(super) fn remove_expectation(args: &RemoveExpectation) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn add_verification(args: AddVerification) -> Result<()> {
+pub(crate) fn add_verification(args: AddVerification) -> Result<()> {
     let status = VerificationStatus::from(args.status);
     let evidence = if let Some(path) = args.evidence_file.as_deref() {
         Some(hash_evidence_file(path)?)
@@ -182,7 +182,7 @@ pub(super) fn add_verification(args: AddVerification) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn list_verifications(args: &ListVerifications) -> Result<()> {
+pub(crate) fn list_verifications(args: &ListVerifications) -> Result<()> {
     let verifications = read_verifications_file(&args.file)?;
     if verifications.is_empty() {
         println!("No verifications in {}", args.file.display());
@@ -198,7 +198,7 @@ pub(super) fn list_verifications(args: &ListVerifications) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn remove_verification(args: &RemoveVerification) -> Result<()> {
+pub(crate) fn remove_verification(args: &RemoveVerification) -> Result<()> {
     bail!(
         "verification records are append-only; cannot remove {} from {}. Add a new verification with --supersedes {} and the replacement status",
         args.id,
@@ -208,17 +208,17 @@ pub(super) fn remove_verification(args: &RemoveVerification) -> Result<()> {
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct VerificationChainReport {
-    pub(super) file: String,
-    pub(super) status: &'static str,
-    pub(super) records: usize,
-    pub(super) broken_at: Option<String>,
-    pub(super) tip: Option<String>,
-    pub(super) anchor_status: &'static str,
-    pub(super) note: &'static str,
+pub(crate) struct VerificationChainReport {
+    pub(crate) file: String,
+    pub(crate) status: &'static str,
+    pub(crate) records: usize,
+    pub(crate) broken_at: Option<String>,
+    pub(crate) tip: Option<String>,
+    pub(crate) anchor_status: &'static str,
+    pub(crate) note: &'static str,
 }
 
-pub(super) fn verification_chain(args: &ChainVerificationArgs) -> Result<()> {
+pub(crate) fn verification_chain(args: &ChainVerificationArgs) -> Result<()> {
     let mut verifications = read_verification_sidecar(&args.file)?;
     if args.initialize {
         if verifications
@@ -265,7 +265,7 @@ pub(super) fn verification_chain(args: &ChainVerificationArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn verify_verification_chain(
+pub(crate) fn verify_verification_chain(
     file: &Path,
     verifications: &[Verification],
 ) -> VerificationChainReport {
@@ -311,7 +311,7 @@ pub(super) fn verify_verification_chain(
     }
 }
 
-pub(super) fn verification_chain_digest(
+pub(crate) fn verification_chain_digest(
     previous: Option<&str>,
     verification: &Verification,
 ) -> String {
@@ -340,7 +340,7 @@ pub(super) fn verification_chain_digest(
     format!("sha256:{:x}", hash.finalize())
 }
 
-pub(super) fn hash_evidence_file(path: &Path) -> Result<String> {
+pub(crate) fn hash_evidence_file(path: &Path) -> Result<String> {
     let bytes = fs::read(path).with_context(|| {
         format!(
             "could not read verification evidence file {}",
@@ -352,7 +352,7 @@ pub(super) fn hash_evidence_file(path: &Path) -> Result<String> {
     Ok(format!("sha256:{:x}", hash.finalize()))
 }
 
-pub(super) fn read_execution_file(path: &Path) -> Result<VerificationExecution> {
+pub(crate) fn read_execution_file(path: &Path) -> Result<VerificationExecution> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("could not read execution metadata file {}", path.display()))?;
     let execution = serde_json::from_str(&source)
@@ -360,7 +360,7 @@ pub(super) fn read_execution_file(path: &Path) -> Result<VerificationExecution> 
     Ok(execution)
 }
 
-pub(super) fn inspect_attestation(args: &InspectAttestationArgs) -> Result<()> {
+pub(crate) fn inspect_attestation(args: &InspectAttestationArgs) -> Result<()> {
     let inspection = attestation::inspect_file(&args.file)?;
     if args.json {
         println!(
@@ -377,7 +377,7 @@ pub(super) fn inspect_attestation(args: &InspectAttestationArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn inspect_git_signature(args: &GitSignatureArgs) -> Result<()> {
+pub(crate) fn inspect_git_signature(args: &GitSignatureArgs) -> Result<()> {
     let inspection = git_signature::inspect(&args.repo, &args.commit)?;
     if args.json {
         println!(
@@ -402,7 +402,7 @@ pub(super) fn inspect_git_signature(args: &GitSignatureArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn add_decision(args: AddDecision) -> Result<()> {
+pub(crate) fn add_decision(args: AddDecision) -> Result<()> {
     let target = ExpectationTarget::from(args.target);
     let status = DecisionStatus::from(args.status);
     let subject = target_subject("decisions", target, args.subject)?;
@@ -441,7 +441,7 @@ pub(super) fn add_decision(args: AddDecision) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn list_decisions(args: &ListDecisions) -> Result<()> {
+pub(crate) fn list_decisions(args: &ListDecisions) -> Result<()> {
     let decisions = read_decisions_file(&args.file)?;
     if decisions.is_empty() {
         println!("No decisions in {}", args.file.display());
@@ -458,7 +458,7 @@ pub(super) fn list_decisions(args: &ListDecisions) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn remove_decision(args: &RemoveDecision) -> Result<()> {
+pub(crate) fn remove_decision(args: &RemoveDecision) -> Result<()> {
     let mut decisions = read_decision_sidecar(&args.file)?;
     let original_len = decisions.len();
     decisions.retain(|decision| decision.id != args.id);
@@ -476,7 +476,7 @@ pub(super) fn remove_decision(args: &RemoveDecision) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn add_work(args: AddWork) -> Result<()> {
+pub(crate) fn add_work(args: AddWork) -> Result<()> {
     let target = ExpectationTarget::from(args.target);
     let subject = target_subject("work records", target, args.subject)?;
     let expectation = args.expectation.filter(|value| !value.trim().is_empty());
@@ -523,7 +523,7 @@ pub(super) fn add_work(args: AddWork) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn list_works(args: &ListWorks) -> Result<()> {
+pub(crate) fn list_works(args: &ListWorks) -> Result<()> {
     let works = read_works_file(&args.file)?;
     if works.is_empty() {
         println!("No work records in {}", args.file.display());
@@ -541,7 +541,7 @@ pub(super) fn list_works(args: &ListWorks) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn remove_work(args: &RemoveWork) -> Result<()> {
+pub(crate) fn remove_work(args: &RemoveWork) -> Result<()> {
     let mut works = read_work_sidecar(&args.file)?;
     let original_len = works.len();
     works.retain(|work| work.id != args.id);

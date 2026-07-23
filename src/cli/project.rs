@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn init_repository(args: &InitArgs) -> Result<()> {
+pub(crate) fn init_repository(args: &InitArgs) -> Result<()> {
     if !args.target.is_dir() {
         bail!("{} is not a directory", args.target.display());
     }
@@ -97,7 +97,7 @@ fn starter_expectations(project_name: &str, source: &str) -> Vec<Expectation> {
         .collect()
 }
 
-pub(super) fn write_text_file(path: &Path, contents: &str) -> Result<()> {
+pub(crate) fn write_text_file(path: &Path, contents: &str) -> Result<()> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
@@ -107,7 +107,7 @@ pub(super) fn write_text_file(path: &Path, contents: &str) -> Result<()> {
     fs::write(path, contents).with_context(|| format!("could not write {}", path.display()))
 }
 
-pub(super) fn check(args: &CheckArgs) -> Result<()> {
+pub(crate) fn check(args: &CheckArgs) -> Result<()> {
     let analysis = load_analysis(
         &args.target,
         args.expectations.as_ref(),
@@ -128,7 +128,7 @@ pub(super) fn check(args: &CheckArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn diff(args: &DiffArgs) -> Result<()> {
+pub(crate) fn diff(args: &DiffArgs) -> Result<()> {
     let old = read_analysis_artifact(&args.old)?;
     let new = read_analysis_artifact(&args.new)?;
     let report = diff_report(&old, &new);
@@ -143,7 +143,7 @@ pub(super) fn diff(args: &DiffArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn handoff(args: &HandoffArgs) -> Result<()> {
+pub(crate) fn handoff(args: &HandoffArgs) -> Result<()> {
     let analysis = load_analysis(
         &args.target,
         args.expectations.as_ref(),
@@ -162,13 +162,13 @@ pub(super) fn handoff(args: &HandoffArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn current_unix_seconds() -> u64 {
+pub(crate) fn current_unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs())
 }
 
-pub(super) fn expectation_title(analysis: &ProjectAnalysis, id: &str) -> String {
+pub(crate) fn expectation_title(analysis: &ProjectAnalysis, id: &str) -> String {
     analysis
         .expectations
         .iter()

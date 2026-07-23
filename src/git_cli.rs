@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use crate::cli_values::{GitTargetDepthArg, WorkKindArg, WorkStatusArg};
+use crate::cli::values::{GitTargetDepthArg, WorkKindArg, WorkStatusArg};
 
 #[derive(Debug, clap::Subcommand)]
 pub(crate) enum GitCommand {

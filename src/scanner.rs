@@ -8,13 +8,15 @@ use anyhow::{Context, Result};
 use ignore::WalkBuilder;
 use sha2::{Digest, Sha256};
 
+mod file;
+
 use crate::{
     analysis::add_findings,
     model::{
         Confidence, FlowEdge, Language, ProjectAnalysis, SCHEMA_VERSION, Symbol, Workflow,
         WorkflowKind,
     },
-    scanner_file::{PendingCall, PendingWorkflow, scan_file},
+    scanner::file::{PendingCall, PendingWorkflow, scan_file},
 };
 
 /// Scans supported source files below `root` into a deterministic evidence model.

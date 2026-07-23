@@ -3,7 +3,6 @@ pub(crate) mod derived_findings;
 pub mod language;
 pub mod model;
 pub mod scanner;
-pub(crate) mod scanner_file;
 pub mod susu;
 pub mod tui;
 

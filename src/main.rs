@@ -2146,54 +2146,56 @@ const fn review_diff_result_reason(fail_on_regression: bool, regressed: bool) ->
 
 fn git_rewind(args: &GitRewindArgs) -> Result<()> {
     let snapshot_dir = git_snapshot_dir(&args.repo, &args.from)?;
-    let mut failed = false;
-    let result = (|| -> Result<()> {
-        let mut old = scan_project(&snapshot_dir)
-            .with_context(|| format!("could not scan Git ref {}", args.from))?;
-        old.project_name = format!("{}@{}", git_repo_label(&args.repo), args.from);
-        let new = if let Some(artifact) = &args.artifact {
-            read_analysis_artifact(artifact)?
-        } else {
-            load_analysis(&args.repo, None, None, None, None, false)?
-        };
-        if let Some(output) = &args.old_output {
-            fs::write(output, write_susu(&old, args.minify)?)
-                .with_context(|| format!("could not write {}", output.display()))?;
-            eprintln!("wrote old-ref artifact {}", output.display());
-        }
+    let result = execute_git_rewind(args, &snapshot_dir);
+    cleanup_git_snapshot(&snapshot_dir);
+    let failed = result?;
+    if failed {
+        process::exit(1);
+    }
+    Ok(())
+}
 
-        let report = diff_report(&old, &new);
-        if args.json {
-            print_git_rewind_json(args, &old, &new, &report)?;
-        } else {
-            println!(
-                "Susumu git rewind: {}@{} -> {}",
-                args.repo.display(),
-                args.from,
-                args.artifact.as_ref().map_or_else(
-                    || args.repo.display().to_string(),
-                    |path| path.display().to_string()
-                )
-            );
-            println!();
-            print_diff_report(&old, &new, &report, args.max_items);
-        }
-        failed = args.fail_on_stale && !report.stale_items.is_empty();
-        Ok(())
-    })();
+fn execute_git_rewind(args: &GitRewindArgs, snapshot_dir: &Path) -> Result<bool> {
+    let mut old = scan_project(snapshot_dir)
+        .with_context(|| format!("could not scan Git ref {}", args.from))?;
+    old.project_name = format!("{}@{}", git_repo_label(&args.repo), args.from);
+    let new = if let Some(artifact) = &args.artifact {
+        read_analysis_artifact(artifact)?
+    } else {
+        load_analysis(&args.repo, None, None, None, None, false)?
+    };
+    if let Some(output) = &args.old_output {
+        fs::write(output, write_susu(&old, args.minify)?)
+            .with_context(|| format!("could not write {}", output.display()))?;
+        eprintln!("wrote old-ref artifact {}", output.display());
+    }
 
-    if let Err(error) = fs::remove_dir_all(&snapshot_dir) {
+    let report = diff_report(&old, &new);
+    if args.json {
+        print_git_rewind_json(args, &old, &new, &report)?;
+    } else {
+        println!(
+            "Susumu git rewind: {}@{} -> {}",
+            args.repo.display(),
+            args.from,
+            args.artifact.as_ref().map_or_else(
+                || args.repo.display().to_string(),
+                |path| path.display().to_string()
+            )
+        );
+        println!();
+        print_diff_report(&old, &new, &report, args.max_items);
+    }
+    Ok(args.fail_on_stale && !report.stale_items.is_empty())
+}
+
+fn cleanup_git_snapshot(snapshot_dir: &Path) {
+    if let Err(error) = fs::remove_dir_all(snapshot_dir) {
         eprintln!(
             "warning: could not remove temporary Git snapshot {}: {error}",
             snapshot_dir.display()
         );
     }
-
-    result?;
-    if failed {
-        process::exit(1);
-    }
-    Ok(())
 }
 
 fn read_analysis_artifact(path: &PathBuf) -> Result<ProjectAnalysis> {

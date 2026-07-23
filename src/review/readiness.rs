@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::review_types::{ExpectationReadiness, READINESS_BUCKETS, ReviewPacketStored};
+use super::types::{ExpectationReadiness, READINESS_BUCKETS, ReviewPacketStored};
 use anyhow::{Context, Result};
 use clap::Args;
 

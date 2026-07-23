@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use susumu::model::{Confidence, ProjectAnalysis, Severity, VerificationStatus, WorkStatus};
 
-use crate::review_types::{
+use super::types::{
     CheckEvidenceJson, CheckItem, CheckItemJson, CheckJson, CheckProjectJson, CheckRecordsJson,
     CheckReport, CheckResultJson, CheckReviewJson, CheckSeverity, VerificationPostureJson,
     check_result_reason, check_severity_label, verification_evidence_posture,

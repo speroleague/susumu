@@ -2,7 +2,7 @@ use susumu::model::{
     Expectation, ExpectationStatus, ExpectationTarget, ProjectAnalysis, VerificationStatus,
 };
 
-use crate::review_types::{
+use crate::review::types::{
     ExpectationReadiness, ExpectationSupport, ExpectationVerificationSupport,
     verification_evidence_posture,
 };

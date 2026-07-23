@@ -23,19 +23,13 @@ use susumu::{
     write_works,
 };
 mod attestation;
-mod checks;
 mod cli;
 mod diff_commands;
 mod expectation_readiness;
 mod git_cli;
 mod git_connect;
 mod git_signature;
-mod handoff;
-mod portal;
-mod readiness_command;
-mod review_commands;
-mod review_packet;
-mod review_types;
+mod review;
 
 #[allow(clippy::wildcard_imports)]
 use cli::daily::*;
@@ -64,13 +58,12 @@ use cli::values::{WorkKindArg, WorkStatusArg};
 use diff_commands::{
     diff_report, git_rewind, print_diff_json, print_diff_report, read_analysis_artifact,
 };
-use review_commands::{
+use review::commands::{
     build_review, create_review, diff_reviews, export_review_html, open_review, serve_review,
 };
 #[cfg(test)]
-use review_commands::{read_review_packet, review_diff_regressed, review_diff_report};
+use review::commands::{read_review_packet, review_diff_regressed, review_diff_report};
 
-use checks::{check_item_jsons, check_json, check_report, print_check_json, print_check_report};
 use expectation_readiness::expectation_support;
 use git_cli::{
     GitCommand, GitConnectArgs, GitImportArgs, GitLinkArgs, GitRewindArgs, GitShortcutArgs,
@@ -81,19 +74,22 @@ use git_connect::{
     matched_artifact_file_ids, missing_expectation_work_records,
     single_language_matched_expectation,
 };
-use handoff::{
+use review::checks::{
+    check_item_jsons, check_json, check_report, print_check_json, print_check_report,
+};
+use review::handoff::{
     handoff_report, print_handoff_json, print_handoff_records, print_handoff_report,
     print_handoff_workflows, print_string_section,
 };
+use review::packet::review_packet;
 #[cfg(test)]
-use portal::{PORTAL_CONFIG_FILE, parse_portal_config, review_portal_html};
-use portal::{
+use review::portal::{PORTAL_CONFIG_FILE, parse_portal_config, review_portal_html};
+use review::portal::{
     handle_review_request, load_for_packet as load_portal_config_for_packet,
     load_for_target as load_portal_config_for_target, review_portal_html_with_config,
 };
-use readiness_command::ReadinessArgs;
-use review_packet::review_packet;
-use review_types::{
+use review::readiness::{self as readiness_command, ReadinessArgs};
+use review::types::{
     CheckItem, CheckItemJson, CheckReport, CheckSeverity, ExpectationSupport,
     ExpectationVerificationSupport, ReviewItemStored, ReviewPacketStored, check_result_reason,
 };
@@ -3698,7 +3694,7 @@ mod tests {
             }),
         });
 
-        let previews = crate::review_packet::review_source_previews(&artifact);
+        let previews = crate::review::packet::review_source_previews(&artifact);
 
         assert!(previews.len() >= 2);
         assert!(previews.iter().any(|preview| preview.path == "src/api.ts"

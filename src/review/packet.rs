@@ -7,10 +7,10 @@ use syntect::{
     parsing::{SyntaxReference, SyntaxSet},
 };
 
-use crate::{
+use super::{
     checks::check_item_jsons,
     expectation_readiness::{expectation_readiness, expectation_support},
-    review_types::{
+    types::{
         CheckEvidenceJson, CheckProjectJson, CheckRecordsJson, CheckReport, CheckResultJson,
         CheckReviewJson, HandoffReport, ReviewPacketJson, ReviewSourceJson, ReviewSourceLine,
         ReviewSourcePreview, ReviewSourceToken, check_result_reason,

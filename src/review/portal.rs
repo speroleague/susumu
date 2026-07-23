@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 
-use crate::review_types::ReviewPacketStored;
+use super::types::ReviewPacketStored;
 
 pub(crate) const PORTAL_CONFIG_FILE: &str = "susumu.toml";
 

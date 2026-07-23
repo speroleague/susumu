@@ -1,12 +1,12 @@
 #![allow(clippy::wildcard_imports)]
 
-use super::diff_commands::{
+use super::*;
+use crate::diff_commands::{
     ChangeSummary, ReviewDiffReport, change_summary_json, diff_by, print_change_section,
     print_freshness_section,
 };
-use super::*;
 
-pub(super) fn create_review(args: &ReviewCreateArgs) -> Result<()> {
+pub(crate) fn create_review(args: &ReviewCreateArgs) -> Result<()> {
     let analysis = load_analysis(
         &args.target,
         args.expectations.as_ref(),
@@ -52,7 +52,7 @@ pub(super) fn create_review(args: &ReviewCreateArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn build_review(args: &ReviewBuildArgs) -> Result<()> {
+pub(crate) fn build_review(args: &ReviewBuildArgs) -> Result<()> {
     let state = write_review_build_outputs(args)?;
     print_review_build_summary(args, &state)?;
 
@@ -184,7 +184,7 @@ fn print_review_build_summary(args: &ReviewBuildArgs, state: &ReviewBuildState) 
     Ok(())
 }
 
-pub(super) fn open_review(args: &ReviewOpenArgs) -> Result<()> {
+pub(crate) fn open_review(args: &ReviewOpenArgs) -> Result<()> {
     let packet = read_review_packet(&args.packet)?;
     if args.json {
         println!(
@@ -200,7 +200,7 @@ pub(super) fn open_review(args: &ReviewOpenArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn diff_reviews(args: &ReviewDiffArgs) -> Result<()> {
+pub(crate) fn diff_reviews(args: &ReviewDiffArgs) -> Result<()> {
     let old = read_review_packet(&args.old)?;
     let new = read_review_packet(&args.new)?;
     let report = review_diff_report(&old, &new);
@@ -215,7 +215,7 @@ pub(super) fn diff_reviews(args: &ReviewDiffArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn serve_review(args: &ReviewServeArgs) -> Result<()> {
+pub(crate) fn serve_review(args: &ReviewServeArgs) -> Result<()> {
     let packet = read_review_packet(&args.packet)?;
     let config = load_portal_config_for_packet(&packet, &args.packet)?;
     let html = review_portal_html_with_config(&packet, &config)?;
@@ -247,7 +247,7 @@ pub(super) fn serve_review(args: &ReviewServeArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn export_review_html(args: &ReviewExportHtmlArgs) -> Result<()> {
+pub(crate) fn export_review_html(args: &ReviewExportHtmlArgs) -> Result<()> {
     let packet = read_review_packet(&args.packet)?;
     let config = load_portal_config_for_packet(&packet, &args.packet)?;
     let html = review_portal_html_with_config(&packet, &config)?;
@@ -257,7 +257,7 @@ pub(super) fn export_review_html(args: &ReviewExportHtmlArgs) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn read_review_packet(path: &PathBuf) -> Result<ReviewPacketStored> {
+pub(crate) fn read_review_packet(path: &PathBuf) -> Result<ReviewPacketStored> {
     let source =
         fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
     let mut packet = serde_json::from_str::<ReviewPacketStored>(&source)
@@ -274,7 +274,7 @@ pub(super) fn read_review_packet(path: &PathBuf) -> Result<ReviewPacketStored> {
 }
 
 #[allow(clippy::too_many_lines)]
-pub(super) fn review_diff_report(
+pub(crate) fn review_diff_report(
     old: &ReviewPacketStored,
     new: &ReviewPacketStored,
 ) -> ReviewDiffReport {
@@ -313,7 +313,7 @@ fn review_item_label(item: &ReviewItemStored) -> String {
     format!("[{}] {} ({})", item.severity, item.title, item.source)
 }
 
-pub(super) fn review_diff_regressed(old: &ReviewPacketStored, new: &ReviewPacketStored) -> bool {
+pub(crate) fn review_diff_regressed(old: &ReviewPacketStored, new: &ReviewPacketStored) -> bool {
     (!old.result.failed && new.result.failed) || new.review.critical > old.review.critical
 }
 
@@ -349,7 +349,7 @@ fn print_review_packet(packet: &ReviewPacketStored, max_items: usize) {
     println!();
     print_handoff_workflows(&packet.top_workflows, max_items);
     print_stored_review_items(&packet.review_items, max_items);
-    readiness_command::print_items(&packet.expectation_readiness, max_items);
+    super::readiness::print_items(&packet.expectation_readiness, max_items);
     print_expectation_support(&packet.expectation_support, max_items);
     print_handoff_records(
         "Expectations without verification",

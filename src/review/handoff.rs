@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 use anyhow::{Context, Result};
 use susumu::model::{Confidence, ExpectationTarget, ProjectAnalysis};
 
-use crate::{
+use super::{
     checks::check_item_jsons,
-    review_types::{
+    types::{
         CheckEvidenceJson, CheckProjectJson, CheckRecordsJson, CheckReport, CheckResultJson,
         CheckReviewJson, HandoffJson, HandoffRecord, HandoffReport, HandoffWorkflow,
         check_result_reason, check_severity_label,
@@ -385,8 +385,8 @@ pub(crate) fn print_handoff_json(
 
 #[cfg(test)]
 mod tests {
+    use super::super::types::{CheckItem, CheckSeverity};
     use super::*;
-    use crate::review_types::{CheckItem, CheckSeverity};
     use susumu::model::{Expectation, ExpectationStatus, SCHEMA_VERSION};
 
     #[test]

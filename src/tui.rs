@@ -64,7 +64,7 @@ pub fn run(analysis: ProjectAnalysis, output: Option<PathBuf>) -> Result<()> {
     let mut terminal = Terminal::new(backend).context("could not initialize terminal")?;
     terminal.clear()?;
 
-    let mut app = App::new(analysis, output);
+    let mut app = App::from_analysis(analysis, output);
     let result = run_loop(&mut terminal, &mut app);
 
     disable_raw_mode().context("could not restore terminal mode")?;
@@ -152,7 +152,7 @@ struct NavState {
 }
 
 impl App {
-    fn new(analysis: ProjectAnalysis, output: Option<PathBuf>) -> Self {
+    fn from_analysis(analysis: ProjectAnalysis, output: Option<PathBuf>) -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
         let available_sources = available_source_count(&analysis);
@@ -2310,7 +2310,7 @@ mod tests {
             works: Vec::new(),
             findings: Vec::new(),
         };
-        let mut app = App::new(analysis, None);
+        let mut app = App::from_analysis(analysis, None);
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
 
@@ -2347,7 +2347,7 @@ mod tests {
             }],
             findings: Vec::new(),
         };
-        let mut app = App::new(analysis, None);
+        let mut app = App::from_analysis(analysis, None);
         app.set_tab(6);
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();

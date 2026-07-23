@@ -156,56 +156,54 @@ fn find_cycles(analysis: &ProjectAnalysis) -> Vec<Vec<String>> {
 
     let mut cycles = Vec::new();
     let mut completed = HashSet::new();
-    let mut stack = Vec::new();
     let mut active = HashSet::new();
     for symbol in &analysis.symbols {
-        visit(
-            &symbol.id,
-            &graph,
-            &mut completed,
-            &mut active,
-            &mut stack,
-            &mut cycles,
-        );
+        let node = symbol.id.as_str();
+        if completed.contains(node) {
+            continue;
+        }
+
+        let mut path = Vec::new();
+        let mut frames = vec![(node, 0usize)];
+        active.insert(node);
+        path.push(node);
+        while let Some((current, next_neighbor)) = frames.last_mut() {
+            let neighbor = graph
+                .get(current)
+                .and_then(|neighbors| neighbors.get(*next_neighbor))
+                .copied();
+            let Some(neighbor) = neighbor else {
+                let (finished, _) = frames.pop().expect("cycle traversal frame exists");
+                path.pop();
+                active.remove(finished);
+                completed.insert(finished);
+                continue;
+            };
+            *next_neighbor += 1;
+
+            if completed.contains(neighbor) {
+                continue;
+            }
+            if active.contains(neighbor) {
+                if let Some(start) = path.iter().position(|candidate| *candidate == neighbor) {
+                    let mut cycle: Vec<String> = path[start..]
+                        .iter()
+                        .map(|value| (*value).to_owned())
+                        .collect();
+                    cycle.push(neighbor.to_owned());
+                    if !cycles.iter().any(|known| known == &cycle) {
+                        cycles.push(cycle);
+                    }
+                }
+                continue;
+            }
+
+            active.insert(neighbor);
+            path.push(neighbor);
+            frames.push((neighbor, 0));
+        }
     }
     cycles
-}
-
-fn visit<'a>(
-    node: &'a str,
-    graph: &HashMap<&'a str, Vec<&'a str>>,
-    completed: &mut HashSet<&'a str>,
-    active: &mut HashSet<&'a str>,
-    stack: &mut Vec<&'a str>,
-    cycles: &mut Vec<Vec<String>>,
-) {
-    if completed.contains(node) {
-        return;
-    }
-    if active.contains(node) {
-        if let Some(start) = stack.iter().position(|candidate| *candidate == node) {
-            let mut cycle: Vec<String> = stack[start..]
-                .iter()
-                .map(|value| (*value).to_owned())
-                .collect();
-            cycle.push(node.to_owned());
-            if !cycles.iter().any(|known| known == &cycle) {
-                cycles.push(cycle);
-            }
-        }
-        return;
-    }
-
-    active.insert(node);
-    stack.push(node);
-    if let Some(neighbors) = graph.get(node) {
-        for neighbor in neighbors {
-            visit(neighbor, graph, completed, active, stack, cycles);
-        }
-    }
-    stack.pop();
-    active.remove(node);
-    completed.insert(node);
 }
 
 #[cfg(test)]

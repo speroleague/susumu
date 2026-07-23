@@ -77,7 +77,7 @@ pub(crate) fn parse_file(
         workflows: Vec::new(),
         has_parse_errors: tree.root_node().has_error(),
     };
-    walk(tree.root_node(), source.as_bytes(), adapter, 0, &mut parsed);
+    walk_nodes(tree.root_node(), source.as_bytes(), adapter, 0, &mut parsed);
     Ok(parsed)
 }
 
@@ -110,66 +110,71 @@ fn vue_script_source(source: &str) -> String {
     String::from_utf8(masked).expect("Vue source masking preserves UTF-8 boundaries")
 }
 
-fn walk(
+fn walk_nodes(
     node: Node<'_>,
     source: &[u8],
     adapter: &dyn adapters::LanguageAdapter,
     caller: usize,
     parsed: &mut ParsedFile,
 ) {
-    if adapter.is_dependency(node.kind())
-        && let Ok(text) = node.utf8_text(source)
-    {
-        parsed.dependencies.push(ParsedDependency {
-            name: adapter.normalize_dependency(text),
-            location: location(node),
-        });
-    }
+    let mut pending = vec![(node, caller)];
+    while let Some((node, caller)) = pending.pop() {
+        if adapter.is_dependency(node.kind())
+            && let Ok(text) = node.utf8_text(source)
+        {
+            parsed.dependencies.push(ParsedDependency {
+                name: adapter.normalize_dependency(text),
+                location: location(node),
+            });
+        }
 
-    let mut active_caller = caller;
-    if let Some((name, kind)) = adapter.symbol(node, source) {
-        let entrypoint = name == "main" || name == "__main__";
-        active_caller = parsed.symbols.len();
-        parsed.symbols.push(ParsedSymbol {
-            name,
-            kind,
-            location: location(node),
-            entrypoint,
-        });
-    }
+        let mut active_caller = caller;
+        if let Some((name, kind)) = adapter.symbol(node, source) {
+            let entrypoint = name == "main" || name == "__main__";
+            active_caller = parsed.symbols.len();
+            parsed.symbols.push(ParsedSymbol {
+                name,
+                kind,
+                location: location(node),
+                entrypoint,
+            });
+        }
 
-    if adapter.is_call(node.kind())
-        && let Some(name) = adapter.call_name(node, source)
-    {
-        parsed.calls.push(ParsedCall {
-            caller: active_caller,
-            name,
-            location: location(node),
-        });
-    }
+        if adapter.is_call(node.kind())
+            && let Some(name) = adapter.call_name(node, source)
+        {
+            parsed.calls.push(ParsedCall {
+                caller: active_caller,
+                name,
+                location: location(node),
+            });
+        }
 
-    parsed.workflows.extend(adapter.workflows(node, source));
+        parsed.workflows.extend(adapter.workflows(node, source));
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk(child, source, adapter, active_caller, parsed);
+        let mut cursor = node.walk();
+        let children: Vec<_> = node.children(&mut cursor).collect();
+        for child in children.into_iter().rev() {
+            pending.push((child, active_caller));
+        }
     }
 }
 
 pub(super) fn terminal_identifier(node: Node<'_>, source: &[u8]) -> Option<String> {
-    if matches!(
-        node.kind(),
-        "identifier" | "field_identifier" | "property_identifier" | "type_identifier"
-    ) {
-        return node.utf8_text(source).ok().map(ToOwned::to_owned);
-    }
+    let mut pending = vec![node];
+    while let Some(node) = pending.pop() {
+        if matches!(
+            node.kind(),
+            "identifier" | "field_identifier" | "property_identifier" | "type_identifier"
+        ) {
+            return node.utf8_text(source).ok().map(ToOwned::to_owned);
+        }
 
-    let mut cursor = node.walk();
-    let children: Vec<_> = node.named_children(&mut cursor).collect();
-    children
-        .into_iter()
-        .rev()
-        .find_map(|child| terminal_identifier(child, source))
+        let mut cursor = node.walk();
+        let children: Vec<_> = node.named_children(&mut cursor).collect();
+        pending.extend(children);
+    }
+    None
 }
 
 pub(super) fn location(node: Node<'_>) -> Location {

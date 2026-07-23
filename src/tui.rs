@@ -79,34 +79,61 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &mut App) ->
         terminal.draw(|frame| render(frame, app))?;
         if event::poll(TICK_RATE)?
             && let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+            && handle_key(app, key.code)
         {
-            if key.kind != KeyEventKind::Press {
-                continue;
-            }
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => app.next_tab(),
-                KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => app.previous_tab(),
-                KeyCode::Down | KeyCode::Char('j') => app.next_item(),
-                KeyCode::Up | KeyCode::Char('k') => app.previous_item(),
-                KeyCode::Char('1') => app.set_tab(0),
-                KeyCode::Char('2') => app.set_tab(1),
-                KeyCode::Char('3') => app.set_tab(2),
-                KeyCode::Char('4') => app.set_tab(3),
-                KeyCode::Char('5') => app.set_tab(4),
-                KeyCode::Char('6') => app.set_tab(5),
-                KeyCode::Char('7') => app.set_tab(6),
-                KeyCode::Char('8') => app.set_tab(7),
-                KeyCode::Char('9') => app.set_tab(8),
-                KeyCode::Char('0') => app.set_tab(TABS.len() - 1),
-                KeyCode::Enter => app.activate_selected(),
-                KeyCode::Char('b') => app.back(),
-                KeyCode::Char('e') => app.export(false),
-                KeyCode::Char('m') => app.export(true),
-                _ => {}
-            }
+            return Ok(());
         }
     }
+}
+
+fn handle_key(app: &mut App, code: KeyCode) -> bool {
+    match code {
+        KeyCode::Char('q') | KeyCode::Esc => true,
+        KeyCode::Tab
+        | KeyCode::Right
+        | KeyCode::Char(
+            'l' | 'h' | 'j' | 'k' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0',
+        )
+        | KeyCode::BackTab
+        | KeyCode::Left
+        | KeyCode::Down
+        | KeyCode::Up => handle_navigation_key(app, code),
+        KeyCode::Enter | KeyCode::Char('b' | 'e' | 'm') => handle_action_key(app, code),
+        _ => false,
+    }
+}
+
+fn handle_navigation_key(app: &mut App, code: KeyCode) -> bool {
+    match code {
+        KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => app.next_tab(),
+        KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => app.previous_tab(),
+        KeyCode::Down | KeyCode::Char('j') => app.next_item(),
+        KeyCode::Up | KeyCode::Char('k') => app.previous_item(),
+        KeyCode::Char('1') => app.set_tab(0),
+        KeyCode::Char('2') => app.set_tab(1),
+        KeyCode::Char('3') => app.set_tab(2),
+        KeyCode::Char('4') => app.set_tab(3),
+        KeyCode::Char('5') => app.set_tab(4),
+        KeyCode::Char('6') => app.set_tab(5),
+        KeyCode::Char('7') => app.set_tab(6),
+        KeyCode::Char('8') => app.set_tab(7),
+        KeyCode::Char('9') => app.set_tab(8),
+        KeyCode::Char('0') => app.set_tab(TABS.len() - 1),
+        _ => {}
+    }
+    false
+}
+
+fn handle_action_key(app: &mut App, code: KeyCode) -> bool {
+    match code {
+        KeyCode::Enter => app.activate_selected(),
+        KeyCode::Char('b') => app.back(),
+        KeyCode::Char('e') => app.export(false),
+        KeyCode::Char('m') => app.export(true),
+        _ => {}
+    }
+    false
 }
 
 struct App {

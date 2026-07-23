@@ -75,6 +75,10 @@ use git::connect::{
 #[cfg(test)]
 use git::snapshot::safe_snapshot_path;
 use git::snapshot::{git_repo_label, git_snapshot_dir};
+use git::types::{
+    GitCommit, GitConnectExport, GitConnectJson, GitExpectationLink, GitImportContext,
+    GitImportJson, GitImportRecordJson, GitWorkTarget, ImportedGitWork,
+};
 use review::checks::{
     check_item_jsons, check_json, check_report, print_check_json, print_check_report,
 };
@@ -914,71 +918,6 @@ fn import_git_work(args: &GitImportArgs) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug)]
-struct GitImportContext<'a> {
-    artifact: Option<&'a ProjectAnalysis>,
-    target_depth: GitTargetDepth,
-}
-
-#[derive(Debug, Clone)]
-struct GitCommit {
-    hash: String,
-    author_name: String,
-    author_email: String,
-    author_date: String,
-    subject: String,
-    body: String,
-    changed_files: Vec<String>,
-}
-
-#[derive(Debug)]
-struct ImportedGitWork {
-    work: Work,
-    commit_hash: String,
-    targeting: String,
-    changed_files: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct GitImportJson<'a> {
-    output: String,
-    imported: usize,
-    records: Vec<GitImportRecordJson<'a>>,
-}
-
-#[derive(Debug, Serialize)]
-struct GitImportRecordJson<'a> {
-    id: &'a str,
-    commit: &'a str,
-    target: String,
-    subject: Option<&'a str>,
-    expectation: Option<&'a str>,
-    title: &'a str,
-    targeting: &'a str,
-    changed_files: &'a [String],
-}
-
-#[derive(Debug, Serialize)]
-struct GitConnectExport {
-    path: String,
-    written: usize,
-    source: String,
-}
-
-#[derive(Debug, Serialize)]
-struct GitConnectJson<'a> {
-    repo: String,
-    artifact: String,
-    since: Option<&'a str>,
-    until: Option<&'a str>,
-    commits: usize,
-    connected: usize,
-    needs_record: usize,
-    unconnected: usize,
-    export: Option<&'a GitConnectExport>,
-    records: &'a [GitConnection],
-}
-
 const GIT_LOG_FORMAT: &str = "%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1e";
 
 fn git_commits(args: &GitImportArgs) -> Result<Vec<GitCommit>> {
@@ -1467,20 +1406,6 @@ fn build_git_import_json<'a>(output: &Path, imported: &'a [ImportedGitWork]) -> 
         imported: imported.len(),
         records,
     }
-}
-
-#[derive(Debug)]
-struct GitWorkTarget {
-    target: ExpectationTarget,
-    subject: Option<String>,
-    note: String,
-}
-
-#[derive(Debug)]
-struct GitExpectationLink {
-    id: String,
-    target: ExpectationTarget,
-    subject: Option<String>,
 }
 
 fn git_target_with_expectation(

@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use serde::Serialize;
 use susumu::model::{ExpectationTarget, ProjectAnalysis};
 
-use crate::{GitCommit, normalize_git_path};
+use crate::{git::types::GitCommit, normalize_git_path};
 
 #[derive(Debug)]
 pub(crate) struct GitConnectReport {

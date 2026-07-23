@@ -35,23 +35,19 @@ use crate::{
     susu::write_susu,
 };
 
-#[path = "tui_evidence.rs"]
-mod tui_evidence;
-#[path = "tui_records.rs"]
-mod tui_records;
-#[path = "tui_source.rs"]
-mod tui_source;
-#[path = "tui_summary.rs"]
-mod tui_summary;
+mod evidence;
+mod records;
+mod source;
+mod summary;
 
 #[allow(clippy::wildcard_imports)]
-use tui_evidence::*;
+use evidence::*;
 #[allow(clippy::wildcard_imports)]
-use tui_records::*;
+use records::*;
 #[allow(clippy::wildcard_imports)]
-use tui_source::*;
+use source::*;
 #[allow(clippy::wildcard_imports)]
-use tui_summary::*;
+use summary::*;
 
 const TICK_RATE: Duration = Duration::from_millis(200);
 const TABS: [&str; 11] = [

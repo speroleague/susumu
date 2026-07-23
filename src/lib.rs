@@ -6,7 +6,6 @@ pub mod scanner;
 pub(crate) mod scanner_file;
 pub mod susu;
 pub mod tui;
-pub(crate) mod workflow_priorities;
 
 pub use scanner::scan_project;
 pub use susu::{

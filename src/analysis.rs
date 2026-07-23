@@ -5,9 +5,10 @@ use crate::model::{
     Work,
 };
 
-#[path = "analysis_findings.rs"]
-mod analysis_findings;
-use analysis_findings::{
+mod findings;
+mod priorities;
+
+use findings::{
     expectation_subject_exists, missing_subject_finding, project_subject_finding,
     stale_subject_finding,
 };
@@ -27,7 +28,7 @@ pub fn refresh_derived_analysis(analysis: &mut ProjectAnalysis) {
     refresh_workflow_priorities(analysis);
 }
 
-pub use crate::workflow_priorities::refresh_workflow_priorities;
+pub use priorities::refresh_workflow_priorities;
 
 pub fn refresh_relationship_findings(analysis: &mut ProjectAnalysis) {
     analysis.findings.retain(|finding| {
@@ -581,5 +582,4 @@ fn decision_location(
 }
 
 #[cfg(test)]
-#[path = "analysis_tests.rs"]
 mod tests;

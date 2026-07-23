@@ -326,21 +326,46 @@ fn render(frame: &mut Frame<'_>, app: &mut App) {
 
     render_header(frame, app, sections[0]);
     render_tabs(frame, app, sections[1]);
+    render_content(frame, app, sections[2]);
+    render_footer(frame, app, sections[3]);
+}
+
+fn render_content(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
     match app.tab {
-        0 => render_overview(frame, app, sections[2]),
-        1 => render_review(frame, app, sections[2]),
-        2 => render_expectations(frame, app, sections[2]),
-        3 => render_verifications(frame, app, sections[2]),
-        4 => render_decisions(frame, app, sections[2]),
-        5 => render_works(frame, app, sections[2]),
-        6 => render_connections(frame, app, sections[2]),
-        7 => render_workflows(frame, app, sections[2]),
-        8 => render_flows(frame, app, sections[2]),
-        9 => render_findings(frame, app, sections[2]),
-        10 => render_files(frame, app, sections[2]),
+        0..=2 => render_summary_content(frame, app, area),
+        3..=6 => render_record_content(frame, app, area),
+        7..=10 => render_evidence_content(frame, app, area),
         _ => {}
     }
-    render_footer(frame, app, sections[3]);
+}
+
+fn render_summary_content(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
+    match app.tab {
+        0 => render_overview(frame, app, area),
+        1 => render_review(frame, app, area),
+        2 => render_expectations(frame, app, area),
+        _ => {}
+    }
+}
+
+fn render_record_content(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
+    match app.tab {
+        3 => render_verifications(frame, app, area),
+        4 => render_decisions(frame, app, area),
+        5 => render_works(frame, app, area),
+        6 => render_connections(frame, app, area),
+        _ => {}
+    }
+}
+
+fn render_evidence_content(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
+    match app.tab {
+        7 => render_workflows(frame, app, area),
+        8 => render_flows(frame, app, area),
+        9 => render_findings(frame, app, area),
+        10 => render_files(frame, app, area),
+        _ => {}
+    }
 }
 
 fn render_header(frame: &mut Frame<'_>, app: &App, area: Rect) {

@@ -22,6 +22,8 @@ use susumu::{
     scan_project, tui, write_decisions, write_expectations, write_susu, write_verifications,
     write_works,
 };
+#[path = "analysis_loading.rs"]
+mod analysis_loading;
 mod attestation;
 mod checks;
 mod cli_values;
@@ -35,6 +37,8 @@ mod git_connect;
 mod git_signature;
 mod handoff;
 mod portal;
+#[path = "project_commands.rs"]
+mod project_commands;
 mod readiness_command;
 mod record_cli;
 mod record_commands;
@@ -59,6 +63,7 @@ use review_commands::{
 #[cfg(test)]
 use review_commands::{read_review_packet, review_diff_regressed, review_diff_report};
 
+use analysis_loading::load_analysis;
 use checks::{check_item_jsons, check_json, check_report, print_check_json, print_check_report};
 use cli_values::GitTargetDepth;
 #[cfg(test)]
@@ -85,6 +90,9 @@ use portal::{PORTAL_CONFIG_FILE, parse_portal_config, review_portal_html};
 use portal::{
     handle_review_request, load_for_packet as load_portal_config_for_packet,
     load_for_target as load_portal_config_for_target, review_portal_html_with_config,
+};
+use project_commands::{
+    check, current_unix_seconds, diff, expectation_title, handoff, init_repository, write_text_file,
 };
 use readiness_command::ReadinessArgs;
 use record_cli::{
@@ -786,348 +794,6 @@ fn run_git_command(args: &GitShortcutArgs, command: Option<GitCommand>) -> Resul
         Some(GitCommand::Signature(args)) => inspect_git_signature(&args),
         None => git_shortcut(args),
     }
-}
-
-fn load_analysis(
-    target: &PathBuf,
-    expectations: Option<&PathBuf>,
-    verifications: Option<&PathBuf>,
-    decisions: Option<&PathBuf>,
-    work: Option<&PathBuf>,
-    log_merges: bool,
-) -> Result<ProjectAnalysis> {
-    let (mut analysis, is_artifact) = load_base_analysis(target)?;
-    load_sidecars(
-        &mut analysis,
-        &SidecarInputs {
-            target,
-            expectations,
-            verifications,
-            decisions,
-            work,
-            is_artifact,
-            log_merges,
-        },
-    )?;
-    finalize_loaded_analysis(&mut analysis);
-
-    Ok(analysis)
-}
-
-struct SidecarInputs<'a> {
-    target: &'a Path,
-    expectations: Option<&'a PathBuf>,
-    verifications: Option<&'a PathBuf>,
-    decisions: Option<&'a PathBuf>,
-    work: Option<&'a PathBuf>,
-    is_artifact: bool,
-    log_merges: bool,
-}
-
-fn load_sidecars(analysis: &mut ProjectAnalysis, inputs: &SidecarInputs<'_>) -> Result<()> {
-    refresh_derived_analysis(analysis);
-    let expectation_path = sidecar_path(
-        inputs.target,
-        inputs.expectations,
-        inputs.is_artifact,
-        "expectations.susu",
-    );
-    let verification_path = sidecar_path(
-        inputs.target,
-        inputs.verifications,
-        inputs.is_artifact,
-        "verifications.susu",
-    );
-    merge_expectation_sidecar(analysis, expectation_path.as_deref(), inputs.log_merges)?;
-    merge_verification_sidecar(analysis, verification_path.as_deref(), inputs.log_merges)?;
-    merge_decision_sidecar(analysis, inputs.decisions, inputs.log_merges)?;
-    merge_work_sidecar(analysis, inputs.work, inputs.log_merges)
-}
-
-fn finalize_loaded_analysis(analysis: &mut ProjectAnalysis) {
-    anchor_verification_bases(analysis);
-    anchor_decision_bases(analysis);
-    refresh_derived_analysis(analysis);
-}
-
-fn load_base_analysis(target: &PathBuf) -> Result<(ProjectAnalysis, bool)> {
-    let is_artifact = target
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("susu"));
-    let analysis = if is_artifact {
-        let source = fs::read_to_string(target)
-            .with_context(|| format!("could not read {}", target.display()))?;
-        parse_susu(&source).with_context(|| format!("could not parse {}", target.display()))?
-    } else {
-        if !target.is_dir() {
-            bail!("{} is not a directory or .susu file", target.display());
-        }
-        scan_project(target)?
-    };
-    Ok((analysis, is_artifact))
-}
-
-fn sidecar_path(
-    target: &Path,
-    explicit: Option<&PathBuf>,
-    is_artifact: bool,
-    filename: &str,
-) -> Option<PathBuf> {
-    explicit.cloned().or_else(|| {
-        (!is_artifact)
-            .then(|| target.join(filename))
-            .filter(|candidate| candidate.exists())
-    })
-}
-
-fn merge_expectation_sidecar(
-    analysis: &mut ProjectAnalysis,
-    path: Option<&Path>,
-    log_merges: bool,
-) -> Result<()> {
-    let Some(path) = path else { return Ok(()) };
-    let source =
-        fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
-    let imported = parse_expectations(&source)
-        .with_context(|| format!("could not parse expectations from {}", path.display()))?;
-    let count = imported.len();
-    merge_expectations(&mut analysis.expectations, imported);
-    refresh_derived_analysis(analysis);
-    if log_merges {
-        eprintln!("merged {count} expectations from {}", path.display());
-    }
-    Ok(())
-}
-
-fn merge_verification_sidecar(
-    analysis: &mut ProjectAnalysis,
-    path: Option<&Path>,
-    log_merges: bool,
-) -> Result<()> {
-    let Some(path) = path else { return Ok(()) };
-    let source =
-        fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
-    let imported = parse_verifications(&source)
-        .with_context(|| format!("could not parse verifications from {}", path.display()))?;
-    let count = imported.len();
-    merge_verifications(&mut analysis.verifications, imported);
-    refresh_derived_analysis(analysis);
-    if log_merges {
-        eprintln!("merged {count} verifications from {}", path.display());
-    }
-    Ok(())
-}
-
-fn merge_decision_sidecar(
-    analysis: &mut ProjectAnalysis,
-    path: Option<&PathBuf>,
-    log_merges: bool,
-) -> Result<()> {
-    let Some(path) = path else { return Ok(()) };
-    let source = fs::read_to_string(path)
-        .with_context(|| format!("could not read decisions from {}", path.display()))?;
-    let imported = parse_decisions(&source)
-        .with_context(|| format!("could not parse decisions from {}", path.display()))?;
-    let count = imported.len();
-    merge_decisions(&mut analysis.decisions, imported);
-    refresh_derived_analysis(analysis);
-    if log_merges {
-        eprintln!("merged {count} decisions from {}", path.display());
-    }
-    Ok(())
-}
-
-fn merge_work_sidecar(
-    analysis: &mut ProjectAnalysis,
-    path: Option<&PathBuf>,
-    log_merges: bool,
-) -> Result<()> {
-    let Some(path) = path else { return Ok(()) };
-    let source = fs::read_to_string(path)
-        .with_context(|| format!("could not read work from {}", path.display()))?;
-    let imported = parse_works(&source)
-        .with_context(|| format!("could not parse work from {}", path.display()))?;
-    let count = imported.len();
-    merge_works(&mut analysis.works, imported);
-    refresh_derived_analysis(analysis);
-    if log_merges {
-        eprintln!("merged {count} work records from {}", path.display());
-    }
-    Ok(())
-}
-
-fn init_repository(args: &InitArgs) -> Result<()> {
-    if !args.target.is_dir() {
-        bail!("{} is not a directory", args.target.display());
-    }
-
-    let file = if args.file.is_absolute() {
-        args.file.clone()
-    } else {
-        args.target.join(&args.file)
-    };
-
-    if file.exists() && !args.force {
-        bail!(
-            "{} already exists; use --force to replace it",
-            file.display()
-        );
-    }
-
-    if let Some(parent) = file.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("could not create {}", parent.display()))?;
-    }
-
-    let project_name = args.name.clone().unwrap_or_else(|| {
-        args.target
-            .file_name()
-            .and_then(|name| name.to_str())
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or("project")
-            .to_owned()
-    });
-    let expectations = starter_expectations(&project_name, &args.source);
-    fs::write(&file, write_expectations(&expectations, false)?)
-        .with_context(|| format!("could not write {}", file.display()))?;
-
-    eprintln!(
-        "wrote {} starter expectations to {}",
-        expectations.len(),
-        file.display()
-    );
-    eprintln!("next: susumu review {}", args.target.display());
-    Ok(())
-}
-
-fn starter_expectations(project_name: &str, source: &str) -> Vec<Expectation> {
-    let records = [
-        (
-            ExpectationStatus::Accepted,
-            format!("{project_name} keeps expectations explicit"),
-            format!(
-                "{project_name} should keep project expectations in an authored expectations.susu sidecar so implementation evidence and intent can be reviewed together."
-            ),
-        ),
-        (
-            ExpectationStatus::Proposed,
-            format!("{project_name} documents primary workflows"),
-            format!(
-                "{project_name} should describe the business or product workflows that matter most, then link those expectations to observed files, symbols, or workflows as evidence improves."
-            ),
-        ),
-        (
-            ExpectationStatus::Proposed,
-            format!("{project_name} records verification evidence"),
-            format!(
-                "{project_name} should record how important expectations are checked, such as tests, CI runs, manual reviews, policy checks, runtime traces, or release approvals."
-            ),
-        ),
-    ];
-
-    records
-        .into_iter()
-        .map(|(status, title, detail)| {
-            let id = expectation_id(
-                ExpectationTarget::Project,
-                None,
-                status,
-                source,
-                &title,
-                &detail,
-            );
-            Expectation {
-                id,
-                target: ExpectationTarget::Project,
-                subject: None,
-                status,
-                source: source.to_owned(),
-                title,
-                detail,
-            }
-        })
-        .collect()
-}
-
-fn write_text_file(path: &Path, contents: &str) -> Result<()> {
-    if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("could not create {}", parent.display()))?;
-    }
-    fs::write(path, contents).with_context(|| format!("could not write {}", path.display()))
-}
-
-fn check(args: &CheckArgs) -> Result<()> {
-    let analysis = load_analysis(
-        &args.target,
-        args.expectations.as_ref(),
-        args.verifications.as_ref(),
-        args.decisions.as_ref(),
-        args.work.as_ref(),
-        false,
-    )?;
-    let report = check_report(&analysis, args.strict);
-    if args.json {
-        print_check_json(&analysis, &report)?;
-    } else {
-        print_check_report(&analysis, &report, args.max_items);
-    }
-    if report.failed {
-        process::exit(1);
-    }
-    Ok(())
-}
-
-fn diff(args: &DiffArgs) -> Result<()> {
-    let old = read_analysis_artifact(&args.old)?;
-    let new = read_analysis_artifact(&args.new)?;
-    let report = diff_report(&old, &new);
-    if args.json {
-        print_diff_json(&old, &new, &report, args.fail_on_stale)?;
-    } else {
-        print_diff_report(&old, &new, &report, args.max_items);
-    }
-    if args.fail_on_stale && !report.stale_items.is_empty() {
-        process::exit(1);
-    }
-    Ok(())
-}
-
-fn handoff(args: &HandoffArgs) -> Result<()> {
-    let analysis = load_analysis(
-        &args.target,
-        args.expectations.as_ref(),
-        args.verifications.as_ref(),
-        args.decisions.as_ref(),
-        args.work.as_ref(),
-        false,
-    )?;
-    let check = check_report(&analysis, false);
-    let report = handoff_report(&analysis, &check);
-    if args.json {
-        print_handoff_json(&analysis, &check, &report)?;
-    } else {
-        print_handoff_report(&analysis, &check, &report, args.max_items);
-    }
-    Ok(())
-}
-
-fn current_unix_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs())
-}
-
-fn expectation_title(analysis: &ProjectAnalysis, id: &str) -> String {
-    analysis
-        .expectations
-        .iter()
-        .find(|expectation| expectation.id == id)
-        .map_or_else(|| id.to_owned(), |expectation| expectation.title.clone())
 }
 
 fn git_connect(args: &GitConnectArgs) -> Result<()> {

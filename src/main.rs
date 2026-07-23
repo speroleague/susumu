@@ -3180,15 +3180,27 @@ fn git_link(args: &GitLinkArgs) -> Result<()> {
         })?;
     let commit = git_commit_for_ref(&args.repo, &args.commit)?;
     let work = work_from_git_link(&commit, expectation, args);
+    save_git_link_work(args, &work)?;
+    print_git_link_result(args, &commit, expectation, &work)
+}
+
+fn save_git_link_work(args: &GitLinkArgs, work: &Work) -> Result<()> {
     let mut works = if args.output.exists() {
         read_work_sidecar(&args.output)?
     } else {
         Vec::new()
     };
-    let id = work.id.clone();
     merge_works(&mut works, vec![work.clone()]);
     write_text_file(&args.output, &write_works(&works, args.minify)?)?;
+    Ok(())
+}
 
+fn print_git_link_result(
+    args: &GitLinkArgs,
+    commit: &GitCommit,
+    expectation: &Expectation,
+    work: &Work,
+) -> Result<()> {
     if args.json {
         println!(
             "{}",
@@ -3209,6 +3221,7 @@ fn git_link(args: &GitLinkArgs) -> Result<()> {
             .context("could not serialize git link report")?
         );
     } else {
+        let id = work.id.clone();
         println!("Susumu git link: {}", args.repo.display());
         println!("Commit: {}  {}", short_hash(&commit.hash), commit.subject);
         println!("Expectation: {}  {}", expectation.id, expectation.title);

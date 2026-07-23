@@ -5,11 +5,14 @@ use crate::model::{
     Verification, Work, Workflow, WorkflowPriority,
 };
 
-use crate::susu_parse::{
+mod parse;
+mod write;
+
+use parse::{
     Token, atom_at, fields, optional_id, parse_location, parse_number, parse_work_statement,
     required, statements, tokenize,
 };
-pub use crate::susu_write::{
+pub use write::{
     write_decisions, write_expectations, write_susu, write_verifications, write_works,
 };
 
@@ -412,5 +415,4 @@ fn parse_verification_statement(statement: &[Token]) -> Result<Verification> {
 }
 
 #[cfg(test)]
-#[path = "susu_tests.rs"]
 mod tests;

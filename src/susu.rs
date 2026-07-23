@@ -25,182 +25,247 @@ use crate::model::{
 ///
 /// Returns an error for malformed syntax, missing required fields, unknown
 /// record kinds, or values that do not match the declared schema.
-#[allow(clippy::too_many_lines)]
 pub fn parse_susu(source: &str) -> Result<ProjectAnalysis> {
-    let statements = statements(&tokenize(source)?);
-    let mut schema_version = None;
-    let mut project_name = None;
-    let mut root = None;
-    let mut generated = None;
-    let mut files = Vec::new();
-    let mut symbols = Vec::new();
-    let mut dependencies = Vec::new();
-    let mut workflows = Vec::new();
-    let mut workflow_priorities = Vec::new();
-    let mut flows = Vec::new();
-    let mut expectations = Vec::new();
-    let mut verifications = Vec::new();
-    let mut decisions = Vec::new();
-    let mut works = Vec::new();
-    let mut findings = Vec::new();
-
-    for statement in statements {
-        let Some(Token::Atom(kind)) = statement.first() else {
-            continue;
-        };
-        match kind.as_str() {
-            "susu" => {
-                let fields = fields(&statement, 1)?;
-                schema_version = Some(parse_number(required(&fields, "version")?, "version")?);
-            }
-            "project" => {
-                let values = fields(&statement, 1)?;
-                project_name = Some(required(&values, "name")?.to_owned());
-                root = Some(required(&values, "root")?.to_owned());
-                generated = Some(parse_number(required(&values, "generated")?, "generated")?);
-            }
-            "file" => {
-                let id = atom_at(&statement, 1, "file id")?;
-                let values = fields(&statement, 2)?;
-                files.push(SourceFile {
-                    id,
-                    path: required(&values, "path")?.to_owned(),
-                    language: required(&values, "language")?
-                        .parse()
-                        .map_err(|error: String| anyhow!(error))?,
-                    lines: parse_number(required(&values, "lines")?, "lines")?,
-                    bytes: parse_number(required(&values, "bytes")?, "bytes")?,
-                    content_hash: optional_id(values.get("hash").map_or("-", String::as_str)),
-                });
-            }
-            "symbol" => {
-                let id = atom_at(&statement, 1, "symbol id")?;
-                let values = fields(&statement, 2)?;
-                symbols.push(Symbol {
-                    id,
-                    name: required(&values, "name")?.to_owned(),
-                    kind: required(&values, "kind")?
-                        .parse()
-                        .map_err(|error: String| anyhow!(error))?,
-                    file_id: required(&values, "file")?.to_owned(),
-                    content_hash: optional_id(values.get("hash").map_or("-", String::as_str)),
-                    location: parse_location(&values)?,
-                    entrypoint: required(&values, "entry")?
-                        .parse()
-                        .context("entry must be true or false")?,
-                });
-            }
-            "dependency" => {
-                let values = fields(&statement, 1)?;
-                dependencies.push(Dependency {
-                    file_id: required(&values, "file")?.to_owned(),
-                    name: required(&values, "name")?.to_owned(),
-                    location: parse_location(&values)?,
-                });
-            }
-            "workflow" => {
-                let id = atom_at(&statement, 1, "workflow id")?;
-                let values = fields(&statement, 2)?;
-                workflows.push(Workflow {
-                    id,
-                    kind: required(&values, "kind")?
-                        .parse()
-                        .map_err(|error: String| anyhow!(error))?,
-                    framework: required(&values, "framework")?.to_owned(),
-                    trigger: required(&values, "trigger")?.to_owned(),
-                    handler: optional_id(required(&values, "handler")?),
-                    entry_symbol: optional_id(required(&values, "entry")?),
-                    file_id: required(&values, "file")?.to_owned(),
-                    confidence: required(&values, "confidence")?
-                        .parse()
-                        .map_err(|error: String| anyhow!(error))?,
-                    location: parse_location(&values)?,
-                });
-            }
-            "attention" | "priority" => {
-                let values = fields(&statement, 1)?;
-                workflow_priorities.push(WorkflowPriority {
-                    workflow_id: required(&values, "workflow")?.to_owned(),
-                    source: values
-                        .get("source")
-                        .cloned()
-                        .unwrap_or_else(|| "susumu:derived".to_owned()),
-                    score: parse_number(required(&values, "score")?, "score")?,
-                    detail: required(&values, "detail")?.to_owned(),
-                });
-            }
-            "flow" => {
-                let from = atom_at(&statement, 1, "flow source")?;
-                if statement.get(2) != Some(&Token::Arrow) {
-                    bail!("flow is missing -> after {from}");
-                }
-                let target = atom_at(&statement, 3, "flow target")?;
-                let values = fields(&statement, 4)?;
-                flows.push(FlowEdge {
-                    from,
-                    to: (target != "?").then_some(target),
-                    call: required(&values, "call")?.to_owned(),
-                    confidence: required(&values, "confidence")?
-                        .parse()
-                        .map_err(|error: String| anyhow!(error))?,
-                    location: parse_location(&values)?,
-                });
-            }
-            "expectation" => {
-                expectations.push(parse_expectation_statement(&statement)?);
-            }
-            "verification" => {
-                verifications.push(parse_verification_statement(&statement)?);
-            }
-            "decision" => {
-                decisions.push(parse_decision_statement(&statement)?);
-            }
-            "work" => {
-                works.push(parse_work_statement(&statement)?);
-            }
-            "finding" => {
-                let rule_id = atom_at(&statement, 1, "finding id")?;
-                let values = fields(&statement, 2)?;
-                findings.push(Finding {
-                    rule_id,
-                    source: values
-                        .get("source")
-                        .cloned()
-                        .unwrap_or_else(|| "susumu:scanner".to_owned()),
-                    severity: required(&values, "severity")?
-                        .parse()
-                        .map_err(|error: String| anyhow!(error))?,
-                    title: required(&values, "title")?.to_owned(),
-                    detail: required(&values, "detail")?.to_owned(),
-                    file_id: optional_id(required(&values, "file")?),
-                    subject: optional_id(required(&values, "subject")?),
-                    location: if values.contains_key("start") {
-                        Some(parse_location(&values)?)
-                    } else {
-                        None
-                    },
-                });
-            }
-            other => bail!("unknown .susu statement: {other}"),
-        }
+    let mut parsed = ParsedAnalysis::default();
+    for statement in statements(&tokenize(source)?) {
+        parse_statement(&statement, &mut parsed)?;
     }
+    parsed.into_analysis()
+}
 
-    Ok(ProjectAnalysis {
-        schema_version: schema_version.context("missing susu statement")?,
-        project_name: project_name.context("missing project name")?,
-        root: root.context("missing project root")?,
-        generated_unix_seconds: generated.context("missing project timestamp")?,
-        files,
-        symbols,
-        dependencies,
-        workflows,
-        workflow_priorities,
-        flows,
-        expectations,
-        verifications,
-        decisions,
-        works,
-        findings,
+#[derive(Default)]
+struct ParsedAnalysis {
+    schema_version: Option<u32>,
+    project_name: Option<String>,
+    root: Option<String>,
+    generated: Option<u64>,
+    files: Vec<SourceFile>,
+    symbols: Vec<Symbol>,
+    dependencies: Vec<Dependency>,
+    workflows: Vec<Workflow>,
+    workflow_priorities: Vec<WorkflowPriority>,
+    flows: Vec<FlowEdge>,
+    expectations: Vec<Expectation>,
+    verifications: Vec<Verification>,
+    decisions: Vec<Decision>,
+    works: Vec<Work>,
+    findings: Vec<Finding>,
+}
+
+impl ParsedAnalysis {
+    fn into_analysis(self) -> Result<ProjectAnalysis> {
+        Ok(ProjectAnalysis {
+            schema_version: self.schema_version.context("missing susu statement")?,
+            project_name: self.project_name.context("missing project name")?,
+            root: self.root.context("missing project root")?,
+            generated_unix_seconds: self.generated.context("missing project timestamp")?,
+            files: self.files,
+            symbols: self.symbols,
+            dependencies: self.dependencies,
+            workflows: self.workflows,
+            workflow_priorities: self.workflow_priorities,
+            flows: self.flows,
+            expectations: self.expectations,
+            verifications: self.verifications,
+            decisions: self.decisions,
+            works: self.works,
+            findings: self.findings,
+        })
+    }
+}
+
+fn parse_statement(statement: &[Token], parsed: &mut ParsedAnalysis) -> Result<()> {
+    let Some(Token::Atom(kind)) = statement.first() else {
+        return Ok(());
+    };
+    match kind.as_str() {
+        "susu" | "project" => parse_metadata_statement(kind, statement, parsed),
+        "file" | "symbol" | "dependency" | "workflow" | "attention" | "priority" | "flow" => {
+            parse_evidence_statement(kind, statement, parsed)
+        }
+        "expectation" | "verification" | "decision" | "work" | "finding" => {
+            parse_record_statement(kind, statement, parsed)
+        }
+        other => bail!("unknown .susu statement: {other}"),
+    }
+}
+
+fn parse_metadata_statement(
+    kind: &str,
+    statement: &[Token],
+    parsed: &mut ParsedAnalysis,
+) -> Result<()> {
+    let values = fields(statement, 1)?;
+    match kind {
+        "susu" => {
+            parsed.schema_version = Some(parse_number(required(&values, "version")?, "version")?);
+        }
+        "project" => {
+            parsed.project_name = Some(required(&values, "name")?.to_owned());
+            parsed.root = Some(required(&values, "root")?.to_owned());
+            parsed.generated = Some(parse_number(required(&values, "generated")?, "generated")?);
+        }
+        _ => unreachable!("non-metadata statement routed to metadata parser"),
+    }
+    Ok(())
+}
+
+fn parse_evidence_statement(
+    kind: &str,
+    statement: &[Token],
+    parsed: &mut ParsedAnalysis,
+) -> Result<()> {
+    match kind {
+        "file" => parse_file_statement(statement, parsed),
+        "symbol" => parse_symbol_statement(statement, parsed),
+        "dependency" => parse_dependency_statement(statement, parsed),
+        "workflow" => parse_workflow_statement(statement, parsed),
+        "attention" | "priority" => parse_priority_statement(statement, parsed),
+        "flow" => parse_flow_statement(statement, parsed),
+        _ => unreachable!("non-evidence statement routed to evidence parser"),
+    }
+}
+
+fn parse_file_statement(statement: &[Token], parsed: &mut ParsedAnalysis) -> Result<()> {
+    let id = atom_at(statement, 1, "file id")?;
+    let values = fields(statement, 2)?;
+    parsed.files.push(SourceFile {
+        id,
+        path: required(&values, "path")?.to_owned(),
+        language: required(&values, "language")?
+            .parse()
+            .map_err(|error: String| anyhow!(error))?,
+        lines: parse_number(required(&values, "lines")?, "lines")?,
+        bytes: parse_number(required(&values, "bytes")?, "bytes")?,
+        content_hash: optional_id(values.get("hash").map_or("-", String::as_str)),
+    });
+    Ok(())
+}
+
+fn parse_symbol_statement(statement: &[Token], parsed: &mut ParsedAnalysis) -> Result<()> {
+    let id = atom_at(statement, 1, "symbol id")?;
+    let values = fields(statement, 2)?;
+    parsed.symbols.push(Symbol {
+        id,
+        name: required(&values, "name")?.to_owned(),
+        kind: required(&values, "kind")?
+            .parse()
+            .map_err(|error: String| anyhow!(error))?,
+        file_id: required(&values, "file")?.to_owned(),
+        content_hash: optional_id(values.get("hash").map_or("-", String::as_str)),
+        location: parse_location(&values)?,
+        entrypoint: required(&values, "entry")?
+            .parse()
+            .context("entry must be true or false")?,
+    });
+    Ok(())
+}
+
+fn parse_dependency_statement(statement: &[Token], parsed: &mut ParsedAnalysis) -> Result<()> {
+    let values = fields(statement, 1)?;
+    parsed.dependencies.push(Dependency {
+        file_id: required(&values, "file")?.to_owned(),
+        name: required(&values, "name")?.to_owned(),
+        location: parse_location(&values)?,
+    });
+    Ok(())
+}
+
+fn parse_workflow_statement(statement: &[Token], parsed: &mut ParsedAnalysis) -> Result<()> {
+    let id = atom_at(statement, 1, "workflow id")?;
+    let values = fields(statement, 2)?;
+    parsed.workflows.push(Workflow {
+        id,
+        kind: required(&values, "kind")?
+            .parse()
+            .map_err(|error: String| anyhow!(error))?,
+        framework: required(&values, "framework")?.to_owned(),
+        trigger: required(&values, "trigger")?.to_owned(),
+        handler: optional_id(required(&values, "handler")?),
+        entry_symbol: optional_id(required(&values, "entry")?),
+        file_id: required(&values, "file")?.to_owned(),
+        confidence: required(&values, "confidence")?
+            .parse()
+            .map_err(|error: String| anyhow!(error))?,
+        location: parse_location(&values)?,
+    });
+    Ok(())
+}
+
+fn parse_priority_statement(statement: &[Token], parsed: &mut ParsedAnalysis) -> Result<()> {
+    let values = fields(statement, 1)?;
+    parsed.workflow_priorities.push(WorkflowPriority {
+        workflow_id: required(&values, "workflow")?.to_owned(),
+        source: values
+            .get("source")
+            .cloned()
+            .unwrap_or_else(|| "susumu:derived".to_owned()),
+        score: parse_number(required(&values, "score")?, "score")?,
+        detail: required(&values, "detail")?.to_owned(),
+    });
+    Ok(())
+}
+
+fn parse_flow_statement(statement: &[Token], parsed: &mut ParsedAnalysis) -> Result<()> {
+    let from = atom_at(statement, 1, "flow source")?;
+    if statement.get(2) != Some(&Token::Arrow) {
+        bail!("flow is missing -> after {from}");
+    }
+    let target = atom_at(statement, 3, "flow target")?;
+    let values = fields(statement, 4)?;
+    parsed.flows.push(FlowEdge {
+        from,
+        to: (target != "?").then_some(target),
+        call: required(&values, "call")?.to_owned(),
+        confidence: required(&values, "confidence")?
+            .parse()
+            .map_err(|error: String| anyhow!(error))?,
+        location: parse_location(&values)?,
+    });
+    Ok(())
+}
+
+fn parse_record_statement(
+    kind: &str,
+    statement: &[Token],
+    parsed: &mut ParsedAnalysis,
+) -> Result<()> {
+    match kind {
+        "expectation" => parsed
+            .expectations
+            .push(parse_expectation_statement(statement)?),
+        "verification" => parsed
+            .verifications
+            .push(parse_verification_statement(statement)?),
+        "decision" => parsed.decisions.push(parse_decision_statement(statement)?),
+        "work" => parsed.works.push(parse_work_statement(statement)?),
+        "finding" => parsed.findings.push(parse_finding_statement(statement)?),
+        _ => unreachable!("non-record statement routed to record parser"),
+    }
+    Ok(())
+}
+
+fn parse_finding_statement(statement: &[Token]) -> Result<Finding> {
+    let rule_id = atom_at(statement, 1, "finding id")?;
+    let values = fields(statement, 2)?;
+    Ok(Finding {
+        rule_id,
+        source: values
+            .get("source")
+            .cloned()
+            .unwrap_or_else(|| "susumu:scanner".to_owned()),
+        severity: required(&values, "severity")?
+            .parse()
+            .map_err(|error: String| anyhow!(error))?,
+        title: required(&values, "title")?.to_owned(),
+        detail: required(&values, "detail")?.to_owned(),
+        file_id: optional_id(required(&values, "file")?),
+        subject: optional_id(required(&values, "subject")?),
+        location: if values.contains_key("start") {
+            Some(parse_location(&values)?)
+        } else {
+            None
+        },
     })
 }
 

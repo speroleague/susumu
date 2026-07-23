@@ -378,7 +378,7 @@ pub(crate) fn inspect_attestation(args: &InspectAttestationArgs) -> Result<()> {
 }
 
 pub(crate) fn inspect_git_signature(args: &GitSignatureArgs) -> Result<()> {
-    let inspection = git_signature::inspect(&args.repo, &args.commit)?;
+    let inspection = crate::git::signature::inspect(&args.repo, &args.commit)?;
     if args.json {
         println!(
             "{}",

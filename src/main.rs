@@ -26,9 +26,7 @@ mod attestation;
 mod cli;
 mod diff_commands;
 mod expectation_readiness;
-mod git_cli;
-mod git_connect;
-mod git_signature;
+mod git;
 mod review;
 
 #[allow(clippy::wildcard_imports)]
@@ -64,12 +62,12 @@ use review::commands::{
 #[cfg(test)]
 use review::commands::{read_review_packet, review_diff_regressed, review_diff_report};
 
-use expectation_readiness::expectation_support;
-use git_cli::{
+use cli::git::{
     GitCommand, GitConnectArgs, GitImportArgs, GitLinkArgs, GitRewindArgs, GitShortcutArgs,
     GitSignatureArgs,
 };
-use git_connect::{
+use expectation_readiness::expectation_support;
+use git::connect::{
     GitConnectReport, GitConnectedRecord, GitConnection, build_git_connect_report, contains_token,
     matched_artifact_file_ids, missing_expectation_work_records,
     single_language_matched_expectation,
@@ -4005,7 +4003,7 @@ mod tests {
             },
         ];
 
-        let suggestions = crate::git_connect::suggested_expectations(
+        let suggestions = crate::git::connect::suggested_expectations(
             &artifact,
             "docs: guide daily workflow commands",
         );

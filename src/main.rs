@@ -1310,20 +1310,57 @@ fn load_analysis(
     log_merges: bool,
 ) -> Result<ProjectAnalysis> {
     let (mut analysis, is_artifact) = load_base_analysis(target)?;
-    refresh_derived_analysis(&mut analysis);
-
-    let expectations = sidecar_path(target, expectations, is_artifact, "expectations.susu");
-    let verifications = sidecar_path(target, verifications, is_artifact, "verifications.susu");
-    merge_expectation_sidecar(&mut analysis, expectations.as_deref(), log_merges)?;
-    merge_verification_sidecar(&mut analysis, verifications.as_deref(), log_merges)?;
-    merge_decision_sidecar(&mut analysis, decisions, log_merges)?;
-    merge_work_sidecar(&mut analysis, work, log_merges)?;
-
-    anchor_verification_bases(&mut analysis);
-    anchor_decision_bases(&mut analysis);
-    refresh_derived_analysis(&mut analysis);
+    load_sidecars(
+        &mut analysis,
+        &SidecarInputs {
+            target,
+            expectations,
+            verifications,
+            decisions,
+            work,
+            is_artifact,
+            log_merges,
+        },
+    )?;
+    finalize_loaded_analysis(&mut analysis);
 
     Ok(analysis)
+}
+
+struct SidecarInputs<'a> {
+    target: &'a Path,
+    expectations: Option<&'a PathBuf>,
+    verifications: Option<&'a PathBuf>,
+    decisions: Option<&'a PathBuf>,
+    work: Option<&'a PathBuf>,
+    is_artifact: bool,
+    log_merges: bool,
+}
+
+fn load_sidecars(analysis: &mut ProjectAnalysis, inputs: &SidecarInputs<'_>) -> Result<()> {
+    refresh_derived_analysis(analysis);
+    let expectation_path = sidecar_path(
+        inputs.target,
+        inputs.expectations,
+        inputs.is_artifact,
+        "expectations.susu",
+    );
+    let verification_path = sidecar_path(
+        inputs.target,
+        inputs.verifications,
+        inputs.is_artifact,
+        "verifications.susu",
+    );
+    merge_expectation_sidecar(analysis, expectation_path.as_deref(), inputs.log_merges)?;
+    merge_verification_sidecar(analysis, verification_path.as_deref(), inputs.log_merges)?;
+    merge_decision_sidecar(analysis, inputs.decisions, inputs.log_merges)?;
+    merge_work_sidecar(analysis, inputs.work, inputs.log_merges)
+}
+
+fn finalize_loaded_analysis(analysis: &mut ProjectAnalysis) {
+    anchor_verification_bases(analysis);
+    anchor_decision_bases(analysis);
+    refresh_derived_analysis(analysis);
 }
 
 fn load_base_analysis(target: &PathBuf) -> Result<(ProjectAnalysis, bool)> {

@@ -700,6 +700,19 @@ fn run_review_command(args: &ReviewShortcutArgs, command: Option<ReviewCommand>)
 
 fn run_record_command(command: Command) -> Result<()> {
     match command {
+        command @ (Command::Attestation { .. } | Command::Expectation { .. }) => {
+            run_authored_command(command)
+        }
+        command @ Command::Verification { .. } => run_verification_command(command),
+        command @ (Command::Decision { .. } | Command::Work { .. }) => {
+            run_decision_or_work_command(command)
+        }
+        _ => unreachable!("non-record command routed to record dispatcher"),
+    }
+}
+
+fn run_authored_command(command: Command) -> Result<()> {
+    match command {
         Command::Attestation { command } => match command {
             AttestationCommand::Inspect(args) => inspect_attestation(&args),
         },
@@ -708,12 +721,24 @@ fn run_record_command(command: Command) -> Result<()> {
             ExpectationCommand::List(args) => list_expectations(&args),
             ExpectationCommand::Remove(args) => remove_expectation(&args),
         },
+        _ => unreachable!("non-authored command routed to authored dispatcher"),
+    }
+}
+
+fn run_verification_command(command: Command) -> Result<()> {
+    match command {
         Command::Verification { command } => match command {
             VerificationCommand::Add(args) => add_verification(args),
             VerificationCommand::List(args) => list_verifications(&args),
             VerificationCommand::Remove(args) => remove_verification(&args),
             VerificationCommand::Chain(args) => verification_chain(&args),
         },
+        _ => unreachable!("non-verification command routed to verification dispatcher"),
+    }
+}
+
+fn run_decision_or_work_command(command: Command) -> Result<()> {
+    match command {
         Command::Decision { command } => match command {
             DecisionCommand::Add(args) => add_decision(args),
             DecisionCommand::List(args) => list_decisions(&args),
@@ -724,7 +749,7 @@ fn run_record_command(command: Command) -> Result<()> {
             WorkCommand::List(args) => list_works(&args),
             WorkCommand::Remove(args) => remove_work(&args),
         },
-        _ => unreachable!("non-record command routed to record dispatcher"),
+        _ => unreachable!("non-decision/work command routed to dispatcher"),
     }
 }
 

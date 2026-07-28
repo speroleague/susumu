@@ -46,7 +46,7 @@ jsonwebtoken = { version = "9.3", default-features = false, features = ["use_pem
 rand = { version = "0.8", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 sqlx = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio-rustls", "migrate", "derive", "macros"], optional = true }
-tokio = { version = "1.44", features = ["macros", "net", "rt-multi-thread", "sync", "time"], optional = true }
+tokio = { version = "1.44", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.20"

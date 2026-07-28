@@ -147,6 +147,13 @@ structured authoring, record detail views, anchored review threads, and guided c
 Static HTML remains read-only. Queue-only requests remain available for CI and CLI workflows.
 Webhooks and broader resource-shaped collaboration endpoints remain future work.
 
+The API applies bounded operation settings for production behavior: GitHub requests have a
+five-second connection timeout and thirty-second total timeout, PostgreSQL acquisition waits are
+bounded, and the refresh worker is stopped during graceful shutdown. Keep the API behind a reverse
+proxy with request limits and login abuse protection, and monitor both `/healthz` and PostgreSQL
+resource usage. These safeguards reduce hanging work and partial shutdowns, but they do not replace
+backups, secret rotation, access policy, or infrastructure monitoring.
+
 ## Rust layout
 
 The server code is feature-gated and separated from the local product path:

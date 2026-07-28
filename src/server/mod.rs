@@ -15,7 +15,10 @@ use axum::{
     extract::DefaultBodyLimit,
     routing::{get, post},
 };
-use tokio::{net::TcpListener, sync::RwLock};
+use tokio::{
+    net::TcpListener,
+    sync::{RwLock, watch},
+};
 
 use self::{
     auth::{login, logout, me},
@@ -60,7 +63,8 @@ pub async fn run() -> anyhow::Result<()> {
         database,
         github,
     };
-    tokio::spawn(search_index_refresh_loop(state.clone()));
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let refresh_handle = tokio::spawn(search_index_refresh_loop(state.clone(), shutdown_rx));
     let router = Router::new()
         .route("/healthz", get(health))
         .route("/api/auth/login", post(login))
@@ -95,14 +99,46 @@ pub async fn run() -> anyhow::Result<()> {
         .with_state(state);
     let listener = TcpListener::bind(address).await?;
     println!("Susumu API listening on http://{address}");
-    axum::serve(listener, router).await?;
+    axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+    let _ = shutdown_tx.send(true);
+    refresh_handle
+        .await
+        .map_err(|error| anyhow::anyhow!("refresh worker stopped unexpectedly: {error}"))?;
     Ok(())
 }
 
-async fn search_index_refresh_loop(state: AppState) {
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let ctrl_c = tokio::signal::ctrl_c();
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install SIGTERM handler");
+        tokio::select! {
+            _ = ctrl_c => {}
+            _ = terminate.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+async fn search_index_refresh_loop(state: AppState, mut shutdown_rx: watch::Receiver<bool>) {
     let mut interval = tokio::time::interval(Duration::from_secs(60));
     loop {
-        interval.tick().await;
+        tokio::select! {
+            _ = interval.tick() => {}
+            result = shutdown_rx.changed() => {
+                if result.is_err() || *shutdown_rx.borrow() {
+                    break;
+                }
+                continue;
+            }
+        }
         let Ok(projects) = state.database.list_projects().await else {
             continue;
         };

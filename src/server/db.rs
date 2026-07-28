@@ -4,6 +4,7 @@ use argon2::{
     password_hash::{SaltString, rand_core::OsRng},
 };
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use std::time::Duration;
 
 use super::config::{Config, GithubAppConfig};
 
@@ -16,6 +17,9 @@ impl Database {
     pub(crate) async fn connect(database_url: &str) -> Result<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(10)
+            .acquire_timeout(Duration::from_secs(5))
+            .idle_timeout(Duration::from_secs(600))
+            .max_lifetime(Duration::from_secs(1800))
             .connect(database_url)
             .await
             .context("could not connect to PostgreSQL")?;

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     collections::HashMap,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use super::{
@@ -544,7 +544,11 @@ impl GithubAppClient {
             app_id: config.app_id,
             private_key_pem: config.private_key_pem.clone(),
             api_url: api_url.trim_end_matches('/').to_owned(),
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(30))
+                .build()
+                .expect("static GitHub HTTP client configuration is valid"),
         })
     }
 

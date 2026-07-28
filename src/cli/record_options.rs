@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 
 use super::values::{
-    DecisionStatusArg, ExpectationStatusArg, ExpectationTargetArg, VerificationStatusArg,
-    WorkKindArg, WorkStatusArg,
+    DecisionStatusArg, ExpectationStatusArg, ExpectationTargetArg, ReviewStatusArg,
+    VerificationStatusArg, WorkKindArg, WorkStatusArg,
 };
 
 #[derive(Debug, Subcommand)]
@@ -61,6 +61,62 @@ pub(crate) enum WorkCommand {
     List(ListWorks),
     /// Remove one work record from a work-only sidecar.
     Remove(RemoveWork),
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum ReviewThreadCommand {
+    Add(AddReviewThread),
+    List(ListReviewThreads),
+    Remove(RemoveReviewThread),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AddReviewThread {
+    #[arg(short, long, default_value = "reviews.susu")]
+    pub(crate) file: PathBuf,
+    #[arg(long)]
+    pub(crate) id: Option<String>,
+    #[arg(long)]
+    pub(crate) target: ExpectationTargetArg,
+    #[arg(long)]
+    pub(crate) subject: Option<String>,
+    /// Stable record anchor such as `expectation:e_123` or `work:w_123`.
+    #[arg(long)]
+    pub(crate) anchor: Option<String>,
+    /// Discussion purpose such as question, objection, approval, or risk.
+    #[arg(long, default_value = "comment")]
+    pub(crate) kind: String,
+    #[arg(long)]
+    pub(crate) parent: Option<String>,
+    #[arg(long, default_value = "open")]
+    pub(crate) status: ReviewStatusArg,
+    #[arg(long)]
+    pub(crate) owner: Option<String>,
+    #[arg(long, default_value = "human:local")]
+    pub(crate) source: String,
+    #[arg(long)]
+    pub(crate) title: String,
+    #[arg(long)]
+    pub(crate) detail: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ListReviewThreads {
+    #[arg(short, long, default_value = "reviews.susu")]
+    pub(crate) file: PathBuf,
+    /// Show only threads assigned to this owner.
+    #[arg(long)]
+    pub(crate) owner: Option<String>,
+    /// Show only threads with this authored lifecycle status.
+    #[arg(long)]
+    pub(crate) status: Option<ReviewStatusArg>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct RemoveReviewThread {
+    #[arg(short, long, default_value = "reviews.susu")]
+    pub(crate) file: PathBuf,
+    pub(crate) id: String,
 }
 
 #[derive(Debug, Args)]

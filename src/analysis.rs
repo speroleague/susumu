@@ -1,8 +1,10 @@
+use std::collections::BTreeSet;
+
 use sha2::{Digest, Sha256};
 
 use crate::model::{
-    Decision, Expectation, ExpectationTarget, Finding, ProjectAnalysis, Severity, Verification,
-    Work,
+    Decision, Expectation, ExpectationTarget, Finding, ProjectAnalysis, ReviewAnchor, Severity,
+    Verification, Work,
 };
 
 mod findings;
@@ -47,12 +49,18 @@ pub fn refresh_relationship_findings(analysis: &mut ProjectAnalysis) {
                 | "SUS041"
                 | "SUS042"
                 | "SUS043"
+                | "SUS050"
+                | "SUS051"
+                | "SUS052"
+                | "SUS053"
+                | "SUS054"
         )
     });
     add_expectation_relationship_findings(analysis);
     add_verification_relationship_findings(analysis);
     add_decision_relationship_findings(analysis);
     add_work_relationship_findings(analysis);
+    add_review_thread_relationship_findings(analysis);
 }
 
 fn add_expectation_relationship_findings(analysis: &mut ProjectAnalysis) {
@@ -199,6 +207,127 @@ fn add_work_relationship_findings(analysis: &mut ProjectAnalysis) {
             });
         }
     }
+}
+
+fn add_review_thread_relationship_findings(analysis: &mut ProjectAnalysis) {
+    for review in &analysis.review_threads {
+        if let Some(anchor) = review.anchor.as_ref()
+            && !review_anchor_exists(analysis, anchor)
+        {
+            analysis.findings.push(Finding {
+                rule_id: "SUS055".to_owned(),
+                source: "susumu:derived".to_owned(),
+                severity: Severity::Warning,
+                title: "Review thread anchor was not found".to_owned(),
+                detail: format!(
+                    "{} anchors to `{anchor}`, but that record or source path is not present in this artifact.",
+                    review.id
+                ),
+                file_id: None,
+                subject: Some(review.id.clone()),
+                location: None,
+            });
+        }
+
+        match review.target {
+            ExpectationTarget::Project => {
+                if review.subject.is_some() {
+                    analysis.findings.push(project_subject_finding(
+                        "SUS052",
+                        "review thread",
+                        review,
+                    ));
+                }
+            }
+            ExpectationTarget::File | ExpectationTarget::Symbol | ExpectationTarget::Workflow => {
+                let Some(subject) = review.subject.as_deref() else {
+                    analysis.findings.push(missing_subject_finding(
+                        "SUS050",
+                        "Review thread",
+                        review,
+                    ));
+                    continue;
+                };
+
+                if !expectation_subject_exists(analysis, review.target, subject) {
+                    analysis.findings.push(stale_subject_finding(
+                        "SUS051",
+                        "Review thread",
+                        review,
+                        subject,
+                    ));
+                }
+            }
+        }
+
+        if let Some(parent) = review.parent.as_deref()
+            && !analysis
+                .review_threads
+                .iter()
+                .any(|candidate| candidate.id == parent)
+        {
+            analysis.findings.push(Finding {
+                rule_id: "SUS053".to_owned(),
+                source: "susumu:derived".to_owned(),
+                severity: Severity::Warning,
+                title: "Review thread parent was not found".to_owned(),
+                detail: format!(
+                    "{} replies to review thread `{parent}`, but that parent is not present in this artifact.",
+                    review.id
+                ),
+                file_id: None,
+                subject: Some(review.id.clone()),
+                location: None,
+            });
+        }
+
+        if review_thread_has_cycle(analysis, &review.id) {
+            analysis.findings.push(Finding {
+                rule_id: "SUS054".to_owned(),
+                source: "susumu:derived".to_owned(),
+                severity: Severity::Warning,
+                title: "Review thread parent cycle detected".to_owned(),
+                detail: format!(
+                    "{} belongs to a review reply cycle. Thread parents must eventually terminate at a root record.",
+                    review.id
+                ),
+                file_id: None,
+                subject: Some(review.id.clone()),
+                location: None,
+            });
+        }
+    }
+}
+
+fn review_anchor_exists(analysis: &ProjectAnalysis, anchor: &ReviewAnchor) -> bool {
+    match anchor {
+        ReviewAnchor::Expectation(id) => {
+            analysis.expectations.iter().any(|record| record.id == *id)
+        }
+        ReviewAnchor::Verification(id) => {
+            analysis.verifications.iter().any(|record| record.id == *id)
+        }
+        ReviewAnchor::Work(id) => analysis.works.iter().any(|record| record.id == *id),
+        ReviewAnchor::Decision(id) => analysis.decisions.iter().any(|record| record.id == *id),
+        ReviewAnchor::Finding(id) => analysis.findings.iter().any(|record| record.rule_id == *id),
+        ReviewAnchor::Source { path, .. } => analysis.files.iter().any(|file| file.path == *path),
+    }
+}
+
+fn review_thread_has_cycle(analysis: &ProjectAnalysis, start: &str) -> bool {
+    let mut visited = BTreeSet::new();
+    let mut current = Some(start);
+    while let Some(id) = current {
+        if !visited.insert(id) {
+            return true;
+        }
+        current = analysis
+            .review_threads
+            .iter()
+            .find(|review| review.id == id)
+            .and_then(|review| review.parent.as_deref());
+    }
+    false
 }
 
 /// Records the current review basis on decisions that do not yet carry one.

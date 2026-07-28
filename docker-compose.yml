@@ -1,0 +1,52 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "${SUSUMU_FRONTEND_PORT:-3000}:80"
+      - "${SUSUMU_FRONTEND_HTTPS_PORT:-3443}:443"
+    environment:
+      SUSUMU_FRONTEND_HOST: ${SUSUMU_FRONTEND_HOST:-:80}
+    volumes:
+      - susumu-caddy-data:/data
+      - susumu-caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: susumu
+      POSTGRES_USER: susumu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - susumu-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U susumu -d susumu"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build: .
+    environment:
+      SUSUMU_DATABASE_URL: postgres://susumu:${POSTGRES_PASSWORD}@postgres:5432/susumu
+      SUSUMU_ADMIN_EMAIL: ${SUSUMU_ADMIN_EMAIL:?set SUSUMU_ADMIN_EMAIL in .env}
+      SUSUMU_ADMIN_PASSWORD: ${SUSUMU_ADMIN_PASSWORD:?set SUSUMU_ADMIN_PASSWORD in .env}
+      SUSUMU_COOKIE_SECURE: ${SUSUMU_COOKIE_SECURE:-true}
+      SUSUMU_CREDENTIAL_KEY: ${SUSUMU_CREDENTIAL_KEY:-}
+      SUSUMU_GITHUB_APP_ID: ${SUSUMU_GITHUB_APP_ID:-}
+      SUSUMU_GITHUB_APP_PRIVATE_KEY_FILE: ${SUSUMU_GITHUB_APP_PRIVATE_KEY_FILE:-}
+      SUSUMU_BIND: 0.0.0.0:8080
+    ports:
+      - "${SUSUMU_API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  susumu-caddy-data:
+  susumu-caddy-config:
+  susumu-postgres:

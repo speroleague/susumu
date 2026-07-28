@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
-use susumu::model::{Confidence, ProjectAnalysis, Severity, VerificationStatus, WorkStatus};
+use susumu::model::{
+    Confidence, ProjectAnalysis, ReviewStatus, Severity, VerificationStatus, WorkStatus,
+};
 
 use super::types::{
     CheckEvidenceJson, CheckItem, CheckItemJson, CheckJson, CheckProjectJson, CheckRecordsJson,
@@ -43,8 +45,29 @@ fn check_items(analysis: &ProjectAnalysis) -> Vec<CheckItem> {
     add_finding_check_items(analysis, &mut items);
     add_verification_check_items(analysis, &mut items);
     add_work_check_items(analysis, &mut items);
+    add_review_thread_check_items(analysis, &mut items);
     add_workflow_gap_check_items(analysis, &mut items);
     items
+}
+
+fn add_review_thread_check_items(analysis: &ProjectAnalysis, items: &mut Vec<CheckItem>) {
+    for review in &analysis.review_threads {
+        if review.status != ReviewStatus::Open {
+            continue;
+        }
+        items.push(CheckItem {
+            severity: CheckSeverity::Warning,
+            title: format!("open review thread: {}", review.title),
+            detail: format!(
+                "{} owner={} target={} subject={} - reply, assign, or resolve this discussion.",
+                review.detail,
+                review.owner.as_deref().unwrap_or("-"),
+                review.target,
+                review.subject.as_deref().unwrap_or("-")
+            ),
+            source: review.source.clone(),
+        });
+    }
 }
 
 fn add_finding_check_items(analysis: &ProjectAnalysis, items: &mut Vec<CheckItem>) {
@@ -228,6 +251,7 @@ pub(crate) fn check_json<'a>(
             verifications: analysis.verifications.len(),
             decisions: analysis.decisions.len(),
             work: analysis.works.len(),
+            review_threads: analysis.review_threads.len(),
         },
         review: CheckReviewJson {
             critical: report.critical,
@@ -307,6 +331,7 @@ mod tests {
             verifications: Vec::new(),
             decisions: Vec::new(),
             works: Vec::new(),
+            review_threads: Vec::new(),
             findings: Vec::new(),
         };
         artifact.verifications.push(Verification {
@@ -380,6 +405,7 @@ mod tests {
             verifications: Vec::new(),
             decisions: Vec::new(),
             works: Vec::new(),
+            review_threads: Vec::new(),
             findings: Vec::new(),
         };
 

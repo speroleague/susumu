@@ -17,7 +17,8 @@ pub(crate) fn run_command(command: Command) -> Result<()> {
         | Command::Expectation { .. }
         | Command::Verification { .. }
         | Command::Decision { .. }
-        | Command::Work { .. }) => run_record_command(command),
+        | Command::Work { .. }
+        | Command::ReviewThread { .. }) => run_record_command(command),
         Command::Git { args, command } => run_git_command(&args, command),
     }
 }
@@ -81,7 +82,19 @@ fn run_record_command(command: Command) -> Result<()> {
         command @ (Command::Decision { .. } | Command::Work { .. }) => {
             run_decision_or_work_command(command)
         }
+        command @ Command::ReviewThread { .. } => run_review_thread_command(command),
         _ => unreachable!("non-record command routed to record dispatcher"),
+    }
+}
+
+fn run_review_thread_command(command: Command) -> Result<()> {
+    match command {
+        Command::ReviewThread { command } => match command {
+            ReviewThreadCommand::Add(args) => add_review_thread(args),
+            ReviewThreadCommand::List(args) => list_review_threads(&args),
+            ReviewThreadCommand::Remove(args) => remove_review_thread(&args),
+        },
+        _ => unreachable!("non-review-thread command routed to review dispatcher"),
     }
 }
 

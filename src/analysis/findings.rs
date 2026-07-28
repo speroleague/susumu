@@ -1,5 +1,6 @@
 use crate::model::{
-    Decision, Expectation, ExpectationTarget, Finding, ProjectAnalysis, Severity, Work,
+    Decision, Expectation, ExpectationTarget, Finding, ProjectAnalysis, ReviewThread, Severity,
+    Work,
 };
 
 pub(crate) trait TargetedRecord {
@@ -28,6 +29,16 @@ impl TargetedRecord for Decision {
 }
 
 impl TargetedRecord for Work {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn target(&self) -> ExpectationTarget {
+        self.target
+    }
+}
+
+impl TargetedRecord for ReviewThread {
     fn id(&self) -> &str {
         &self.id
     }

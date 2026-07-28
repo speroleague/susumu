@@ -108,6 +108,10 @@ pub(super) fn render_overview_metrics(frame: &mut Frame<'_>, app: &App, area: Re
             "  Work        ".into(),
             app.analysis.works.len().to_string().light_cyan(),
         ]),
+        Line::from(vec![
+            "  Review      ".into(),
+            app.analysis.review_threads.len().to_string().light_blue(),
+        ]),
         Line::from(vec!["  Flows       ".into(), resolved.to_string().green()]),
         Line::from(vec![
             "  Gaps        ".into(),
@@ -195,6 +199,7 @@ pub(super) enum ReviewJump {
     Verification(String),
     Decision(String),
     Work(String),
+    ReviewThread(String),
     Workflow(String),
 }
 
@@ -278,6 +283,7 @@ pub(super) fn review_items(analysis: &ProjectAnalysis) -> Vec<ReviewItem> {
     add_verification_review_items(analysis, &mut items);
     add_connection_review_items(analysis, &mut items);
     add_workflow_gap_review_items(analysis, &mut items);
+    add_review_thread_review_items(analysis, &mut items);
     items.sort_by(|left, right| {
         right
             .severity
@@ -285,6 +291,27 @@ pub(super) fn review_items(analysis: &ProjectAnalysis) -> Vec<ReviewItem> {
             .then_with(|| left.title.cmp(&right.title))
     });
     items
+}
+
+fn add_review_thread_review_items(analysis: &ProjectAnalysis, items: &mut Vec<ReviewItem>) {
+    for review in &analysis.review_threads {
+        if review.status != crate::model::ReviewStatus::Open {
+            continue;
+        }
+        items.push(ReviewItem {
+            severity: ReviewSeverity::Warning,
+            title: format!("open review thread: {}", review.title),
+            detail: format!(
+                "{} owner={} target={} subject={} - reply, assign, or resolve this discussion.",
+                review.detail,
+                review.owner.as_deref().unwrap_or("-"),
+                review.target,
+                review.subject.as_deref().unwrap_or("-")
+            ),
+            source: review.source.clone(),
+            jump: Some(ReviewJump::ReviewThread(review.id.clone())),
+        });
+    }
 }
 
 pub(super) fn add_finding_review_items(analysis: &ProjectAnalysis, items: &mut Vec<ReviewItem>) {

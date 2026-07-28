@@ -66,6 +66,7 @@ pub(crate) struct CheckRecordsJson {
     pub(crate) verifications: usize,
     pub(crate) decisions: usize,
     pub(crate) work: usize,
+    pub(crate) review_threads: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -278,6 +279,8 @@ pub(crate) struct ReviewRecordsStored {
     pub(crate) verifications: usize,
     pub(crate) decisions: usize,
     pub(crate) work: usize,
+    #[serde(default)]
+    pub(crate) review_threads: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -26,7 +26,7 @@ Human and AI activity records explain what changed, why it changed, which expect
 
 ### 4. Review and decision
 
-Comments, questions, approvals, exceptions, unresolved disagreements, and decisions attach to any stable target in the model. Decisions become first-class records so workflows can be reviewed as stacked evidence: implementation observations, authored expectations, verification results, and the human or policy judgment made at that point in time. This plane turns static documentation into an organizational feedback loop.
+Comments, questions, approvals, exceptions, unresolved disagreements, and decisions attach to any stable target in the model. Susumu's current artifact supports authored threaded review records with replies, lifecycle status, and ownership labels; decisions remain first-class records so workflows can be reviewed as stacked evidence: implementation observations, authored expectations, verification results, and the human or policy judgment made at that point in time. This plane turns static documentation into an organizational feedback loop.
 
 ## Product surfaces
 

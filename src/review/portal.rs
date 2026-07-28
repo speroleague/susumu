@@ -319,6 +319,7 @@ const tabs = [
  ['overview','Overview'],
  ['readiness','Readiness'],
  ['review','Review'],
+ ['threads','Threads'],
  ['workflows','Top workflows'],
  ['traceability','Traceability'],
  ['source','Source'],
@@ -350,6 +351,13 @@ function miniList(items,render,empty){return items&&items.length?`<div class="mi
 function verificationItem(v){const e=expectationById(v.expectation_id);const p=e?targetPreview(e.target,e.subject):null;return item(`${v.status} verification`,v.detail,`${esc(v.id)} &middot; method=${esc(v.method)} &middot; evidence=${esc(v.evidence??'-')} &middot; basis=${esc(v.basis??'-')}${sourceMetaForPreview(p)}`,'',sourcePreviewExtra(p))}
 function decisionItem(d){const p=targetPreview(d.target,d.subject);return item(d.title,d.detail,`${esc(d.id)} &middot; ${esc(d.status)} &middot; source=${esc(d.source)} &middot; basis=${esc(d.basis??'-')}${sourceMetaForPreview(p)}`,'',sourcePreviewExtra(p))}
 function workItem(w){const p=targetPreview(w.target,w.subject);return item(w.title,w.detail,`${esc(w.id)} &middot; ${esc(w.kind)} &middot; ${esc(w.status)} &middot; evidence=${esc(w.evidence??'-')}${sourceMetaForPreview(p)}`,'',sourcePreviewExtra(p))}
+function reviewThreadItem(r){const action=r.status==='open'?'This static portal is read-only; use the configured review service to change it.':`Thread is ${r.status}.`;return item(r.title,`${r.detail} ${action}`,`${esc(r.id)} &middot; ${esc(r.kind||'comment')} &middot; ${esc(r.status)} &middot; target=${esc(r.target)}${r.subject?`:${esc(r.subject)}`:''} &middot; anchor=${esc(r.anchor??'-')} &middot; owner=${esc(r.owner??'-')} &middot; parent=${esc(r.parent??'-')} &middot; source=${esc(r.source)}`)}
+function reviewThreadRecords(){return packet.artifact.review_threads||[]}
+function reviewThreadSearchText(r){return [r.id,r.title,r.detail,r.kind,r.status,r.target,r.subject,r.anchor,r.owner,r.parent,r.source].filter(Boolean).join(' ').toLowerCase()}
+function reviewThreadMatches(r){const query=($('threadSearch')?.value||'').trim().toLowerCase();const owner=$('threadOwner')?.value||'';const status=$('threadStatus')?.value||'';return (!query||reviewThreadSearchText(r).includes(query))&&(!owner||(r.owner||'unassigned')===owner)&&(!status||r.status===status)}
+function renderReviewThreads(){const threads=reviewThreadRecords();const filtered=threads.filter(reviewThreadMatches);const count=$('threadCount');const results=$('threadResults');if(count)count.textContent=`Showing ${filtered.length} of ${threads.length} review threads`;if(results)results.innerHTML=list(filtered,reviewThreadItem,'No review threads match these filters.')}
+function bindReviewThreadFilters(){['threadSearch','threadOwner','threadStatus'].forEach(id=>$(id)?.addEventListener('input',renderReviewThreads));['threadOwner','threadStatus'].forEach(id=>$(id)?.addEventListener('change',renderReviewThreads))}
+function reviewThreadsSection(){const threads=reviewThreadRecords();if(!threads.length)return '<div class="empty">No review threads recorded.</div>';const open=threads.filter(r=>r.status==='open');const owners=[...new Set(threads.map(r=>r.owner||'unassigned'))].sort();const workloadOwners=[...new Set(open.map(r=>r.owner||'unassigned'))].sort();const workload=workloadOwners.map(owner=>`<div class="metric"><b>${open.filter(r=>(r.owner||'unassigned')===owner).length}</b><span>${esc(owner)}</span></div>`).join('');const ownerOptions=['',...owners].map(owner=>`<option value="${esc(owner)}">${owner?esc(owner):'All owners'}</option>`).join('');const statusOptions=['','open','resolved','accepted','rejected'].map(status=>`<option value="${status}">${status?esc(status[0].toUpperCase()+status.slice(1)):'All statuses'}</option>`).join('');return `<div class="meta">Discussion is authored review context; it does not by itself verify an expectation or approve a decision.</div><h3>Open review workload</h3><div class="grid">${workload||'<div class="empty">No open review threads.</div>'}</div><h3>Find a discussion</h3><div class="cols"><input class="search" id="threadSearch" aria-label="Search review threads" placeholder="Search threads, owners, targets&hellip;"><select class="search" id="threadOwner" aria-label="Filter review threads by owner">${ownerOptions}</select><select class="search" id="threadStatus" aria-label="Filter review threads by status">${statusOptions}</select></div><div class="meta" id="threadCount"></div><div id="threadResults">${list(threads,reviewThreadItem)}</div>`}
 function workflowDetail(id){const w=workflowById(id);if(!w)return `<div class="empty">Select a workflow to inspect its evidence.</div>`;const summary=workflowSummary(id);const preview=workflowPreview(id);return `<div class="item"><h3>${esc(w.trigger)}</h3><div class="meta">${esc(w.id)} &middot; ${esc(w.framework)} &middot; handler=${esc(w.handler??'-')} &middot; confidence=${esc(w.confidence)}</div><div class="detail">${esc(summary?.detail||'Workflow detected from scanner evidence.')}</div></div><h3>Linked expectations</h3>${miniList(workflowExpectations(id),e=>item(e.title,e.detail,`${esc(e.id)} &middot; ${esc(e.status)} &middot; source=${esc(e.source)}`),'No linked expectations.')}<h3>Linked verifications</h3>${miniList(workflowVerifications(id),verificationItem,'No linked verifications.')}<h3>Linked decisions</h3>${miniList(workflowDecisions(id),decisionItem,'No linked decisions.')}<h3>Linked work</h3>${miniList(workflowWork(id),workItem,'No linked work.')}<h3>Source evidence</h3>${preview?codePreview(preview):'<div class="empty">No source preview embedded for this workflow.</div>'}`}
 function workflowsSection(){const first=workflows()[0]?.id;selectedWorkflowId=selectedWorkflowId||first;return `<div class="workflow-layout"><div>${list(workflows(),workflowCard,'No workflows detected.')}</div><aside class="detail-pane" id="workflowDetail">${workflowDetail(selectedWorkflowId)}</aside></div>`}
 function expectations(){return packet.artifact.expectations||[]}
@@ -374,7 +382,7 @@ function readinessRow(r){const s=expectationSupport(r.id);return item(r.title,r.
 function readinessSection(){const order=['Failed verification','Missing target','Has work, needs verification','No linked work yet','Verified','Unknown'];const rows=readinessItems();const metrics=order.map(label=>`<div class="metric"><b>${rows.filter(r=>r.label===label).length}</b><span>${esc(label)}</span></div>`).join('');return `<div class="grid">${metrics}</div><div class="list" style="margin-top:16px">${order.map(label=>{const items=rows.filter(r=>r.label===label).map(readinessRow).join('');return items?`<div><h3>${esc(label)}</h3><div class="mini">${items}</div></div>`:''}).join('')||'<div class="empty">No expectations authored yet.</div>'}</div>`}
 function traceabilitySection(){const first=expectations()[0]?.id;selectedExpectationId=selectedExpectationId||first;return `<div class="workflow-layout traceability-layout"><div class="traceability-list">${list(expectations(),expectationCard,'No expectations authored yet.')}</div><aside class="detail-pane traceability-detail" id="expectationDetail">${expectationDetail(selectedExpectationId)}</aside></div>`}
 function dirtyFinding(f){return ['SUS023','SUS033'].includes(f.rule_id)}
-function staleFinding(f){return ['SUS011','SUS021','SUS031','SUS041','SUS043'].includes(f.rule_id)}
+function staleFinding(f){return ['SUS011','SUS021','SUS031','SUS041','SUS043','SUS055'].includes(f.rule_id)}
 function findingPreview(f){return previewForLocation(f.file_id,f.location)}
 function findingCard(f){const p=findingPreview(f);return item(`${f.rule_id}: ${f.title}`,f.detail,`source=${esc(f.source)} &middot; subject=${esc(f.subject??'-')}${sourceMetaForPreview(p)}`,`<span class="tag ${severity(f.severity)}">${esc(f.severity)}</span>` ,sourcePreviewExtra(p))}
 function dirtySection(){const findings=packet.artifact.findings||[];const dirty=findings.filter(dirtyFinding);const stale=findings.filter(staleFinding);return `<div class="cols"><div><h3>Dirty evidence</h3>${list(dirty,findingCard,'No changed verification or decision evidence detected.')}</div><div><h3>Stale or missing record targets</h3>${list(stale,findingCard,'No stale record targets detected.')}</div></div>`}
@@ -399,9 +407,11 @@ function render(){
     <div class="metric"><b>${packet.records.verifications}</b><span>verifications</span></div>
     <div class="metric"><b>${packet.records.decisions}</b><span>decisions</span></div>
     <div class="metric"><b>${packet.records.work}</b><span>work records</span></div>
+    <div class="metric"><b>${packet.records.review_threads}</b><span>review threads</span></div>
   </div><div class="cols" style="margin-top:16px"><div>${list(packet.caveats,a=>item('Caveat',a))}</div><div>${list(packet.next_actions,a=>item('Suggested action',a))}</div></div>`),
   section('readiness','Expectation readiness board', readinessSection()),
   section('review','Needs review', list(packet.review_items, r => item(r.title, r.detail, `source=${esc(r.source)}`, `<span class="tag ${severity(r.severity)}">${esc(r.severity)}</span>`), 'No review items derived.')),
+  section('threads','Review threads', reviewThreadsSection()),
   section('workflows','Workflow evidence', workflowsSection()),
   section('traceability','Expectation traceability', traceabilitySection()),
   section('source','Source previews', list(packet.source_previews, codePreview, 'No source snippets were embedded. Create the review packet from a local project or artifact with readable source files.')),
@@ -414,6 +424,8 @@ function render(){
  document.querySelectorAll('[data-tab]').forEach(btn=>btn.addEventListener('click',()=>activate(btn.dataset.tab)));
  document.querySelectorAll('[data-workflow-id]').forEach(card=>card.addEventListener('click',()=>selectWorkflow(card.dataset.workflowId)));
  document.querySelectorAll('[data-expectation-id]').forEach(card=>card.addEventListener('click',()=>selectExpectation(card.dataset.expectationId)));
+ bindReviewThreadFilters();
+ renderReviewThreads();
  $('search').addEventListener('input', filter);
 }
 function selectWorkflow(id){selectedWorkflowId=id;document.querySelectorAll('[data-workflow-id]').forEach(card=>card.classList.toggle('selected',card.dataset.workflowId===id));$('workflowDetail').innerHTML=workflowDetail(id);}

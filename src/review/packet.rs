@@ -46,6 +46,7 @@ pub(crate) fn review_packet<'a>(
             verifications: analysis.verifications.len(),
             decisions: analysis.decisions.len(),
             work: analysis.works.len(),
+            review_threads: analysis.review_threads.len(),
         },
         review: CheckReviewJson {
             critical: check.critical,
@@ -280,6 +281,7 @@ mod tests {
             verifications: Vec::new(),
             decisions: Vec::new(),
             works: Vec::new(),
+            review_threads: Vec::new(),
             findings: Vec::new(),
         };
 

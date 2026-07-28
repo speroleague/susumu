@@ -15,12 +15,12 @@ use susumu::{
     analysis::{anchor_decision_bases, anchor_verification_bases, refresh_derived_analysis},
     model::{
         Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget,
-        ProjectAnalysis, Verification, VerificationExecution, VerificationStatus, Work, WorkKind,
-        WorkStatus,
+        ProjectAnalysis, ReviewAnchor, ReviewCommentKind, ReviewStatus, ReviewThread, Verification,
+        VerificationExecution, VerificationStatus, Work, WorkKind, WorkStatus,
     },
-    parse_decisions, parse_expectations, parse_susu, parse_verifications, parse_works,
-    scan_project, tui, write_decisions, write_expectations, write_susu, write_verifications,
-    write_works,
+    parse_decisions, parse_expectations, parse_review_threads, parse_susu, parse_verifications,
+    parse_works, scan_project, tui, write_decisions, write_expectations, write_review_threads,
+    write_susu, write_verifications, write_works,
 };
 mod attestation;
 mod cli;
@@ -40,16 +40,17 @@ use cli::project::{
     check, current_unix_seconds, diff, expectation_title, handoff, init_repository, write_text_file,
 };
 use cli::record_options::{
-    AddDecision, AddExpectation, AddVerification, AddWork, ChainVerificationArgs, DecisionCommand,
-    ExpectationCommand, ListDecisions, ListExpectations, ListVerifications, ListWorks,
-    RemoveDecision, RemoveExpectation, RemoveVerification, RemoveWork, VerificationCommand,
-    WorkCommand,
+    AddDecision, AddExpectation, AddReviewThread, AddVerification, AddWork, ChainVerificationArgs,
+    DecisionCommand, ExpectationCommand, ListDecisions, ListExpectations, ListReviewThreads,
+    ListVerifications, ListWorks, RemoveDecision, RemoveExpectation, RemoveReviewThread,
+    RemoveVerification, RemoveWork, ReviewThreadCommand, VerificationCommand, WorkCommand,
 };
 use cli::records::{
-    add_decision, add_expectation, add_verification, add_work, hash_evidence_file,
-    inspect_attestation, inspect_git_signature, list_decisions, list_expectations,
-    list_verifications, list_works, read_execution_file, remove_decision, remove_expectation,
-    remove_verification, remove_work, resolve_target, verification_chain,
+    add_decision, add_expectation, add_review_thread, add_verification, add_work,
+    hash_evidence_file, inspect_attestation, inspect_git_signature, list_decisions,
+    list_expectations, list_review_threads, list_verifications, list_works, read_execution_file,
+    remove_decision, remove_expectation, remove_review_thread, remove_verification, remove_work,
+    resolve_target, verification_chain,
 };
 #[cfg(test)]
 use cli::records::{resolve_file_subject, verification_chain_digest, verify_verification_chain};
@@ -515,6 +516,7 @@ fn main() -> Result<()> {
         cli.verifications.as_ref(),
         cli.decisions.as_ref(),
         cli.work.as_ref(),
+        None,
         true,
     )?;
 

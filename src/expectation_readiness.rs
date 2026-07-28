@@ -332,6 +332,7 @@ mod tests {
             verifications: Vec::new(),
             decisions: Vec::new(),
             works: Vec::new(),
+            review_threads: Vec::new(),
             findings: Vec::new(),
         };
         artifact.works.push(Work {

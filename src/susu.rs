@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, anyhow, bail};
 
 use crate::model::{
-    Decision, Dependency, Expectation, Finding, FlowEdge, ProjectAnalysis, SourceFile, Symbol,
-    Verification, Work, Workflow, WorkflowPriority,
+    Decision, Dependency, Expectation, Finding, FlowEdge, ProjectAnalysis, ReviewThread,
+    SourceFile, Symbol, Verification, Work, Workflow, WorkflowPriority,
 };
 
 mod parse;
@@ -13,13 +13,14 @@ use parse::{
     required, statements, tokenize,
 };
 pub use write::{
-    write_decisions, write_expectations, write_susu, write_verifications, write_works,
+    write_decisions, write_expectations, write_review_threads, write_susu, write_verifications,
+    write_works,
 };
 
 #[cfg(test)]
 use crate::model::{
-    Confidence, DecisionStatus, ExpectationStatus, ExpectationTarget, Language, Location, Severity,
-    SymbolKind, VerificationStatus, WorkKind, WorkStatus, WorkflowKind,
+    Confidence, DecisionStatus, ExpectationStatus, ExpectationTarget, Language, Location,
+    ReviewAnchor, Severity, SymbolKind, VerificationStatus, WorkKind, WorkStatus, WorkflowKind,
 };
 
 /// Parses readable or minified `.susu` syntax into an analysis model.
@@ -52,6 +53,7 @@ struct ParsedAnalysis {
     verifications: Vec<Verification>,
     decisions: Vec<Decision>,
     works: Vec<Work>,
+    review_threads: Vec<ReviewThread>,
     findings: Vec<Finding>,
 }
 
@@ -72,6 +74,7 @@ impl ParsedAnalysis {
             verifications: self.verifications,
             decisions: self.decisions,
             works: self.works,
+            review_threads: self.review_threads,
             findings: self.findings,
         })
     }
@@ -86,7 +89,7 @@ fn parse_statement(statement: &[Token], parsed: &mut ParsedAnalysis) -> Result<(
         "file" | "symbol" | "dependency" | "workflow" | "attention" | "priority" | "flow" => {
             parse_evidence_statement(kind, statement, parsed)
         }
-        "expectation" | "verification" | "decision" | "work" | "finding" => {
+        "expectation" | "verification" | "decision" | "work" | "review" | "finding" => {
             parse_record_statement(kind, statement, parsed)
         }
         other => bail!("unknown .susu statement: {other}"),
@@ -242,10 +245,58 @@ fn parse_record_statement(
             .push(parse_verification_statement(statement)?),
         "decision" => parsed.decisions.push(parse_decision_statement(statement)?),
         "work" => parsed.works.push(parse_work_statement(statement)?),
+        "review" => parsed
+            .review_threads
+            .push(parse_review_statement(statement)?),
         "finding" => parsed.findings.push(parse_finding_statement(statement)?),
         _ => unreachable!("non-record statement routed to record parser"),
     }
     Ok(())
+}
+
+fn parse_review_statement(statement: &[Token]) -> Result<ReviewThread> {
+    let id = atom_at(statement, 1, "review id")?;
+    let values = fields(statement, 2)?;
+    Ok(ReviewThread {
+        id,
+        target: required(&values, "target")?
+            .parse()
+            .map_err(|error: String| anyhow!(error))?,
+        subject: optional_id(required(&values, "subject")?),
+        anchor: match values.get("anchor").map(String::as_str) {
+            None | Some("-") => None,
+            Some(value) => Some(value.parse().map_err(|error: String| anyhow!(error))?),
+        },
+        parent: optional_id(values.get("parent").map_or("-", String::as_str)),
+        kind: values
+            .get("kind")
+            .map_or("comment", String::as_str)
+            .parse()
+            .map_err(|error: String| anyhow!(error))?,
+        status: required(&values, "status")?
+            .parse()
+            .map_err(|error: String| anyhow!(error))?,
+        owner: optional_id(values.get("owner").map_or("-", String::as_str)),
+        source: required(&values, "source")?.to_owned(),
+        title: required(&values, "title")?.to_owned(),
+        detail: required(&values, "detail")?.to_owned(),
+    })
+}
+
+/// Parses authored review thread records from a fragment or complete artifact.
+///
+/// # Errors
+///
+/// Returns an error when the source contains malformed `.susu` syntax or a
+/// review record is missing a required field.
+pub fn parse_review_threads(source: &str) -> Result<Vec<ReviewThread>> {
+    let mut records = Vec::new();
+    for statement in statements(&tokenize(source)?) {
+        if statement.first() == Some(&Token::Atom("review".to_owned())) {
+            records.push(parse_review_statement(&statement)?);
+        }
+    }
+    Ok(records)
 }
 
 fn parse_finding_statement(statement: &[Token]) -> Result<Finding> {

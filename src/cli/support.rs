@@ -127,6 +127,38 @@ pub(crate) fn work_id(
     format!("w_{}", hex_prefix(&hash.finalize(), 8))
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn review_thread_id(
+    target: ExpectationTarget,
+    subject: Option<&str>,
+    anchor: Option<&ReviewAnchor>,
+    parent: Option<&str>,
+    kind: ReviewCommentKind,
+    status: ReviewStatus,
+    owner: Option<&str>,
+    source: &str,
+    title: &str,
+    detail: &str,
+) -> String {
+    let mut hash = Sha256::new();
+    for part in [
+        target.to_string(),
+        subject.unwrap_or("-").to_owned(),
+        anchor.map_or_else(|| "-".to_owned(), ToString::to_string),
+        parent.unwrap_or("-").to_owned(),
+        kind.to_string(),
+        status.to_string(),
+        owner.unwrap_or("-").to_owned(),
+        source.to_owned(),
+        title.to_owned(),
+        detail.to_owned(),
+    ] {
+        hash.update(part.as_bytes());
+        hash.update([0]);
+    }
+    format!("r_{}", hex_prefix(&hash.finalize(), 8))
+}
+
 pub(crate) fn hex_prefix(bytes: &[u8], count: usize) -> String {
     let mut output = String::with_capacity(count * 2);
     for byte in bytes.iter().take(count) {
@@ -239,6 +271,26 @@ pub(crate) fn read_works_file(path: &PathBuf) -> Result<Vec<Work>> {
     parse_works(&source).with_context(|| format!("could not parse work from {}", path.display()))
 }
 
+pub(crate) fn read_review_threads_file(path: &PathBuf) -> Result<Vec<ReviewThread>> {
+    let source = fs::read_to_string(path)
+        .with_context(|| format!("could not read review threads from {}", path.display()))?;
+    parse_review_threads(&source)
+        .with_context(|| format!("could not parse review threads from {}", path.display()))
+}
+
+pub(crate) fn read_review_thread_sidecar(path: &PathBuf) -> Result<Vec<ReviewThread>> {
+    let source = fs::read_to_string(path)
+        .with_context(|| format!("could not read review threads from {}", path.display()))?;
+    if has_records_other_than(&source, "review") {
+        bail!(
+            "{} looks like a full .susu artifact; use a review-thread-only sidecar file",
+            path.display()
+        );
+    }
+    parse_review_threads(&source)
+        .with_context(|| format!("could not parse review threads from {}", path.display()))
+}
+
 pub(crate) fn read_work_sidecar(path: &PathBuf) -> Result<Vec<Work>> {
     let source =
         fs::read_to_string(path).with_context(|| format!("could not read {}", path.display()))?;
@@ -276,5 +328,12 @@ pub(crate) fn merge_works(existing: &mut Vec<Work>, imported: Vec<Work>) {
     for work in imported {
         existing.retain(|current| current.id != work.id);
         existing.push(work);
+    }
+}
+
+pub(crate) fn merge_review_threads(existing: &mut Vec<ReviewThread>, imported: Vec<ReviewThread>) {
+    for review in imported {
+        existing.retain(|current| current.id != review.id);
+        existing.push(review);
     }
 }

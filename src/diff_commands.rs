@@ -19,7 +19,7 @@ fn execute_git_rewind(args: &GitRewindArgs, snapshot_dir: &Path) -> Result<bool>
     let new = if let Some(artifact) = &args.artifact {
         read_analysis_artifact(artifact)?
     } else {
-        load_analysis(&args.repo, None, None, None, None, false)?
+        load_analysis(&args.repo, None, None, None, None, None, false)?
     };
     if let Some(output) = &args.old_output {
         fs::write(output, write_susu(&old, args.minify)?)

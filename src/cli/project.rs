@@ -114,6 +114,7 @@ pub(crate) fn check(args: &CheckArgs) -> Result<()> {
         args.verifications.as_ref(),
         args.decisions.as_ref(),
         args.work.as_ref(),
+        None,
         false,
     )?;
     let report = check_report(&analysis, args.strict);
@@ -150,6 +151,7 @@ pub(crate) fn handoff(args: &HandoffArgs) -> Result<()> {
         args.verifications.as_ref(),
         args.decisions.as_ref(),
         args.work.as_ref(),
+        None,
         false,
     )?;
     let check = check_report(&analysis, false);

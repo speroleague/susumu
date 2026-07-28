@@ -114,6 +114,12 @@ pub(crate) enum Command {
         command: WorkCommand,
     },
 
+    /// Author review threads and ownership records.
+    ReviewThread {
+        #[command(subcommand)]
+        command: ReviewThreadCommand,
+    },
+
     /// Connect local Git history to Susumu work, or use advanced Git subcommands.
     Git {
         #[command(flatten)]

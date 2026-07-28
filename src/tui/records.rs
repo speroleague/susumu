@@ -280,6 +280,91 @@ pub(super) fn render_works(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
     );
 }
 
+pub(super) fn render_review_threads(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
+    let columns = detail_columns(area);
+    let items = app
+        .analysis
+        .review_threads
+        .iter()
+        .map(review_thread_list_item)
+        .collect::<Vec<_>>();
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(
+                Block::default()
+                    .title(" Review threads ")
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("> ")
+            .highlight_style(Style::default().bg(Color::Rgb(38, 35, 50))),
+        columns[0],
+        &mut app.list_state,
+    );
+
+    let detail = app
+        .list_state
+        .selected()
+        .and_then(|index| app.analysis.review_threads.get(index))
+        .map_or_else(empty_review_thread_detail, review_thread_detail);
+    frame.render_widget(
+        Paragraph::new(detail).wrap(Wrap { trim: true }).block(
+            Block::default()
+                .title(" Discussion record ")
+                .borders(Borders::ALL),
+        ),
+        columns[1],
+    );
+}
+
+fn review_thread_list_item(review: &ReviewThread) -> ListItem<'static> {
+    let color = review_status_color(review.status);
+    ListItem::new(Line::from(vec![
+        Span::styled(format!("{:10}", review.status), Style::default().fg(color)),
+        Span::styled(
+            format!(" owner={:<16} ", review.owner.as_deref().unwrap_or("-")),
+            Style::default().fg(Color::LightCyan),
+        ),
+        Span::raw(review.title.clone()),
+    ]))
+}
+
+fn empty_review_thread_detail<'a>() -> Vec<Line<'a>> {
+    vec![
+        Line::raw("No review threads in this artifact."),
+        Line::raw(""),
+        Line::styled(
+            "Review threads preserve authored discussion and ownership. They do not prove verification or approval.",
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]
+}
+
+fn review_thread_detail(review: &ReviewThread) -> Vec<Line<'_>> {
+    vec![
+        Line::styled(&review.title, Style::default().fg(Color::White).bold()),
+        Line::raw(""),
+        Line::raw(&review.detail),
+        Line::raw(""),
+        label("id", &review.id),
+        label("status", &review.status.to_string()),
+        label("target", &review.target.to_string()),
+        label("subject", review.subject.as_deref().unwrap_or("-")),
+        label(
+            "anchor",
+            review
+                .anchor
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref()
+                .unwrap_or("-"),
+        ),
+        label("kind", &review.kind.to_string()),
+        label("parent", review.parent.as_deref().unwrap_or("-")),
+        label("owner", review.owner.as_deref().unwrap_or("-")),
+        label("source", &review.source),
+    ]
+}
+
 pub(super) fn work_list_item(work: &Work) -> ListItem<'static> {
     let color = work_status_color(work.status);
     ListItem::new(Line::from(vec![

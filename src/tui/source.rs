@@ -458,6 +458,16 @@ pub(super) const fn work_status_color(status: WorkStatus) -> Color {
     }
 }
 
+pub(super) const fn review_status_color(status: crate::model::ReviewStatus) -> Color {
+    match status {
+        crate::model::ReviewStatus::Open => Color::Yellow,
+        crate::model::ReviewStatus::Resolved | crate::model::ReviewStatus::Accepted => {
+            Color::LightGreen
+        }
+        crate::model::ReviewStatus::Rejected => Color::LightRed,
+    }
+}
+
 pub(super) const fn confidence_explanation(confidence: Confidence) -> &'static str {
     match confidence {
         Confidence::Exact => "One same-file symbol matches this call.",

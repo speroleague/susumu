@@ -2,7 +2,7 @@
 
 `.susu` is the portable boundary between evidence producers and product experiences.
 
-Producers include language scanners, framework adapters, source-control readers, test runners, CI systems, requirement importers, humans, and optional AI assistants. Consumers include the engineering TUI, CI checks, agent tools, exports, and the future stakeholder web application.
+Producers include language scanners, framework adapters, source-control readers, test runners, CI systems, requirement importers, humans, and optional AI assistants. Consumers include the engineering TUI, CI checks, agent tools, static exports, and the authenticated stakeholder web application.
 
 ## Version 1 records
 
@@ -43,7 +43,7 @@ attention workflow=w_8feec23b6a19d218 source="susumu:derived" score=79 detail="w
 
 Current signals include observed workflow triggers, resolved handler symbols, observed HTTP routes, fan-out, unresolved outgoing call edges, linked expectations, failed or inconclusive verification records, and linked findings.
 
-The TUI and future web portal can put the highest-scoring workflows near the top while still showing the reasons behind the score.
+The TUI and live portal can put the highest-scoring workflows near the top while still showing the reasons behind the score.
 
 Legacy artifacts that use the older `priority` record name are still accepted by the parser, but new artifacts write `attention`.
 
@@ -63,13 +63,13 @@ expectation e_docs target=project subject=- status=proposed source="human:ops" t
 
 They can also be created without hand-writing syntax:
 
-```powershell
+```sh
 cargo run -- expectation add --file expectations.susu --target project --title "Document backup expectations" --detail "The project should document backup and restore expectations."
 ```
 
 Sidecars can be inspected and pruned from the CLI:
 
-```powershell
+```sh
 cargo run -- expectation list --file expectations.susu
 cargo run -- expectation remove --file expectations.susu e_docs
 ```
@@ -93,7 +93,7 @@ verification v_checkout_order expectation=e_91bbd1 status=passed method="cargo t
 
 Verification-only sidecars can be created and managed from the CLI. A verification can optionally carry `--basis`; verifications without a basis are anchored to the checked expectation target fingerprint when merged into a scan artifact.
 
-```powershell
+```sh
 cargo run -- verification add --file verifications.susu --expectation e_91bbd1 --status passed --method "cargo test checkout_order" --source ci:github-actions --evidence run:123456 --detail "The checkout order test passed in CI."
 cargo run -- verification list --file verifications.susu
 cargo run -- verification remove --file verifications.susu v_checkout_order
@@ -101,8 +101,8 @@ cargo run -- verification remove --file verifications.susu v_checkout_order
 
 They can be merged into a scan alongside expectations:
 
-```powershell
-cargo run -- C:\path\to\project --expectations expectations.susu --verifications verifications.susu --output project.susu --headless
+```sh
+cargo run -- ./path/to/project --expectations expectations.susu --verifications verifications.susu --output project.susu --headless
 ```
 
 - `expectation` is the expectation id being checked.
@@ -146,7 +146,7 @@ decision d_release_exception target=workflow subject=w_8feec23b6a19d218 status=a
 
 Decision-only sidecars can be created and managed from the CLI:
 
-```powershell
+```sh
 cargo run -- decision add --file decisions.susu --target workflow --subject w_8feec23b6a19d218 --status accepted --source human:director --title "Accept checkout exception" --detail "The team accepts this implementation exception for the current release with follow-up verification required."
 cargo run -- decision list --file decisions.susu
 cargo run -- decision remove --file decisions.susu d_release_exception
@@ -154,8 +154,8 @@ cargo run -- decision remove --file decisions.susu d_release_exception
 
 They can be merged into a scan alongside expectations and verifications:
 
-```powershell
-cargo run -- C:\path\to\project --expectations expectations.susu --verifications verifications.susu --decisions decisions.susu --output project.susu --headless
+```sh
+cargo run -- ./path/to/project --expectations expectations.susu --verifications verifications.susu --decisions decisions.susu --output project.susu --headless
 ```
 
 - `target` is `project`, `file`, `symbol`, or `workflow`.
@@ -177,13 +177,28 @@ Susumu validates decision links when artifacts are scanned or opened:
 
 Work records describe activity. They can say that a person implemented a feature, an AI agent changed a workflow, a reviewer inspected a path, an import found a related commit, automation performed documentation work, or CI/configuration infrastructure changed. They are activity history, not verification proof.
 
+## Review threads
+
+`review` records preserve authored discussion and ownership against a stable project, file, symbol, workflow, or expectation target:
+
+```susu
+review r_deploy_question target=project subject=- parent=- status=open owner="team-platform" source="human:reviewer" title="Clarify deployment ownership" detail="Who owns the deployment decision?";
+review r_deploy_reply target=project subject=- parent=r_deploy_question status=resolved owner="team-platform" source="human:maintainer" title="Ownership assigned" detail="Platform owns the follow-up.";
+```
+
+`parent` creates a thread reply, `status` records the authored lifecycle (`open`, `resolved`, `accepted`, or `rejected`), and `owner` records the named responsibility label. These fields are review context only. A review thread is not a verification, approval, access-control grant, or compliance conclusion.
+
+Review relationships are checked like other authored links. Susumu emits `SUS050` when a file, symbol, or workflow review thread has no subject, `SUS051` when its target is missing, `SUS052` when a project-wide thread incorrectly carries a subject, `SUS053` when a reply's parent thread is missing, and `SUS054` when parent links form a cycle. These findings request repair of the discussion anchor; they do not change the thread's authored status.
+
+The standalone HTML portal's Threads view keeps this same packet data usable for business and operations reviewers: it shows open workload by owner, supports text search across discussion metadata, and provides owner and status filters with a live result count. These controls change the view only; they do not mutate the authored records.
+
 ```susu
 work wk_checkout_agent target=workflow subject=w_8feec23b6a19d218 expectation=e_91bbd1 kind=implementation status=completed source="agent:codex" evidence="commit:abc123" title="Update checkout reservation" detail="Updated checkout so inventory reservation happens before payment capture.";
 ```
 
 Work-only sidecars can be created and managed from the CLI:
 
-```powershell
+```sh
 cargo run -- work add --file work.susu --target workflow --subject w_8feec23b6a19d218 --expectation e_91bbd1 --kind implementation --status completed --source agent:codex --evidence commit:abc123 --title "Update checkout reservation" --detail "Updated checkout so inventory reservation happens before payment capture."
 cargo run -- work list --file work.susu
 cargo run -- work remove --file work.susu wk_checkout_agent
@@ -191,8 +206,8 @@ cargo run -- work remove --file work.susu wk_checkout_agent
 
 They can be merged into a scan alongside expectations, verifications, and decisions:
 
-```powershell
-cargo run -- C:\path\to\project --expectations expectations.susu --verifications verifications.susu --decisions decisions.susu --work work.susu --output project.susu --headless
+```sh
+cargo run -- ./path/to/project --expectations expectations.susu --verifications verifications.susu --decisions decisions.susu --work work.susu --output project.susu --headless
 ```
 
 - `target` is `project`, `file`, `symbol`, or `workflow`.
@@ -237,4 +252,4 @@ This keeps artifacts inspectable, diffable, streamable, and easy for agents to e
 
 The artifact begins with `susu version=N;`. Additive records and fields must preserve old meanings. A breaking semantic change increments the version and requires an explicit migration.
 
-Future records will cover threaded reviews. Those records must carry provenance and target links. They will not be inferred into existence merely because an AI model produced plausible prose.
+Review threads carry provenance and target links. They are authored or explicitly imported and are not inferred into existence merely because an AI model produced plausible prose.

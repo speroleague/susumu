@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use anyhow::{Context, Result};
 
-use crate::model::{Decision, Expectation, ProjectAnalysis, Verification, Work};
+use crate::model::{Decision, Expectation, ProjectAnalysis, ReviewThread, Verification, Work};
 
 /// Serializes an analysis using the versioned `.susu` grammar.
 ///
@@ -127,6 +127,13 @@ fn write_record_statements(analysis: &ProjectAnalysis, statements: &mut Vec<Stri
             .map(work_statement)
             .collect::<Result<Vec<_>>>()?,
     );
+    statements.extend(
+        analysis
+            .review_threads
+            .iter()
+            .map(review_statement)
+            .collect::<Result<Vec<_>>>()?,
+    );
     Ok(())
 }
 
@@ -192,6 +199,15 @@ pub fn write_decisions(decisions: &[Decision], minified: bool) -> Result<String>
 /// Returns an error if a string field cannot be encoded.
 pub fn write_works(works: &[Work], minified: bool) -> Result<String> {
     write_records(works, minified, work_statement)
+}
+
+/// Serializes authored review threads as a review-only sidecar.
+///
+/// # Errors
+///
+/// Returns an error if a string field cannot be encoded.
+pub fn write_review_threads(threads: &[ReviewThread], minified: bool) -> Result<String> {
+    write_records(threads, minified, review_statement)
 }
 
 fn write_records<T>(
@@ -277,6 +293,28 @@ fn work_statement(work: &Work) -> Result<String> {
         optional_quoted(work.evidence.as_deref())?,
         quote(&work.title)?,
         quote(&work.detail)?
+    ))
+}
+
+fn review_statement(review: &ReviewThread) -> Result<String> {
+    Ok(format!(
+        "review {} target={} subject={} anchor={} parent={} kind={} status={} owner={} source={} title={} detail={}",
+        review.id,
+        review.target,
+        review.subject.as_deref().unwrap_or("-"),
+        review
+            .anchor
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref()
+            .unwrap_or("-"),
+        review.parent.as_deref().unwrap_or("-"),
+        review.kind,
+        review.status,
+        review.owner.as_deref().unwrap_or("-"),
+        quote(&review.source)?,
+        quote(&review.title)?,
+        quote(&review.detail)?
     ))
 }
 

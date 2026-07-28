@@ -53,6 +53,7 @@ pub fn scan_project(root: &Path) -> Result<ProjectAnalysis> {
         verifications: Vec::new(),
         decisions: Vec::new(),
         works: Vec::new(),
+        review_threads: Vec::new(),
         findings: Vec::new(),
     };
     let mut pending_calls = Vec::new();
@@ -175,10 +176,23 @@ fn resolve_calls(analysis: &mut ProjectAnalysis, pending: Vec<PendingCall>) {
     }
 
     for pending_call in pending {
-        let candidates = by_name
-            .get(pending_call.call.name.as_str())
-            .cloned()
-            .unwrap_or_default();
+        let locally_scoped = pending_call
+            .call
+            .receiver
+            .as_deref()
+            .is_none_or(|receiver| {
+                receiver.starts_with("self.")
+                    || receiver.starts_with("this.")
+                    || receiver.starts_with("Self::")
+            });
+        let candidates = if locally_scoped {
+            by_name
+                .get(pending_call.call.name.as_str())
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let local: Vec<_> = candidates
             .iter()
             .filter(|symbol| symbol.file_id == pending_call.file_id)
@@ -249,6 +263,40 @@ fn load_order() {
         assert!(analysis.flows.iter().any(|flow| {
             flow.from == main.id
                 && flow.call == "charge_gateway"
+                && flow.to.is_none()
+                && flow.confidence == Confidence::External
+        }));
+    }
+
+    #[test]
+    fn qualified_external_methods_do_not_look_recursive() {
+        let directory = tempdir().unwrap();
+        fs::write(
+            directory.path().join("main.rs"),
+            r"
+struct State;
+
+fn verify_password() {
+    Argon2::default().verify_password();
+}
+
+fn health(state: State) {
+    state.health();
+}
+",
+        )
+        .unwrap();
+
+        let analysis = scan_project(directory.path()).unwrap();
+
+        assert!(
+            !analysis
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id == "SUS005")
+        );
+        assert!(analysis.flows.iter().any(|flow| {
+            flow.call == "verify_password"
                 && flow.to.is_none()
                 && flow.confidence == Confidence::External
         }));

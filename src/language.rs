@@ -27,6 +27,7 @@ pub(crate) struct ParsedSymbol {
 pub(crate) struct ParsedCall {
     pub caller: usize,
     pub name: String,
+    pub receiver: Option<String>,
     pub location: Location,
 }
 
@@ -145,6 +146,7 @@ fn walk_nodes(
         {
             parsed.calls.push(ParsedCall {
                 caller: active_caller,
+                receiver: call_receiver(node, source, &name),
                 name,
                 location: location(node),
             });
@@ -158,6 +160,15 @@ fn walk_nodes(
             pending.push((child, active_caller));
         }
     }
+}
+
+fn call_receiver(node: Node<'_>, source: &[u8], name: &str) -> Option<String> {
+    let callee = node
+        .child_by_field_name("function")
+        .or_else(|| node.child_by_field_name("constructor"))
+        .or_else(|| node.child_by_field_name("name"))?;
+    let raw = callee.utf8_text(source).ok()?.trim();
+    (raw != name).then(|| raw.to_owned())
 }
 
 pub(super) fn terminal_identifier(node: Node<'_>, source: &[u8]) -> Option<String> {

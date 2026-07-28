@@ -1,7 +1,8 @@
 use crate::model::{
     Confidence, Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget,
-    Language, Location, ProjectAnalysis, SourceFile, Symbol, SymbolKind, Verification,
-    VerificationStatus, Work, WorkKind, WorkStatus, Workflow, WorkflowKind,
+    Language, Location, ProjectAnalysis, ReviewAnchor, ReviewCommentKind, ReviewStatus,
+    ReviewThread, SourceFile, Symbol, SymbolKind, Verification, VerificationStatus, Work, WorkKind,
+    WorkStatus, Workflow, WorkflowKind,
 };
 
 use super::*;
@@ -57,6 +58,7 @@ fn analysis_with_expectations(expectations: Vec<Expectation>) -> ProjectAnalysis
         verifications: Vec::new(),
         decisions: Vec::new(),
         works: Vec::new(),
+        review_threads: Vec::new(),
         findings: Vec::new(),
     }
 }
@@ -179,6 +181,88 @@ fn work_findings_flag_missing_targets_and_expectations() {
     assert!(analysis.findings.iter().any(|finding| {
         finding.rule_id == "SUS043" && finding.subject.as_deref() == Some("w_stale")
     }));
+}
+
+#[test]
+fn review_thread_findings_flag_missing_targets_and_parents() {
+    let mut analysis = analysis_with_expectations(Vec::new());
+    analysis.review_threads.push(ReviewThread {
+        id: "r_stale".to_owned(),
+        target: ExpectationTarget::Workflow,
+        subject: Some("w_missing".to_owned()),
+        anchor: None,
+        parent: Some("r_parent_missing".to_owned()),
+        kind: ReviewCommentKind::Comment,
+        status: ReviewStatus::Open,
+        owner: Some("team-platform".to_owned()),
+        source: "human:test".to_owned(),
+        title: "Stale review link".to_owned(),
+        detail: "The target was removed.".to_owned(),
+    });
+
+    refresh_relationship_findings(&mut analysis);
+
+    assert!(analysis.findings.iter().any(|finding| {
+        finding.rule_id == "SUS051" && finding.subject.as_deref() == Some("r_stale")
+    }));
+    assert!(analysis.findings.iter().any(|finding| {
+        finding.rule_id == "SUS053" && finding.subject.as_deref() == Some("r_stale")
+    }));
+}
+
+#[test]
+fn review_thread_findings_flag_missing_record_anchor() {
+    let mut analysis = analysis_with_expectations(Vec::new());
+    analysis.review_threads.push(ReviewThread {
+        id: "r_missing_anchor".to_owned(),
+        target: ExpectationTarget::Project,
+        subject: None,
+        anchor: Some(ReviewAnchor::Work("w_missing".to_owned())),
+        parent: None,
+        kind: ReviewCommentKind::Comment,
+        status: ReviewStatus::Open,
+        owner: None,
+        source: "human:test".to_owned(),
+        title: "Missing work anchor".to_owned(),
+        detail: "The work record was removed.".to_owned(),
+    });
+
+    refresh_relationship_findings(&mut analysis);
+
+    assert!(analysis.findings.iter().any(|finding| {
+        finding.rule_id == "SUS055" && finding.subject.as_deref() == Some("r_missing_anchor")
+    }));
+}
+
+#[test]
+fn review_thread_findings_flag_parent_cycles() {
+    let mut analysis = analysis_with_expectations(Vec::new());
+    for (id, parent) in [("r_one", "r_two"), ("r_two", "r_one")] {
+        analysis.review_threads.push(ReviewThread {
+            id: id.to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            anchor: None,
+            parent: Some(parent.to_owned()),
+            kind: ReviewCommentKind::Comment,
+            status: ReviewStatus::Open,
+            owner: None,
+            source: "human:test".to_owned(),
+            title: "Cyclic reply".to_owned(),
+            detail: "This thread cannot reach a root.".to_owned(),
+        });
+    }
+
+    refresh_relationship_findings(&mut analysis);
+
+    assert_eq!(
+        analysis
+            .findings
+            .iter()
+            .filter(|finding| finding.rule_id == "SUS054")
+            .count(),
+        2
+    );
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use susumu::model::{
-    DecisionStatus, ExpectationStatus, ExpectationTarget, VerificationStatus, WorkKind, WorkStatus,
+    DecisionStatus, ExpectationStatus, ExpectationTarget, ReviewStatus, VerificationStatus,
+    WorkKind, WorkStatus,
 };
 
 #[derive(Debug, Clone)]
@@ -129,6 +130,23 @@ impl std::str::FromStr for WorkStatusArg {
 
 impl From<WorkStatusArg> for WorkStatus {
     fn from(value: WorkStatusArg) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ReviewStatusArg(pub(crate) ReviewStatus);
+
+impl std::str::FromStr for ReviewStatusArg {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        value.parse().map(Self)
+    }
+}
+
+impl From<ReviewStatusArg> for ReviewStatus {
+    fn from(value: ReviewStatusArg) -> Self {
         value.0
     }
 }

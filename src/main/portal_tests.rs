@@ -1,7 +1,7 @@
 use super::review_packet_tests::stored_review_packet;
 use super::test_support::*;
 use super::*;
-use susumu::model::{Location, Severity};
+use susumu::model::{Location, ReviewCommentKind, ReviewStatus, ReviewThread, Severity};
 
 #[test]
 fn ci_workflow_uploads_and_publishes_susumu_review_artifacts() {
@@ -106,6 +106,19 @@ fn exported_review_html_loads_portal_config_from_project_root() {
 fn review_portal_html_embeds_packet_safely() {
     let mut artifact = test_artifact();
     artifact.project_name = "fixture </script>".to_owned();
+    artifact.review_threads.push(ReviewThread {
+        id: "r_open".to_owned(),
+        target: susumu::model::ExpectationTarget::Project,
+        subject: None,
+        anchor: None,
+        parent: None,
+        kind: ReviewCommentKind::Comment,
+        status: ReviewStatus::Open,
+        owner: Some("team-platform".to_owned()),
+        source: "human:reviewer".to_owned(),
+        title: "Clarify deployment ownership".to_owned(),
+        detail: "Who owns the deployment decision?".to_owned(),
+    });
     refresh_derived_analysis(&mut artifact);
     let packet = stored_review_packet("fixture.review.susu", 1, &artifact);
 
@@ -117,6 +130,14 @@ fn review_portal_html_embeds_packet_safely() {
     assert!(html.contains("Support summary"));
     assert!(html.contains("Evidence ladder"));
     assert!(html.contains("Expectation readiness board"));
+    assert!(html.contains("Open review workload"));
+    assert!(html.contains("team-platform"));
+    assert!(html.contains("Search review threads"));
+    assert!(html.contains("id=\"threadOwner\""));
+    assert!(html.contains("id=\"threadStatus\""));
+    assert!(html.contains("renderReviewThreads"));
+    assert!(html.contains("This static portal is read-only"));
+    assert!(!html.contains("Reply, assign, or resolve this discussion"));
     assert!(html.contains("expectation_readiness"));
     assert!(html.contains("Dirty and stale evidence"));
     assert!(html.contains("data-evidence-ladder"));

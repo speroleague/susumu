@@ -554,3 +554,116 @@ pub(crate) fn remove_work(args: &RemoveWork) -> Result<()> {
     eprintln!("removed work {} from {}", args.id, args.file.display());
     Ok(())
 }
+
+pub(crate) fn add_review_thread(args: AddReviewThread) -> Result<()> {
+    let target = ExpectationTarget::from(args.target);
+    let subject = target_subject("review threads", target, args.subject)?;
+    let anchor = args
+        .anchor
+        .as_deref()
+        .map(str::parse)
+        .transpose()
+        .map_err(|error: String| anyhow::anyhow!(error))?;
+    let status = ReviewStatus::from(args.status);
+    let kind = args
+        .kind
+        .parse()
+        .map_err(|error: String| anyhow::anyhow!(error))?;
+    let id = args.id.unwrap_or_else(|| {
+        review_thread_id(
+            target,
+            subject.as_deref(),
+            anchor.as_ref(),
+            args.parent.as_deref(),
+            kind,
+            status,
+            args.owner.as_deref(),
+            &args.source,
+            &args.title,
+            &args.detail,
+        )
+    });
+    let review = ReviewThread {
+        id,
+        target,
+        subject,
+        anchor,
+        parent: args.parent,
+        kind,
+        status,
+        owner: args.owner.filter(|value| !value.trim().is_empty()),
+        source: args.source,
+        title: args.title,
+        detail: args.detail,
+    };
+    let mut reviews = if args.file.exists() {
+        read_review_thread_sidecar(&args.file)?
+    } else {
+        Vec::new()
+    };
+    let id = review.id.clone();
+    merge_review_threads(&mut reviews, vec![review]);
+    fs::write(&args.file, write_review_threads(&reviews, false)?)
+        .with_context(|| format!("could not write {}", args.file.display()))?;
+    eprintln!("wrote review thread {id} to {}", args.file.display());
+    Ok(())
+}
+
+pub(crate) fn list_review_threads(args: &ListReviewThreads) -> Result<()> {
+    let status = args
+        .status
+        .as_ref()
+        .map(|value| ReviewStatus::from(value.clone()));
+    let reviews = read_review_threads_file(&args.file)?
+        .into_iter()
+        .filter(|review| {
+            args.owner
+                .as_deref()
+                .is_none_or(|owner| review.owner.as_deref() == Some(owner))
+        })
+        .filter(|review| status.is_none_or(|status| review.status == status))
+        .collect::<Vec<_>>();
+    if reviews.is_empty() {
+        println!("No review threads in {}", args.file.display());
+        return Ok(());
+    }
+    for review in reviews {
+        println!(
+            "{}  {:9}  {:10}  kind={:<16} owner={}  anchor={}  {}",
+            review.id,
+            review.target,
+            review.status,
+            review.kind,
+            review.owner.as_deref().unwrap_or("-"),
+            review
+                .anchor
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref()
+                .unwrap_or("-"),
+            review.title
+        );
+    }
+    Ok(())
+}
+
+pub(crate) fn remove_review_thread(args: &RemoveReviewThread) -> Result<()> {
+    let mut reviews = read_review_thread_sidecar(&args.file)?;
+    let original_len = reviews.len();
+    reviews.retain(|review| review.id != args.id);
+    if reviews.len() == original_len {
+        bail!(
+            "{} does not contain review thread {}",
+            args.file.display(),
+            args.id
+        );
+    }
+    fs::write(&args.file, write_review_threads(&reviews, false)?)
+        .with_context(|| format!("could not write {}", args.file.display()))?;
+    eprintln!(
+        "removed review thread {} from {}",
+        args.id,
+        args.file.display()
+    );
+    Ok(())
+}

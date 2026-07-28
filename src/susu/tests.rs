@@ -19,6 +19,7 @@ fn fixture() -> ProjectAnalysis {
         verifications,
         decisions: fixture_decisions(),
         works: fixture_works(),
+        review_threads: Vec::new(),
         findings: fixture_findings(),
     }
 }
@@ -272,4 +273,22 @@ fn parses_and_writes_work_fragments() {
 
     assert!(encoded.starts_with("work wk0"));
     assert_eq!(parse_works(&encoded).unwrap(), expected);
+}
+
+#[test]
+fn parses_and_writes_threaded_review_with_owner() {
+    let source = r#"review r_root target=project subject=- anchor=expectation:e_123 parent=- status=open owner="team-platform" source="human:reviewer" title="Clarify ownership" detail="Who owns the deployment decision?";
+review r_reply target=project subject=- anchor=expectation:e_123 parent=r_root status=resolved owner="team-platform" source="human:maintainer" title="Ownership assigned" detail="Platform owns the follow-up.";"#;
+    let parsed = parse_review_threads(source).expect("parse review threads");
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(parsed[1].parent.as_deref(), Some("r_root"));
+    assert_eq!(
+        parsed[0].anchor,
+        Some(ReviewAnchor::Expectation("e_123".to_owned()))
+    );
+    assert_eq!(parsed[0].owner.as_deref(), Some("team-platform"));
+
+    let encoded = write_review_threads(&parsed, false).expect("write review threads");
+    assert!(encoded.contains("review r_root"));
+    assert_eq!(parse_review_threads(&encoded).unwrap(), parsed);
 }

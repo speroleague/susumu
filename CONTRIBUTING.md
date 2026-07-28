@@ -6,7 +6,7 @@ Susumu is early, but its trust model should stay clear from the beginning: obser
 
 Install Rust 1.88 or newer, then run:
 
-```powershell
+```sh
 cargo fmt --all
 cargo test
 cargo clippy --all-targets -- -D warnings
@@ -14,7 +14,7 @@ cargo clippy --all-targets -- -D warnings
 
 Use Susumu while changing Susumu:
 
-```powershell
+```sh
 cargo run -- review
 cargo run -- status
 cargo run -- git --since origin/main

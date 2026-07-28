@@ -8,6 +8,7 @@ pub(crate) fn load_analysis(
     verifications: Option<&PathBuf>,
     decisions: Option<&PathBuf>,
     work: Option<&PathBuf>,
+    reviews: Option<&PathBuf>,
     log_merges: bool,
 ) -> Result<ProjectAnalysis> {
     let (mut analysis, is_artifact) = load_base_analysis(target)?;
@@ -19,6 +20,7 @@ pub(crate) fn load_analysis(
             verifications,
             decisions,
             work,
+            reviews,
             is_artifact,
             log_merges,
         },
@@ -34,6 +36,7 @@ struct SidecarInputs<'a> {
     verifications: Option<&'a PathBuf>,
     decisions: Option<&'a PathBuf>,
     work: Option<&'a PathBuf>,
+    reviews: Option<&'a PathBuf>,
     is_artifact: bool,
     log_merges: bool,
 }
@@ -52,10 +55,17 @@ fn load_sidecars(analysis: &mut ProjectAnalysis, inputs: &SidecarInputs<'_>) -> 
         inputs.is_artifact,
         "verifications.susu",
     );
+    let review_path = sidecar_path(
+        inputs.target,
+        inputs.reviews,
+        inputs.is_artifact,
+        "reviews.susu",
+    );
     merge_expectation_sidecar(analysis, expectation_path.as_deref(), inputs.log_merges)?;
     merge_verification_sidecar(analysis, verification_path.as_deref(), inputs.log_merges)?;
     merge_decision_sidecar(analysis, inputs.decisions, inputs.log_merges)?;
-    merge_work_sidecar(analysis, inputs.work, inputs.log_merges)
+    merge_work_sidecar(analysis, inputs.work, inputs.log_merges)?;
+    merge_review_thread_sidecar(analysis, review_path.as_deref(), inputs.log_merges)
 }
 
 fn finalize_loaded_analysis(analysis: &mut ProjectAnalysis) {
@@ -166,6 +176,24 @@ fn merge_work_sidecar(
     refresh_derived_analysis(analysis);
     if log_merges {
         eprintln!("merged {count} work records from {}", path.display());
+    }
+    Ok(())
+}
+
+fn merge_review_thread_sidecar(
+    analysis: &mut ProjectAnalysis,
+    path: Option<&Path>,
+    log_merges: bool,
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let source = fs::read_to_string(path)
+        .with_context(|| format!("could not read reviews from {}", path.display()))?;
+    let imported = parse_review_threads(&source)
+        .with_context(|| format!("could not parse reviews from {}", path.display()))?;
+    let count = imported.len();
+    merge_review_threads(&mut analysis.review_threads, imported);
+    if log_merges {
+        eprintln!("merged {count} review threads from {}", path.display());
     }
     Ok(())
 }

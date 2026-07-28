@@ -247,8 +247,16 @@ fn directory_scans_auto_merge_expectations_sidecar() {
     )
     .expect("write expectations sidecar");
 
-    let analysis = load_analysis(&temp.path().to_path_buf(), None, None, None, None, false)
-        .expect("load analysis");
+    let analysis = load_analysis(
+        &temp.path().to_path_buf(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+    )
+    .expect("load analysis");
 
     assert!(
         analysis
@@ -272,8 +280,16 @@ fn directory_scans_auto_merge_verifications_sidecar() {
     )
     .expect("write verifications sidecar");
 
-    let analysis = load_analysis(&temp.path().to_path_buf(), None, None, None, None, false)
-        .expect("load analysis");
+    let analysis = load_analysis(
+        &temp.path().to_path_buf(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+    )
+    .expect("load analysis");
 
     assert!(
         analysis

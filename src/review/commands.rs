@@ -13,6 +13,7 @@ pub(crate) fn create_review(args: &ReviewCreateArgs) -> Result<()> {
         args.verifications.as_ref(),
         args.decisions.as_ref(),
         args.work.as_ref(),
+        None,
         false,
     )?;
     let check = check_report(&analysis, args.strict);
@@ -77,6 +78,7 @@ fn write_review_build_outputs(args: &ReviewBuildArgs) -> Result<ReviewBuildState
         args.verifications.as_ref(),
         args.decisions.as_ref(),
         args.work.as_ref(),
+        None,
         true,
     )?;
     write_text_file(&args.artifact_output, &write_susu(&analysis, false)?)?;
@@ -332,11 +334,12 @@ fn print_review_packet(packet: &ReviewPacketStored, max_items: usize) {
         packet.evidence.findings
     );
     println!(
-        "Records: {} expectations, {} verifications, {} decisions, {} work",
+        "Records: {} expectations, {} verifications, {} decisions, {} work, {} review threads",
         packet.records.expectations,
         packet.records.verifications,
         packet.records.decisions,
-        packet.records.work
+        packet.records.work,
+        packet.records.review_threads
     );
     println!(
         "Review: {} critical, {} warning, {} attention",

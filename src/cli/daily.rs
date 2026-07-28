@@ -190,7 +190,7 @@ pub(crate) fn expectation_browse_rows(
 
     let paths = daily_review_paths(&args.target, Path::new(".susumu"));
     let work = paths.work.exists().then_some(paths.work);
-    let analysis = load_analysis(&args.target, None, None, None, work.as_ref(), false)?;
+    let analysis = load_analysis(&args.target, None, None, None, work.as_ref(), None, false)?;
     let support = expectation_support(&analysis)
         .into_iter()
         .map(|item| (item.expectation_id.clone(), item))
@@ -344,7 +344,7 @@ pub(crate) struct VerifyJson {
 
 pub(crate) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
     let status = verification_status_from_flags(&args)?;
-    let analysis = load_analysis(&args.target, None, None, None, None, false)?;
+    let analysis = load_analysis(&args.target, None, None, None, None, None, false)?;
     let expectation = analysis
         .expectations
         .iter()
@@ -501,7 +501,7 @@ pub(crate) fn git_shortcut(args: &GitShortcutArgs) -> Result<()> {
 
 pub(crate) fn git_shortcut_artifact(args: &GitShortcutArgs) -> Result<ProjectAnalysis> {
     let work = args.output.exists().then_some(&args.output);
-    load_analysis(&args.artifact, None, None, None, work, false)
+    load_analysis(&args.artifact, None, None, None, work, None, false)
 }
 
 pub(crate) fn git_shortcut_connect_args(args: &GitShortcutArgs) -> GitConnectArgs {

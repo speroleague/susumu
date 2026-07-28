@@ -8,7 +8,7 @@ The goal is simple: keep business intent, implementation evidence, verification,
 
 Use these commands most of the time:
 
-```powershell
+```sh
 cargo run -- review
 cargo run -- status
 cargo run -- readiness
@@ -21,7 +21,7 @@ cargo run -- open
 
 Installed globally, that becomes:
 
-```powershell
+```sh
 susumu review
 susumu status
 susumu readiness
@@ -69,7 +69,7 @@ For open-source repositories, CI can publish `.susumu/review.html` to GitHub Pag
 
 Before starting work:
 
-```powershell
+```sh
 susumu status
 ```
 
@@ -77,7 +77,7 @@ This shows the current review queue: stale records, missing verification, scanne
 
 After making commits:
 
-```powershell
+```sh
 susumu git --since main
 susumu review
 susumu readiness
@@ -87,7 +87,7 @@ The first command connects commits to expectations and exports work records. The
 
 When the queue gets long, narrow it before you decide what to do next:
 
-```powershell
+```sh
 susumu readiness --bucket needs_verification
 susumu readiness --search git
 susumu readiness --json --bucket failed_verification
@@ -97,7 +97,7 @@ If one commit clearly supports multiple expectations, Susumu writes separate wor
 
 If Susumu cannot safely infer which expectation a commit supports, link it explicitly:
 
-```powershell
+```sh
 susumu expectations --search docs
 susumu git link abc123 e_susumu_docs_teach_daily_workflow --kind documentation
 susumu review
@@ -109,7 +109,7 @@ When possible, `susumu git` will suggest likely expectations and print ready-to-
 
 Before opening a pull request:
 
-```powershell
+```sh
 susumu verify <expectation-id> --passed --method "cargo test --locked"
 susumu review
 susumu open
@@ -141,7 +141,7 @@ Business users should not need to read code or run long commands.
 
 The stakeholder path is:
 
-```powershell
+```sh
 susumu open
 ```
 
@@ -158,7 +158,9 @@ The portal should answer:
 - Which verification or decision records became dirty because an expectation or linked work record changed?
 - What changed and may need review?
 
-Long term, this is where comments, approvals, questions, release snapshots, and decision history should live.
+The live portal now provides the first authenticated conversation surface for anchored review
+threads, replies, ownership, and lifecycle status. Broader timeline resources, richer action
+history, and release snapshots remain future work.
 
 ## Review artifacts as points in time
 
@@ -197,7 +199,7 @@ Susumu should not silently convert support into proof. A work record is not a pa
 
 Use `susumu verify` to record checks explicitly:
 
-```powershell
+```sh
 susumu verify e_checkout_sequence --passed --method "cargo test checkout_order"
 susumu verify e_checkout_sequence --failed --method "manual QA"
 susumu verify e_checkout_sequence --inconclusive --method "reviewed logs"

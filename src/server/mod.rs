@@ -113,9 +113,12 @@ async fn shutdown_signal() {
     #[cfg(unix)]
     {
         let ctrl_c = tokio::signal::ctrl_c();
-        let mut terminate =
+        let Ok(mut terminate) =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("install SIGTERM handler");
+        else {
+            let _ = ctrl_c.await;
+            return;
+        };
         tokio::select! {
             _ = ctrl_c => {}
             _ = terminate.recv() => {}

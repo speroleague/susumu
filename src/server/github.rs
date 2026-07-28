@@ -540,15 +540,18 @@ pub(crate) async fn refresh_search_index(
 
 impl GithubAppClient {
     pub(crate) fn from_config(config: Option<&GithubAppConfig>, api_url: &str) -> Option<Self> {
-        config.map(|config| Self {
-            app_id: config.app_id,
-            private_key_pem: config.private_key_pem.clone(),
-            api_url: api_url.trim_end_matches('/').to_owned(),
-            http: reqwest::Client::builder()
+        config.and_then(|config| {
+            reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(5))
                 .timeout(Duration::from_secs(30))
                 .build()
-                .expect("static GitHub HTTP client configuration is valid"),
+                .ok()
+                .map(|http| Self {
+                    app_id: config.app_id,
+                    private_key_pem: config.private_key_pem.clone(),
+                    api_url: api_url.trim_end_matches('/').to_owned(),
+                    http,
+                })
         })
     }
 

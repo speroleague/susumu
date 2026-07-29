@@ -5,6 +5,7 @@ pub(crate) fn run_command(command: Command) -> Result<()> {
         command @ (Command::Init(_)
         | Command::Check(_)
         | Command::Diff(_)
+        | Command::Migrate(_)
         | Command::Handoff(_)
         | Command::Open(_)
         | Command::Status(_)
@@ -28,6 +29,7 @@ fn run_project_command(command: Command) -> Result<()> {
         command @ (Command::Init(_)
         | Command::Check(_)
         | Command::Diff(_)
+        | Command::Migrate(_)
         | Command::Handoff(_)) => run_project_maintenance(command),
         command @ (Command::Open(_)
         | Command::Status(_)
@@ -44,6 +46,7 @@ fn run_project_maintenance(command: Command) -> Result<()> {
         Command::Init(args) => init_repository(&args),
         Command::Check(args) => check(&args),
         Command::Diff(args) => diff(&args),
+        Command::Migrate(args) => migration_commands::run_migrate(&args),
         Command::Handoff(args) => handoff(&args),
         _ => unreachable!("non-maintenance command routed to maintenance dispatcher"),
     }

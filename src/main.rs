@@ -28,6 +28,7 @@ mod cli;
 mod diff_commands;
 mod expectation_readiness;
 mod git;
+mod migration_commands;
 mod review;
 
 #[allow(clippy::wildcard_imports)]
@@ -164,6 +165,51 @@ struct CheckArgs {
     max_items: usize,
 
     /// Emit machine-readable JSON.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Args)]
+struct MigrateArgs {
+    /// Older artifact containing the source identities to compare.
+    old: PathBuf,
+
+    /// Newer artifact containing the current source identities and records.
+    new: PathBuf,
+
+    /// Explicitly accept a mapping in `OLD_ID=NEW_ID` form. Repeat for multiple mappings.
+    #[arg(long = "accept", value_name = "OLD_ID=NEW_ID")]
+    accepts: Vec<String>,
+
+    /// Explicitly reject a migration candidate by its old source id.
+    #[arg(long = "reject", value_name = "OLD_ID")]
+    rejects: Vec<String>,
+
+    /// Explicitly defer a migration candidate by its old source id.
+    #[arg(long = "defer", value_name = "OLD_ID")]
+    defers: Vec<String>,
+
+    /// Write the resolved analysis artifact after accepted mappings are applied.
+    #[arg(short, long, value_name = "FILE")]
+    output: Option<PathBuf>,
+
+    /// Optional expectations sidecar to update when mappings are accepted.
+    #[arg(long)]
+    expectations: Option<PathBuf>,
+
+    /// Optional decisions sidecar to update when mappings are accepted.
+    #[arg(long)]
+    decisions: Option<PathBuf>,
+
+    /// Optional work sidecar to update and append the migration audit record.
+    #[arg(long)]
+    work: Option<PathBuf>,
+
+    /// Optional review-thread sidecar to update when source anchors are accepted.
+    #[arg(long)]
+    reviews: Option<PathBuf>,
+
+    /// Emit machine-readable migration candidates and dispositions.
     #[arg(long)]
     json: bool,
 }

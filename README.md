@@ -436,6 +436,22 @@ cargo run -- git rewind --from main --artifact project.susu --old-output old-mai
 
 `git rewind` reconstructs the selected ref into a temporary snapshot without checking out or mutating the repository, scans that snapshot, scans the current repository when `--artifact` is omitted, and runs the same comparison model as `diff`. It also reports exact or candidate migrations for files, symbols, and workflows whose source identity moved between revisions, plus `SUS056` findings when authored records still point at the old identity. `--fail-on-stale` makes it suitable for CI or a pre-merge gate.
 
+Review a migration before changing authored records:
+
+```sh
+cargo run -- migrate old-main.susu project.susu
+cargo run -- migrate old-main.susu project.susu --accept old-file-id=new-file-id --output migrated.susu
+cargo run -- migrate old-main.susu project.susu --reject old-symbol-id --defer another-old-id --json
+```
+
+`migrate` is preview-first. `--accept OLD_ID=NEW_ID` is required for every retargeting, and the
+replacement must be one of the candidates Susumu reported. Accepted mappings can also update
+explicit sidecars with `--expectations`, `--decisions`, `--work`, and `--reviews`; pass `--work`
+to append the human disposition as an auditable review work record. `--reject` and `--defer`
+record the reviewer disposition in JSON or the optional work audit without rewriting source
+evidence. The TUI's Findings view shows `SUS056` items and their migration guidance when an
+artifact contains unresolved migration findings.
+
 Check an artifact or project for review blockers:
 
 ```sh

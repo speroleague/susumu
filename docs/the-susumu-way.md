@@ -167,6 +167,13 @@ The comparison records the old and current source revisions and reports exact or
 for renamed files, symbols, and workflows. Candidate mappings are suggestions only: Susumu never
 silently retargets authored expectations, verifications, decisions, work, or review threads.
 
+To resolve candidates, compare the old and current artifacts with `susumu migrate`. Start without
+an action to review the candidates, then use explicit `--accept OLD_ID=NEW_ID`, `--reject OLD_ID`,
+or `--defer OLD_ID` dispositions. Accepted mappings may be written to an output artifact and to
+the authored sidecars named with `--expectations`, `--decisions`, `--work`, and `--reviews`.
+Appending the optional work sidecar records the human migration review so the decision remains
+visible in project memory. JSON output is available for CI and other automation.
+
 ## Review artifacts as points in time
 
 A review packet is a snapshot. It is useful when a team needs to ask:

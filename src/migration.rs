@@ -25,6 +25,88 @@ pub enum MigrationConfidence {
     Candidate,
 }
 
+/// The explicit disposition a reviewer gives to a migration candidate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MigrationDisposition {
+    Accept,
+    Reject,
+    Defer,
+}
+
+/// The result of applying accepted source migrations to authored records.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MigrationRewriteSummary {
+    pub expectations: usize,
+    pub decisions: usize,
+    pub works: usize,
+    pub reviews: usize,
+    pub anchors: usize,
+}
+
+/// Applies only mappings explicitly accepted by a reviewer.
+///
+/// Verification records remain stable because they point to expectation ids;
+/// their linked expectations are retargeted instead. Findings are intentionally
+/// left to the next scan so the resulting evidence remains derived, not edited.
+pub fn apply_accepted_migrations(
+    analysis: &mut ProjectAnalysis,
+    migrations: &[SourceMigration],
+    accepted: &BTreeMap<String, String>,
+) -> MigrationRewriteSummary {
+    let mut ids = BTreeMap::new();
+    let mut paths = BTreeMap::new();
+    for migration in migrations {
+        if accepted.get(&migration.old_id) != Some(&migration.new_id) {
+            continue;
+        }
+        ids.insert(migration.old_id.as_str(), migration.new_id.as_str());
+        if migration.kind == "file" {
+            paths.insert(migration.old_path.as_str(), migration.new_path.as_str());
+        }
+    }
+
+    let mut summary = MigrationRewriteSummary::default();
+    for expectation in &mut analysis.expectations {
+        if replace_subject(&mut expectation.subject, &ids) {
+            summary.expectations += 1;
+        }
+    }
+    for decision in &mut analysis.decisions {
+        if replace_subject(&mut decision.subject, &ids) {
+            summary.decisions += 1;
+        }
+    }
+    for work in &mut analysis.works {
+        if replace_subject(&mut work.subject, &ids) {
+            summary.works += 1;
+        }
+    }
+    for review in &mut analysis.review_threads {
+        if replace_subject(&mut review.subject, &ids) {
+            summary.reviews += 1;
+        }
+        if let Some(ReviewAnchor::Source { path, .. }) = review.anchor.as_mut()
+            && let Some(new_path) = paths.get(path.as_str())
+        {
+            *path = (*new_path).to_owned();
+            summary.anchors += 1;
+        }
+    }
+    summary
+}
+
+fn replace_subject(subject: &mut Option<String>, ids: &BTreeMap<&str, &str>) -> bool {
+    let Some(current) = subject.as_deref() else {
+        return false;
+    };
+    let Some(replacement) = ids.get(current) else {
+        return false;
+    };
+    *subject = Some((*replacement).to_owned());
+    true
+}
+
 /// Finds source identities that likely survived a rename or refactor.
 ///
 /// This produces explicit migration candidates; it never rewrites authored records or claims
@@ -296,7 +378,8 @@ fn same_workflow_shape(old: &Workflow, new: &Workflow) -> bool {
 mod tests {
     use super::*;
     use crate::model::{
-        Expectation, ExpectationStatus, ExpectationTarget, Language, Location, SymbolKind,
+        Expectation, ExpectationStatus, ExpectationTarget, Language, Location, ReviewAnchor,
+        ReviewCommentKind, ReviewStatus, ReviewThread, SymbolKind,
     };
 
     fn analysis(files: Vec<SourceFile>, symbols: Vec<Symbol>) -> ProjectAnalysis {
@@ -452,5 +535,75 @@ mod tests {
         assert_eq!(findings[0].rule_id, "SUS056");
         assert_eq!(findings[0].subject.as_deref(), Some("e_old_target"));
         assert!(findings[0].detail.contains("f_new"));
+    }
+
+    #[test]
+    fn accepted_migrations_retarget_subjects_and_source_anchors() {
+        let old = analysis(
+            vec![SourceFile {
+                id: "f_old".to_owned(),
+                path: "src/old.rs".to_owned(),
+                language: Language::Rust,
+                lines: 1,
+                bytes: 1,
+                content_hash: Some("same".to_owned()),
+            }],
+            Vec::new(),
+        );
+        let mut new = analysis(
+            vec![SourceFile {
+                id: "f_new".to_owned(),
+                path: "src/new.rs".to_owned(),
+                language: Language::Rust,
+                lines: 1,
+                bytes: 1,
+                content_hash: Some("same".to_owned()),
+            }],
+            Vec::new(),
+        );
+        new.expectations.push(Expectation {
+            id: "e1".to_owned(),
+            target: ExpectationTarget::File,
+            subject: Some("f_old".to_owned()),
+            status: ExpectationStatus::Accepted,
+            source: "human:test".to_owned(),
+            title: "Keep it".to_owned(),
+            detail: "The behavior remains intentional.".to_owned(),
+        });
+        new.review_threads.push(ReviewThread {
+            id: "r1".to_owned(),
+            target: ExpectationTarget::File,
+            subject: None,
+            anchor: Some(ReviewAnchor::Source {
+                path: "src/old.rs".to_owned(),
+                line: Some(1),
+            }),
+            parent: None,
+            kind: ReviewCommentKind::Comment,
+            status: ReviewStatus::Open,
+            owner: None,
+            source: "human:test".to_owned(),
+            title: "Review".to_owned(),
+            detail: "Please review this source.".to_owned(),
+        });
+
+        let migrations = source_migrations(&old, &new);
+        let mapping = migrations
+            .iter()
+            .find(|migration| migration.kind == "file")
+            .expect("file migration");
+        let accepted = BTreeMap::from([(mapping.old_id.clone(), mapping.new_id.clone())]);
+        let summary = apply_accepted_migrations(&mut new, &migrations, &accepted);
+
+        assert_eq!(summary.expectations, 1);
+        assert_eq!(summary.anchors, 1);
+        assert_eq!(new.expectations[0].subject.as_deref(), Some("f_new"));
+        assert_eq!(
+            new.review_threads[0].anchor,
+            Some(ReviewAnchor::Source {
+                path: "src/new.rs".to_owned(),
+                line: Some(1),
+            })
+        );
     }
 }

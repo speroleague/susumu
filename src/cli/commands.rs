@@ -54,6 +54,9 @@ pub(crate) enum Command {
     /// Compare two .susu artifacts.
     Diff(DiffArgs),
 
+    /// Review and explicitly resolve source migration candidates.
+    Migrate(MigrateArgs),
+
     /// Produce a compact project handoff for humans or agents.
     Handoff(HandoffArgs),
 

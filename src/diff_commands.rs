@@ -94,6 +94,7 @@ pub(super) struct DiffReport {
     pub(super) works: ChangeSummary,
     pub(super) stale_items: Vec<CheckItem>,
     pub(super) migrations: Vec<susumu::migration::SourceMigration>,
+    pub(super) migration_findings: Vec<susumu::model::Finding>,
 }
 
 #[derive(Debug, Serialize)]
@@ -103,6 +104,7 @@ struct DiffJson<'a> {
     changes: DiffChangesJson<'a>,
     freshness: DiffFreshnessJson<'a>,
     migrations: Vec<susumu::migration::SourceMigration>,
+    migration_findings: Vec<susumu::model::Finding>,
     result: DiffResultJson<'a>,
 }
 
@@ -153,6 +155,7 @@ struct GitRewindJson<'a> {
     changes: DiffChangesJson<'a>,
     freshness: DiffFreshnessJson<'a>,
     migrations: Vec<susumu::migration::SourceMigration>,
+    migration_findings: Vec<susumu::model::Finding>,
     result: DiffResultJson<'a>,
 }
 
@@ -210,6 +213,7 @@ pub(super) fn diff_report(old: &ProjectAnalysis, new: &ProjectAnalysis) -> DiffR
         ),
         stale_items: freshness_check_items(new),
         migrations: source_migrations(old, new),
+        migration_findings: source_migration_findings(old, new),
     }
 }
 
@@ -280,6 +284,7 @@ pub(super) fn print_diff_report(
     print_change_section("Work", &report.works, max_items);
     print_freshness_section(&report.stale_items, max_items);
     print_migration_section(&report.migrations, max_items);
+    print_migration_finding_section(&report.migration_findings, max_items);
 }
 
 pub(super) fn print_diff_json(
@@ -315,6 +320,7 @@ pub(super) fn print_diff_json(
             items: check_item_jsons(&report.stale_items),
         },
         migrations: report.migrations.clone(),
+        migration_findings: report.migration_findings.clone(),
         result: DiffResultJson {
             status: if failed { "failed" } else { "passed" },
             failed,
@@ -374,6 +380,7 @@ fn print_git_rewind_json(
             items: check_item_jsons(&report.stale_items),
         },
         migrations: report.migrations.clone(),
+        migration_findings: report.migration_findings.clone(),
         result: DiffResultJson {
             status: if failed { "failed" } else { "passed" },
             failed,
@@ -432,6 +439,16 @@ fn print_migration_section(migrations: &[susumu::migration::SourceMigration], ma
             migration.detail
         );
     }
+    println!();
+}
+
+fn print_migration_finding_section(findings: &[susumu::model::Finding], max_items: usize) {
+    println!("Migration dirty findings:");
+    println!("  records needing review: {}", findings.len());
+    for finding in findings.iter().take(max_items) {
+        println!("  - {}", finding.detail);
+    }
+    println!();
 }
 
 fn print_labeled_items(prefix: &str, items: &[String], max_items: usize) {

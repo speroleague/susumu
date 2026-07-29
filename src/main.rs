@@ -13,7 +13,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use susumu::{
     analysis::{anchor_decision_bases, anchor_verification_bases, refresh_derived_analysis},
-    migration::source_migrations,
+    migration::{source_migration_findings, source_migrations},
     model::{
         Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget,
         ProjectAnalysis, ReviewAnchor, ReviewCommentKind, ReviewStatus, ReviewThread, Verification,

@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{ProjectAnalysis, SourceFile, Symbol, Workflow};
+use crate::model::{
+    Finding, ProjectAnalysis, ReviewAnchor, Severity, SourceFile, Symbol, Workflow,
+};
 
 /// A source identity that can be carried from one revision to another.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -134,6 +136,114 @@ pub fn source_migrations(old: &ProjectAnalysis, new: &ProjectAnalysis) -> Vec<So
     migrations
 }
 
+/// Reports authored records that still point at a source identity from the old revision.
+///
+/// The finding is advisory. It identifies a replacement candidate but never changes an
+/// expectation, verification, decision, work record, or review anchor automatically.
+#[must_use]
+pub fn source_migration_findings(old: &ProjectAnalysis, new: &ProjectAnalysis) -> Vec<Finding> {
+    let migrations = source_migrations(old, new);
+    let by_old_id = migrations
+        .iter()
+        .map(|migration| (migration.old_id.as_str(), migration))
+        .collect::<BTreeMap<_, _>>();
+    let by_old_path = migrations
+        .iter()
+        .filter(|migration| migration.kind == "file")
+        .map(|migration| (migration.old_path.as_str(), migration))
+        .collect::<BTreeMap<_, _>>();
+    let mut findings = Vec::new();
+
+    for expectation in &new.expectations {
+        if let Some(subject) = expectation.subject.as_deref()
+            && let Some(migration) = by_old_id.get(subject)
+        {
+            findings.push(migration_finding(
+                "expectation",
+                &expectation.id,
+                migration,
+                new,
+            ));
+        }
+    }
+    for verification in &new.verifications {
+        let Some(expectation) = new
+            .expectations
+            .iter()
+            .find(|expectation| expectation.id == verification.expectation_id)
+        else {
+            continue;
+        };
+        if let Some(subject) = expectation.subject.as_deref()
+            && let Some(migration) = by_old_id.get(subject)
+        {
+            findings.push(migration_finding(
+                "verification",
+                &verification.id,
+                migration,
+                new,
+            ));
+        }
+    }
+    for decision in &new.decisions {
+        if let Some(subject) = decision.subject.as_deref()
+            && let Some(migration) = by_old_id.get(subject)
+        {
+            findings.push(migration_finding("decision", &decision.id, migration, new));
+        }
+    }
+    for work in &new.works {
+        if let Some(subject) = work.subject.as_deref()
+            && let Some(migration) = by_old_id.get(subject)
+        {
+            findings.push(migration_finding("work", &work.id, migration, new));
+        }
+    }
+    for review in &new.review_threads {
+        if let Some(subject) = review.subject.as_deref()
+            && let Some(migration) = by_old_id.get(subject)
+        {
+            findings.push(migration_finding("review", &review.id, migration, new));
+        } else if let Some(ReviewAnchor::Source { path, .. }) = review.anchor.as_ref()
+            && let Some(migration) = by_old_path.get(path.as_str())
+        {
+            findings.push(migration_finding(
+                "review anchor",
+                &review.id,
+                migration,
+                new,
+            ));
+        }
+    }
+    findings
+}
+
+fn migration_finding(
+    record_kind: &str,
+    record_id: &str,
+    migration: &SourceMigration,
+    new: &ProjectAnalysis,
+) -> Finding {
+    let file_id = new
+        .files
+        .iter()
+        .find(|file| file.path == migration.new_path)
+        .map(|file| file.id.clone());
+    Finding {
+        rule_id: "SUS056".to_owned(),
+        source: "susumu:derived".to_owned(),
+        severity: Severity::Warning,
+        title: "Authored source target may need migration".to_owned(),
+        detail: format!(
+            "{record_kind} `{record_id}` still references `{}` from an older source revision. Candidate replacement is `{}` in `{}` ({:?}); review and update the authored record explicitly.",
+            migration.old_id, migration.new_id, migration.new_path, migration.confidence
+        ),
+        file_id,
+        subject: Some(record_id.to_owned()),
+        location: None,
+    }
+}
+
 fn match_files<'a>(
     old: &'a [SourceFile],
     new: &'a [SourceFile],
@@ -185,7 +295,9 @@ fn same_workflow_shape(old: &Workflow, new: &Workflow) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Language, Location, SymbolKind};
+    use crate::model::{
+        Expectation, ExpectationStatus, ExpectationTarget, Language, Location, SymbolKind,
+    };
 
     fn analysis(files: Vec<SourceFile>, symbols: Vec<Symbol>) -> ProjectAnalysis {
         ProjectAnalysis {
@@ -299,5 +411,46 @@ mod tests {
             vec![symbol("new_a", "new"), symbol("new_b", "new")],
         );
         assert!(source_migrations(&old, &new).is_empty());
+    }
+
+    #[test]
+    fn flags_authored_records_that_still_use_old_source_ids() {
+        let old = analysis(
+            vec![SourceFile {
+                id: "f_old".to_owned(),
+                path: "src/old.rs".to_owned(),
+                language: Language::Rust,
+                lines: 1,
+                bytes: 1,
+                content_hash: Some("same".to_owned()),
+            }],
+            Vec::new(),
+        );
+        let mut new = analysis(
+            vec![SourceFile {
+                id: "f_new".to_owned(),
+                path: "src/new.rs".to_owned(),
+                language: Language::Rust,
+                lines: 1,
+                bytes: 1,
+                content_hash: Some("same".to_owned()),
+            }],
+            Vec::new(),
+        );
+        new.expectations.push(Expectation {
+            id: "e_old_target".to_owned(),
+            target: ExpectationTarget::File,
+            subject: Some("f_old".to_owned()),
+            status: ExpectationStatus::Accepted,
+            source: "human:test".to_owned(),
+            title: "Keep the source behavior".to_owned(),
+            detail: "The behavior remains intentional.".to_owned(),
+        });
+
+        let findings = source_migration_findings(&old, &new);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "SUS056");
+        assert_eq!(findings[0].subject.as_deref(), Some("e_old_target"));
+        assert!(findings[0].detail.contains("f_new"));
     }
 }

@@ -450,6 +450,62 @@ fn linked_work_changes_dirty_verifications_and_decisions() {
 }
 
 #[test]
+fn review_thread_changes_dirty_verifications_and_decisions() {
+    let mut analysis = analysis_with_expectations(vec![expectation(
+        "e_checkout",
+        ExpectationTarget::Workflow,
+        Some("w_checkout"),
+    )]);
+    analysis.verifications.push(Verification {
+        id: "v_checkout".to_owned(),
+        expectation_id: "e_checkout".to_owned(),
+        status: VerificationStatus::Passed,
+        supersedes: None,
+        execution: None,
+        chain: None,
+        method: "manual review".to_owned(),
+        source: "human:test".to_owned(),
+        evidence: None,
+        basis: None,
+        detail: "Checked.".to_owned(),
+    });
+    analysis.decisions.push(Decision {
+        id: "d_checkout".to_owned(),
+        target: ExpectationTarget::Workflow,
+        subject: Some("w_checkout".to_owned()),
+        status: DecisionStatus::Accepted,
+        source: "human:test".to_owned(),
+        basis: None,
+        title: "Accept checkout shape".to_owned(),
+        detail: "Accepted.".to_owned(),
+    });
+
+    anchor_verification_bases(&mut analysis);
+    anchor_decision_bases(&mut analysis);
+    analysis.review_threads.push(ReviewThread {
+        id: "r_checkout".to_owned(),
+        target: ExpectationTarget::Workflow,
+        subject: Some("w_checkout".to_owned()),
+        anchor: None,
+        parent: None,
+        kind: ReviewCommentKind::Question,
+        status: ReviewStatus::Open,
+        owner: Some("team-checkout".to_owned()),
+        source: "human:test".to_owned(),
+        title: "Clarify failure path".to_owned(),
+        detail: "Does the failure path preserve the reservation?".to_owned(),
+    });
+    refresh_relationship_findings(&mut analysis);
+
+    assert!(analysis.findings.iter().any(|finding| {
+        finding.rule_id == "SUS023" && finding.subject.as_deref() == Some("v_checkout")
+    }));
+    assert!(analysis.findings.iter().any(|finding| {
+        finding.rule_id == "SUS033" && finding.subject.as_deref() == Some("d_checkout")
+    }));
+}
+
+#[test]
 fn symbol_verification_ignores_unrelated_file_changes() {
     let mut analysis = analysis_with_expectations(vec![expectation(
         "e_checkout",

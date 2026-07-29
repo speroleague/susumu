@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 use sha2::{Digest, Sha256};
 
 use crate::model::{
-    Decision, Expectation, ExpectationTarget, Finding, ProjectAnalysis, ReviewAnchor, Severity,
-    Verification, Work,
+    Decision, Expectation, ExpectationTarget, Finding, ProjectAnalysis, ReviewAnchor, ReviewThread,
+    Severity, Verification, Work,
 };
 
 mod findings;
@@ -454,6 +454,14 @@ fn current_verification_basis(
                     expectation.subject.as_deref(),
                 )
         }),
+        analysis.review_threads.iter().filter(|review| {
+            same_target(
+                review.target,
+                review.subject.as_deref(),
+                expectation.target,
+                expectation.subject.as_deref(),
+            )
+        }),
         Some(verification.id.as_str()),
     )
 }
@@ -495,6 +503,14 @@ fn current_decision_basis(analysis: &ProjectAnalysis, decision: &Decision) -> Op
         decision.subject.as_deref(),
         expectations,
         works,
+        analysis.review_threads.iter().filter(|review| {
+            same_target(
+                review.target,
+                review.subject.as_deref(),
+                decision.target,
+                decision.subject.as_deref(),
+            )
+        }),
         Some(decision.id.as_str()),
     )
 }
@@ -505,6 +521,7 @@ fn review_basis<'a>(
     subject: Option<&str>,
     expectations: impl Iterator<Item = &'a Expectation>,
     works: impl Iterator<Item = &'a Work>,
+    reviews: impl Iterator<Item = &'a ReviewThread>,
     record_id: Option<&str>,
 ) -> Option<String> {
     let target_hash = target_fingerprint(analysis, target, subject)?;
@@ -545,6 +562,25 @@ fn review_basis<'a>(
         .collect::<Vec<_>>();
     work_parts.sort_unstable();
     parts.extend(work_parts);
+    let mut review_parts = reviews
+        .map(|review| {
+            format!(
+                "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+                review.id,
+                review.target,
+                review.subject.as_deref().unwrap_or("-"),
+                review.parent.as_deref().unwrap_or("-"),
+                review.kind,
+                review.status,
+                review.owner.as_deref().unwrap_or("-"),
+                review.source,
+                review.title,
+                review.detail
+            )
+        })
+        .collect::<Vec<_>>();
+    review_parts.sort_unstable();
+    parts.extend(review_parts);
     if let Some(record_id) = record_id {
         parts.push(format!("record={record_id}"));
     }

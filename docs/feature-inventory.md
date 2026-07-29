@@ -60,6 +60,7 @@ Current deterministic findings include:
 - `SUS010`-`SUS012`: malformed or stale expectation targets;
 - `SUS020`: verification points at a missing expectation;
 - `SUS023`: verification basis changed and needs renewed review;
+- `SUS056`: an authored record still references a source identity from an older revision and needs explicit migration review;
 - `SUS030`-`SUS033`: malformed, stale, or changed decision targets;
 - `SUS040`-`SUS043`: malformed, stale, or missing work targets and expectation links;
 - `SUS050`-`SUS054`: malformed, stale, orphaned, or cyclic review-thread links.
@@ -121,7 +122,7 @@ Any collaboration backend must preserve these distinctions. A comment, owner ass
   and authenticated user-management screens remain future frontend/API slices. The current portal
   creates portable review records through the repository synchronization path.
 - Source ids are stable for ordinary scans. Artifacts record the Git revision when available, and `git rewind` reports exact or candidate file, symbol, and workflow migrations across renamed or refactored source without silently rewriting authored records.
-- Dirty propagation is present for important target and basis changes but needs broader, more precise historical coverage.
+- Dirty propagation includes target, expectation, linked work, review-thread context, and source-migration changes, while unresolved migration findings remain explicit and require authored repair.
 - The seven current language families demonstrate the adapter boundary; additional adapters are not the near-term product priority.
 - AI assistance is not required by the core scanner or review workflow and must remain optional, labeled, cited, and human-reviewable.
 

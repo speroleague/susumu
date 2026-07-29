@@ -249,6 +249,7 @@ mod tests {
             project_name: "fixture".to_owned(),
             root: temp.path().display().to_string(),
             generated_unix_seconds: 0,
+            source_revision: None,
             files: vec![SourceFile {
                 id: "f_api".to_owned(),
                 path: "src/api.ts".to_owned(),

@@ -9,6 +9,7 @@ pub(super) fn test_artifact() -> ProjectAnalysis {
         project_name: "fixture".to_owned(),
         root: ".".to_owned(),
         generated_unix_seconds: 0,
+        source_revision: None,
         files: vec![
             SourceFile {
                 id: "f_api".to_owned(),

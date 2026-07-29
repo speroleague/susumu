@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -43,6 +44,7 @@ pub fn scan_project(root: &Path) -> Result<ProjectAnalysis> {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs(),
+        source_revision: source_revision(&root),
         files: Vec::new(),
         symbols: Vec::new(),
         dependencies: Vec::new(),
@@ -75,6 +77,19 @@ pub fn scan_project(root: &Path) -> Result<ProjectAnalysis> {
     resolve_workflows(&mut analysis, pending_workflows);
     add_findings(&mut analysis);
     Ok(analysis)
+}
+
+fn source_revision(root: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--verify", "HEAD"])
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
 fn supported_paths(root: &Path) -> Vec<PathBuf> {

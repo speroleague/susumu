@@ -397,6 +397,7 @@ mod tests {
             project_name: "fixture".to_owned(),
             root: ".".to_owned(),
             generated_unix_seconds: 0,
+            source_revision: None,
             files: Vec::new(),
             symbols: Vec::new(),
             dependencies: Vec::new(),

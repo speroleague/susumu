@@ -434,7 +434,7 @@ cargo run -- git rewind --from main --artifact .susumu/project.susu --json
 cargo run -- git rewind --from main --artifact project.susu --old-output old-main.susu
 ```
 
-`git rewind` reconstructs the selected ref into a temporary snapshot without checking out or mutating the repository, scans that snapshot, scans the current repository when `--artifact` is omitted, and runs the same comparison model as `diff`. `--fail-on-stale` makes it suitable for CI or a pre-merge gate.
+`git rewind` reconstructs the selected ref into a temporary snapshot without checking out or mutating the repository, scans that snapshot, scans the current repository when `--artifact` is omitted, and runs the same comparison model as `diff`. It also reports exact or candidate migrations for files, symbols, and workflows whose source identity moved between revisions. `--fail-on-stale` makes it suitable for CI or a pre-merge gate.
 
 Check an artifact or project for review blockers:
 

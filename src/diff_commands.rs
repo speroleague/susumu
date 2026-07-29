@@ -15,6 +15,7 @@ pub(super) fn git_rewind(args: &GitRewindArgs) -> Result<()> {
 fn execute_git_rewind(args: &GitRewindArgs, snapshot_dir: &Path) -> Result<bool> {
     let mut old = scan_project(snapshot_dir)
         .with_context(|| format!("could not scan Git ref {}", args.from))?;
+    old.source_revision = Some(git_commit_for_ref(&args.repo, &args.from)?.hash);
     old.project_name = format!("{}@{}", git_repo_label(&args.repo), args.from);
     let new = if let Some(artifact) = &args.artifact {
         read_analysis_artifact(artifact)?
@@ -92,6 +93,7 @@ pub(super) struct DiffReport {
     pub(super) decisions: ChangeSummary,
     pub(super) works: ChangeSummary,
     pub(super) stale_items: Vec<CheckItem>,
+    pub(super) migrations: Vec<susumu::migration::SourceMigration>,
 }
 
 #[derive(Debug, Serialize)]
@@ -100,6 +102,7 @@ struct DiffJson<'a> {
     new: DiffProjectJson<'a>,
     changes: DiffChangesJson<'a>,
     freshness: DiffFreshnessJson<'a>,
+    migrations: Vec<susumu::migration::SourceMigration>,
     result: DiffResultJson<'a>,
 }
 
@@ -108,6 +111,7 @@ struct DiffProjectJson<'a> {
     name: &'a str,
     root: &'a str,
     generated_unix_seconds: u64,
+    source_revision: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -148,6 +152,7 @@ struct GitRewindJson<'a> {
     new: DiffProjectJson<'a>,
     changes: DiffChangesJson<'a>,
     freshness: DiffFreshnessJson<'a>,
+    migrations: Vec<susumu::migration::SourceMigration>,
     result: DiffResultJson<'a>,
 }
 
@@ -204,6 +209,7 @@ pub(super) fn diff_report(old: &ProjectAnalysis, new: &ProjectAnalysis) -> DiffR
             |work| format!("{} - {}", work.id, work.title),
         ),
         stale_items: freshness_check_items(new),
+        migrations: source_migrations(old, new),
     }
 }
 
@@ -273,6 +279,7 @@ pub(super) fn print_diff_report(
     print_change_section("Decisions", &report.decisions, max_items);
     print_change_section("Work", &report.works, max_items);
     print_freshness_section(&report.stale_items, max_items);
+    print_migration_section(&report.migrations, max_items);
 }
 
 pub(super) fn print_diff_json(
@@ -287,11 +294,13 @@ pub(super) fn print_diff_json(
             name: &old.project_name,
             root: &old.root,
             generated_unix_seconds: old.generated_unix_seconds,
+            source_revision: old.source_revision.as_deref(),
         },
         new: DiffProjectJson {
             name: &new.project_name,
             root: &new.root,
             generated_unix_seconds: new.generated_unix_seconds,
+            source_revision: new.source_revision.as_deref(),
         },
         changes: DiffChangesJson {
             files: change_summary_json(&report.files),
@@ -305,6 +314,7 @@ pub(super) fn print_diff_json(
             stale: report.stale_items.len(),
             items: check_item_jsons(&report.stale_items),
         },
+        migrations: report.migrations.clone(),
         result: DiffResultJson {
             status: if failed { "failed" } else { "passed" },
             failed,
@@ -343,11 +353,13 @@ fn print_git_rewind_json(
             name: &old.project_name,
             root: &old.root,
             generated_unix_seconds: old.generated_unix_seconds,
+            source_revision: old.source_revision.as_deref(),
         },
         new: DiffProjectJson {
             name: &new.project_name,
             root: &new.root,
             generated_unix_seconds: new.generated_unix_seconds,
+            source_revision: new.source_revision.as_deref(),
         },
         changes: DiffChangesJson {
             files: change_summary_json(&report.files),
@@ -361,6 +373,7 @@ fn print_git_rewind_json(
             stale: report.stale_items.len(),
             items: check_item_jsons(&report.stale_items),
         },
+        migrations: report.migrations.clone(),
         result: DiffResultJson {
             status: if failed { "failed" } else { "passed" },
             failed,
@@ -404,6 +417,21 @@ pub(super) fn print_change_section(title: &str, summary: &ChangeSummary, max_ite
         print_labeled_items("~", &summary.changed, max_items);
     }
     println!();
+}
+
+fn print_migration_section(migrations: &[susumu::migration::SourceMigration], max_items: usize) {
+    println!("Source migrations:");
+    println!("  candidates: {}", migrations.len());
+    for migration in migrations.iter().take(max_items) {
+        println!(
+            "  - {} {} -> {} ({:?}) {}",
+            migration.kind,
+            migration.old_path,
+            migration.new_path,
+            migration.confidence,
+            migration.detail
+        );
+    }
 }
 
 fn print_labeled_items(prefix: &str, items: &[String], max_items: usize) {

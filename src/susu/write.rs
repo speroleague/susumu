@@ -13,10 +13,11 @@ pub fn write_susu(analysis: &ProjectAnalysis, minified: bool) -> Result<String> 
     let mut statements = vec![
         format!("susu version={}", analysis.schema_version),
         format!(
-            "project name={} root={} generated={}",
+            "project name={} root={} generated={} revision={}",
             quote(&analysis.project_name)?,
             quote(&analysis.root)?,
-            analysis.generated_unix_seconds
+            analysis.generated_unix_seconds,
+            analysis.source_revision.as_deref().unwrap_or("-")
         ),
     ];
     write_source_statements(analysis, &mut statements)?;

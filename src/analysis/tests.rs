@@ -13,6 +13,7 @@ fn analysis_with_expectations(expectations: Vec<Expectation>) -> ProjectAnalysis
         project_name: "demo".to_owned(),
         root: ".".to_owned(),
         generated_unix_seconds: 0,
+        source_revision: None,
         files: vec![SourceFile {
             id: "f_main".to_owned(),
             path: "src/main.rs".to_owned(),

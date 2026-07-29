@@ -10,6 +10,9 @@ pub struct ProjectAnalysis {
     pub project_name: String,
     pub root: String,
     pub generated_unix_seconds: u64,
+    /// The resolved source-control revision used for this scan, when the project is in Git.
+    #[serde(default)]
+    pub source_revision: Option<String>,
     pub files: Vec<SourceFile>,
     pub symbols: Vec<Symbol>,
     pub dependencies: Vec<Dependency>,

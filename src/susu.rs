@@ -43,6 +43,7 @@ struct ParsedAnalysis {
     project_name: Option<String>,
     root: Option<String>,
     generated: Option<u64>,
+    source_revision: Option<String>,
     files: Vec<SourceFile>,
     symbols: Vec<Symbol>,
     dependencies: Vec<Dependency>,
@@ -64,6 +65,7 @@ impl ParsedAnalysis {
             project_name: self.project_name.context("missing project name")?,
             root: self.root.context("missing project root")?,
             generated_unix_seconds: self.generated.context("missing project timestamp")?,
+            source_revision: self.source_revision,
             files: self.files,
             symbols: self.symbols,
             dependencies: self.dependencies,
@@ -110,6 +112,7 @@ fn parse_metadata_statement(
             parsed.project_name = Some(required(&values, "name")?.to_owned());
             parsed.root = Some(required(&values, "root")?.to_owned());
             parsed.generated = Some(parse_number(required(&values, "generated")?, "generated")?);
+            parsed.source_revision = values.get("revision").and_then(|value| optional_id(value));
         }
         _ => unreachable!("non-metadata statement routed to metadata parser"),
     }

@@ -162,6 +162,11 @@ The live portal now provides the first authenticated conversation surface for an
 threads, replies, ownership, and lifecycle status. Broader timeline resources, richer action
 history, and release snapshots remain future work.
 
+When source moves between revisions, use `susumu git rewind --from <ref> --artifact .susumu/project.susu`.
+The comparison records the old and current source revisions and reports exact or candidate mappings
+for renamed files, symbols, and workflows. Candidate mappings are suggestions only: Susumu never
+silently retargets authored expectations, verifications, decisions, work, or review threads.
+
 ## Review artifacts as points in time
 
 A review packet is a snapshot. It is useful when a team needs to ask:

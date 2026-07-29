@@ -250,6 +250,6 @@ This keeps artifacts inspectable, diffable, streamable, and easy for agents to e
 
 ## Evolution rules
 
-The artifact begins with `susu version=N;`. Additive records and fields must preserve old meanings. A breaking semantic change increments the version and requires an explicit migration.
+The artifact begins with `susu version=N;`. Additive records and fields must preserve old meanings. A breaking semantic change increments the version and requires an explicit migration. Project metadata may include `revision=<commit>` when the scan was taken from a Git working tree; older artifacts without it remain valid.
 
 Review threads carry provenance and target links. They are authored or explicitly imported and are not inferred into existence merely because an AI model produced plausible prose.

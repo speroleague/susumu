@@ -90,6 +90,7 @@ The Git surface currently supports:
 - suggestions and JSON output for unconnected commits;
 - signature inspection for configured GPG/SSH commit verification;
 - safe snapshot reconstruction and rewind comparison without mutating the working tree;
+- source-revision provenance plus exact or candidate migration reports during `git rewind`;
 - stale-review detection for changed source, expectations, linked work, verification bases, and decision bases.
 
 Git signatures authenticate commit identity and integrity only. They do not authenticate test execution, business approval, or compliance conclusions.
@@ -119,7 +120,7 @@ Any collaboration backend must preserve these distinctions. A comment, owner ass
 - Full resource-shaped thread actions, webhook processing, richer server-derived timeline resources,
   and authenticated user-management screens remain future frontend/API slices. The current portal
   creates portable review records through the repository synchronization path.
-- Source ids are stable for ordinary scans, but source-revision migration across renames and refactors is not yet a complete feature.
+- Source ids are stable for ordinary scans. Artifacts record the Git revision when available, and `git rewind` reports exact or candidate file, symbol, and workflow migrations across renamed or refactored source without silently rewriting authored records.
 - Dirty propagation is present for important target and basis changes but needs broader, more precise historical coverage.
 - The seven current language families demonstrate the adapter boundary; additional adapters are not the near-term product priority.
 - AI assistance is not required by the core scanner or review workflow and must remain optional, labeled, cited, and human-reviewable.

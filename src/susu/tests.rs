@@ -9,6 +9,7 @@ fn fixture() -> ProjectAnalysis {
         project_name: "demo".to_owned(),
         root: "C:\\demo".to_owned(),
         generated_unix_seconds: 42,
+        source_revision: None,
         files,
         symbols,
         dependencies: Vec::new(),

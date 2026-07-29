@@ -1,6 +1,7 @@
 pub mod analysis;
 pub(crate) mod derived_findings;
 pub mod language;
+pub mod migration;
 pub mod model;
 pub mod scanner;
 #[cfg(feature = "server")]

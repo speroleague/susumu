@@ -382,7 +382,25 @@ async function submitAuthoringRecord(event) {
   button.disabled = true;
   error.hidden = true;
   try {
-    const result = await api(`/api/projects/${encodeURIComponent(state.selected.project_key)}/sync`, { method: "POST", body: JSON.stringify({ base_branch: state.selected.allowed_base_branches[0], changes: [{ path, content: `${currentContent}${currentContent ? "\n" : ""}${buildAuthoringRecord(kind, form)}\n` }] }) });
+    const baseBranch = state.selected.allowed_base_branches[0];
+    const data = Object.fromEntries(new FormData(form));
+    let result;
+    if (kind === "review") {
+      const payload = {
+        base_branch: baseBranch,
+        anchor: data.anchor_kind && data.anchor_id ? `${data.anchor_kind}:${recordValue(data.anchor_id)}` : null,
+        parent: data.parent || null,
+        kind: data.comment_type || "comment",
+        status: data.status || "open",
+        owner: recordValue(data.owner),
+        title: recordValue(data.title),
+        detail: recordValue(data.detail),
+      };
+      const endpoint = payload.parent ? `/api/projects/${encodeURIComponent(state.selected.project_key)}/threads/${encodeURIComponent(payload.parent)}/replies` : `/api/projects/${encodeURIComponent(state.selected.project_key)}/threads`;
+      result = await api(endpoint, { method: "POST", body: JSON.stringify(payload) });
+    } else {
+      result = await api(`/api/projects/${encodeURIComponent(state.selected.project_key)}/sync`, { method: "POST", body: JSON.stringify({ base_branch: baseBranch, changes: [{ path, content: `${currentContent}${currentContent ? "\n" : ""}${buildAuthoringRecord(kind, form)}\n` }] }) });
+    }
     showNotice(result.status === "pending" ? "Your entry is in the active pull request and ready for human review." : `Synchronization is ${result.status}.`);
     await loadRepositoryEvidence(state.selected);
     form.reset();
@@ -554,6 +572,27 @@ function openRecordDetail(record) {
   $("#detail-next-work").addEventListener("click", () => { renderDetail(); setTimeout(() => { renderAuthoringPanel("work"); $("#authoring-panel").scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); });
   $("#new-record-thread").addEventListener("click", () => { renderDetail(); setTimeout(() => { renderAuthoringPanel("review", { anchorKind: record.kind, anchorId: record.id }); $("#authoring-panel").scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); });
   $("#project-detail").querySelectorAll(".thread-reply").forEach((button) => button.addEventListener("click", () => { renderDetail(); setTimeout(() => { renderAuthoringPanel("review", { anchorKind: record.kind, anchorId: record.id, parent: button.dataset.threadId }); $("#authoring-panel").scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); }));
+  $("#project-detail").querySelectorAll(".thread-reply").forEach((replyButton) => {
+    const thread = reviewThreadsFor(record).find((candidate) => candidate.id === replyButton.dataset.threadId);
+    if (!thread) return;
+    const action = document.createElement("button");
+    action.className = "button button-quiet thread-action";
+    action.type = "button";
+    action.textContent = thread.status === "open" ? "Resolve" : "Reopen";
+    action.addEventListener("click", async () => {
+      action.disabled = true;
+      try {
+        const result = await api(`/api/projects/${encodeURIComponent(project.project_key)}/threads/${encodeURIComponent(thread.id)}/actions`, { method: "POST", body: JSON.stringify({ base_branch: project.allowed_base_branches[0], action: thread.status === "open" ? "resolve" : "reopen" }) });
+        showNotice(result.status === "pending" ? "The thread action is in the active pull request and ready for human review." : `Synchronization is ${result.status}.`);
+        await loadRepositoryEvidence(project);
+        openRecordDetail(record);
+      } catch (actionError) {
+        showNotice(actionError.message);
+        action.disabled = false;
+      }
+    });
+    replyButton.parentElement.append(action);
+  });
 }
 
 async function loadProjects() {

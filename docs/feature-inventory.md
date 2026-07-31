@@ -117,10 +117,12 @@ Any collaboration backend must preserve these distinctions. A comment, owner ass
 - The live API now provides authenticated, project and branch-scoped ranked fuzzy search over indexed record summaries, with filters, pagination, synchronization upserts, and periodic base-branch refresh.
 - The static portal is read-only; the optional authenticated frontend is the mutation surface for
   repository registration, connection setup, structured records, review comments, and synchronization.
+  Review conversations use semantic thread, reply, and action endpoints backed by the same active-PR
+  synchronization worker as other bounded sidecar changes.
 - The CLI’s `source` field is declared metadata, not identity authentication.
-- Full resource-shaped thread actions, webhook processing, richer server-derived timeline resources,
-  and authenticated user-management screens remain future frontend/API slices. The current portal
-  creates portable review records through the repository synchronization path.
+- Webhook processing, richer server-derived timeline resources, and authenticated user-management
+  screens remain future frontend/API slices. The current portal creates portable review records
+  through semantic thread endpoints and the repository synchronization path.
 - Source ids are stable for ordinary scans. Artifacts record the Git revision when available, and `git rewind` reports exact or candidate file, symbol, and workflow migrations across renamed or refactored source without silently rewriting authored records.
 - Dirty propagation includes target, expectation, linked work, review-thread context, and source-migration changes, while unresolved migration findings remain explicit and require authored repair.
 - The seven current language families demonstrate the adapter boundary; additional adapters are not the near-term product priority.

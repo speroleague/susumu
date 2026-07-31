@@ -70,7 +70,7 @@ The collaboration API is designed around resource-shaped JSON so the CLI, TUI, f
 - `GET /api/projects/{project}/threads` - threaded review records with target and evidence links;
 - `POST /api/projects/{project}/threads` - create a discussion or question;
 - `POST /api/projects/{project}/threads/{thread}/replies` - add a reply;
-- `POST /api/projects/{project}/threads/{thread}/actions` - propose or record assignment, approval, objection, resolve, reject, or reopen actions according to role and policy;
+- `POST /api/projects/{project}/threads/{thread}/actions` - record assignment or resolve, reopen, accept, or reject lifecycle actions according to role and policy;
 - `GET /api/projects/{project}/readiness` - the same readiness buckets and next actions as the CLI;
 - `GET /api/projects/{project}/findings` - deterministic findings, including compliance-relevant trust-boundary signals;
 - `GET /api/projects/{project}/source/{file}` - source context only for an allowlisted connected repository;
@@ -78,7 +78,7 @@ The collaboration API is designed around resource-shaped JSON so the CLI, TUI, f
 - `GET /api/projects/{project}/sync/conflict` - structured base-branch and active-PR records for a guided conflict review.
 - `POST /api/projects/{project}/sync/conflict` - submit explicit choices for same-record conflicts and materialize the result in the active PR.
 
-The current authenticated portal uses the existing repository-scoped `POST /api/projects/{project}/sync` mutation for review records while the resource-shaped thread endpoints are being materialized. A review record may carry an explicit portable anchor such as `expectation:e_123`, `verification:v_123`, `work:w_123`, or `source:src/app.rs#42`. Replies retain the same anchor and point to their parent review id. This lets the CLI, TUI, exported portal, and live portal show the same conversation without treating discussion as proof.
+The authenticated portal uses the semantic thread endpoints for review conversations. `POST /threads` creates a root discussion, `POST /threads/{thread}/replies` creates an anchored reply, and `POST /threads/{thread}/actions` records assignment or lifecycle changes. These endpoints validate the portable review record, record the authenticated audit event, and delegate materialization to the same repository-scoped synchronization worker used by the generic `POST /sync` path. A review record may carry an explicit portable anchor such as `expectation:e_123`, `verification:v_123`, `work:w_123`, or `source:src/app.rs#42`. Replies inherit their parent anchor and point to their parent review id. This lets the CLI, TUI, exported portal, and live portal show the same conversation without treating discussion as proof.
 
 The searchable record index is refreshed from each configured base branch during authenticated inspection and by the API's periodic refresh loop. Successful Susumu synchronization also upserts the changed sidecars immediately, including removal of records that no longer exist in a changed file. This keeps search current without sending raw sidecar content to the browser. Synchronization state persists the base SHA, active branch head SHA, and observed base SHA. When the base advances, Susumu marks the repository lifecycle as requiring rebase and offers an explicit PR update action. GitHub remains the merge-conflict authority; a failed update stays visible for resolution rather than being overwritten.
 

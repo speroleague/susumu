@@ -6,6 +6,7 @@ mod github;
 mod repository;
 mod search;
 mod sync;
+mod threads;
 mod worker;
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
@@ -81,6 +82,18 @@ pub async fn run() -> anyhow::Result<()> {
         .route(
             "/api/projects/{project_key}/sync/conflict",
             get(sync::conflict).post(sync::resolve_conflict),
+        )
+        .route(
+            "/api/projects/{project_key}/threads",
+            get(threads::list).post(threads::create),
+        )
+        .route(
+            "/api/projects/{project_key}/threads/{thread_id}/replies",
+            post(threads::reply),
+        )
+        .route(
+            "/api/projects/{project_key}/threads/{thread_id}/actions",
+            post(threads::action),
         )
         .route(
             "/api/projects/{project_key}/github/validate",

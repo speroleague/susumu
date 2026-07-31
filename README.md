@@ -143,7 +143,7 @@ On PowerShell, use `Copy-Item .env.example .env` for the first command. Open `ht
 
 An administrator can add a named GitHub App connection, reuse an existing connection, select an available repository, and choose one of its branches. The setup flow stores encrypted credentials in PostgreSQL, not in `.env`; set `SUSUMU_CREDENTIAL_KEY` once in the deployment environment.
 
-The live portal can inspect repository records, search through the API, show record detail and anchored threads, author structured expectations, verifications, work, and review comments, and submit bounded changes through the repository's active PR. The standalone `review.html` export remains read-only.
+The live portal can inspect repository records, search through the API, show record detail and anchored threads, author structured expectations, verifications, work, and review comments, and submit bounded changes through the repository's active PR. Review conversations use semantic thread and reply endpoints backed by that same synchronization lifecycle. The standalone `review.html` export remains read-only.
 
 ## Common commands
 

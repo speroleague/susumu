@@ -391,17 +391,96 @@ struct MaterializedChangeRequest {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct SyncResponse {
-    project_key: String,
-    base_branch: String,
-    status: String,
-    active_branch: Option<String>,
-    pull_request_number: Option<i64>,
-    last_error: Option<String>,
-    base_sha: Option<String>,
-    head_sha: Option<String>,
-    observed_base_sha: Option<String>,
-    rebase_required: bool,
-    conflict_detail: Option<String>,
+    pub(crate) project_key: String,
+    pub(crate) base_branch: String,
+    pub(crate) status: String,
+    pub(crate) active_branch: Option<String>,
+    pub(crate) pull_request_number: Option<i64>,
+    pub(crate) last_error: Option<String>,
+    pub(crate) base_sha: Option<String>,
+    pub(crate) head_sha: Option<String>,
+    pub(crate) observed_base_sha: Option<String>,
+    pub(crate) rebase_required: bool,
+    pub(crate) conflict_detail: Option<String>,
+}
+
+pub(crate) async fn submit_changes(
+    state: &AppState,
+    project_key: &str,
+    base_branch: &str,
+    actor_user_id: &str,
+    changes: Vec<MaterializedChange>,
+) -> Result<SyncResponse, ServerError> {
+    let has_changes = !changes.is_empty();
+    let Some(sync) = state
+        .database
+        .queue_sync(project_key, base_branch, actor_user_id, has_changes)
+        .await?
+    else {
+        return Err(ServerError::NotFound);
+    };
+    if sync.rebase_required {
+        return Err(ServerError::Conflict(
+            "project memory is locked while this repository conflict is unresolved; resolve the conflict before adding more work".to_owned(),
+        ));
+    }
+    if has_changes && sync.status == "syncing" {
+        return Err(ServerError::Conflict(
+            "repository synchronization is already in progress; retry after it finishes".to_owned(),
+        ));
+    }
+    let repository = state.database.project_repository(project_key).await?;
+    let github = match repository.as_ref() {
+        Some(repository) => state
+            .github
+            .read()
+            .await
+            .client(repository.github_connection_id.as_deref()),
+        None => None,
+    };
+    if !changes.is_empty()
+        && let Some(github) = github.as_ref()
+    {
+        synchronize(
+            &state.database,
+            github,
+            project_key,
+            base_branch,
+            &changes,
+            Some(actor_user_id),
+        )
+        .await
+        .map_err(ServerError::Internal)?;
+        let indexed_records = changes
+            .iter()
+            .flat_map(|change| {
+                String::from_utf8(change.content.clone())
+                    .ok()
+                    .and_then(|content| documents_for_sidecar(&change.path, &content).ok())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>();
+        let paths = changes
+            .iter()
+            .map(|change| change.path.clone())
+            .collect::<Vec<_>>();
+        state
+            .database
+            .upsert_search_records(
+                project_key,
+                base_branch,
+                &format!("pending:{base_branch}"),
+                &indexed_records,
+                &paths,
+            )
+            .await?;
+    }
+    let sync = state
+        .database
+        .sync_state(project_key, base_branch)
+        .await?
+        .unwrap_or(sync);
+    Ok(SyncResponse::from_parts(project_key.to_owned(), sync))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -444,76 +523,9 @@ pub(crate) async fn queue(
             })
         })
         .collect::<Result<Vec<_>, ServerError>>()?;
-    let has_changes = !changes.is_empty();
-    let Some(sync) = state
-        .database
-        .queue_sync(&project_key, base_branch, &user.id, has_changes)
-        .await?
-    else {
-        return Err(ServerError::NotFound);
-    };
-    if sync.rebase_required {
-        return Err(ServerError::Conflict(
-            "project memory is locked while this repository conflict is unresolved; resolve the conflict before adding more work".to_owned(),
-        ));
-    }
-    if has_changes && sync.status == "syncing" {
-        return Err(ServerError::Conflict(
-            "repository synchronization is already in progress; retry after it finishes".to_owned(),
-        ));
-    }
-    let repository = state.database.project_repository(&project_key).await?;
-    let github = match repository.as_ref() {
-        Some(repository) => state
-            .github
-            .read()
-            .await
-            .client(repository.github_connection_id.as_deref()),
-        None => None,
-    };
-    if !changes.is_empty()
-        && let Some(github) = github.as_ref()
-    {
-        synchronize(
-            &state.database,
-            github,
-            &project_key,
-            base_branch,
-            &changes,
-            Some(&user.id),
-        )
-        .await
-        .map_err(ServerError::Internal)?;
-        let indexed_records = changes
-            .iter()
-            .flat_map(|change| {
-                String::from_utf8(change.content.clone())
-                    .ok()
-                    .and_then(|content| documents_for_sidecar(&change.path, &content).ok())
-                    .unwrap_or_default()
-            })
-            .collect::<Vec<_>>();
-        let paths = changes
-            .iter()
-            .map(|change| change.path.clone())
-            .collect::<Vec<_>>();
-        state
-            .database
-            .upsert_search_records(
-                &project_key,
-                base_branch,
-                &format!("pending:{base_branch}"),
-                &indexed_records,
-                &paths,
-            )
-            .await?;
-    }
-    let sync = state
-        .database
-        .sync_state(&project_key, base_branch)
-        .await?
-        .unwrap_or(sync);
-    Ok(Json(SyncResponse::from_parts(project_key, sync)))
+    Ok(Json(
+        submit_changes(&state, &project_key, base_branch, &user.id, changes).await?,
+    ))
 }
 
 pub(crate) async fn rebase(

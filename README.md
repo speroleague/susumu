@@ -4,9 +4,7 @@ Susumu makes an existing software project explainable.
 
 It sits between source control, specifications, reviews, and business decisions. Point it at a repository and it builds a deterministic evidence model of source files, symbols, dependencies, workflows, call flows, ambiguity, expectations, verifications, decisions, and work records.
 
-Susumu is local-first today: a Rust scanner, terminal workbench, review packet generator, Git connector, and standalone web review surface. The core scan, check, review packet, and portal loop runs without AI keys. The project is growing toward shared project memory for engineers, AI agents, business stakeholders, and reviewers: what the system is, what it does, what is expected of it, what work addressed those expectations, and what people have decided or questioned.
-
-The optional Dockerized Rust API and Caddy frontend are documented in [Server deployment](docs/deployment.md). They provide authenticated repository collaboration, PostgreSQL-backed users and audit state, multiple encrypted GitHub App connections, API-backed search, structured record authoring, and one-active-PR synchronization per repository. The local CLI, TUI, static HTML export, live portal, API, and CI remain clients of the same project-memory model.
+Susumu is local-first: a Rust scanner, terminal workbench, review packet generator, Git connector, and standalone web review surface. The core scan, check, review packet, and portal loop runs without AI keys. The project is growing toward shared project memory for engineers, AI agents, business stakeholders, and reviewers: what the system is, what it does, what is expected of it, what work addressed those expectations, and what people have decided or questioned.
 
 [View the live Susumu review portal.](https://speroleague.github.io/susumu/)
 
@@ -22,13 +20,12 @@ Choose the path that fits your role:
 | If you are... | Start with... | You will get... |
 | --- | --- | --- |
 | An engineer or agent | The local CLI and TUI | Fast scans, exact source locations, Git links, readiness, and JSON for automation |
-| A business or operations reviewer | The live Docker portal | A branded workspace for repositories, records, search, ownership, threads, and structured authoring |
 | A team sharing review output | The static HTML export | A read-only, portable review packet suitable for GitHub Pages or internal hosting |
-| A CI or platform owner | The CLI, JSON, and Docker deployment guides | Repeatable checks, review artifacts, authenticated API workflows, and per-repository synchronization |
+| A business or operations reviewer | The static HTML portal | A branded, read-only workspace for expectations, evidence ladders, readiness, and review threads |
+| A CI or platform owner | The CLI, JSON, and CI guides | Repeatable checks, review artifacts, and a continuously published portal |
 
-The local CLI and static portal do not need AI keys or a backend. The live portal is optional and
-adds authenticated users, PostgreSQL state, GitHub App connections, API search, and pull-request
-synchronization. All surfaces consume the same `.susu` project-memory model.
+The CLI and static portal do not need AI keys or a backend. All surfaces consume the same `.susu`
+project-memory model.
 
 ## The daily loop
 
@@ -66,8 +63,6 @@ That is the core workflow:
 8. `review-thread` records authored discussion, replies, and ownership without turning them into verification or approval.
 9. `open` starts the local stakeholder/engineering portal.
 
-For business and operations users, the live portal adds repositories through an administrator setup flow. An administrator can reuse an existing GitHub App connection or add another one, choose an available repository, select one of its branches, and begin working without editing `.susu` text. A repository conflict pauses new authoring until the guided resolver is completed.
-
 By convention:
 
 - Humans author `expectations.susu`.
@@ -100,10 +95,8 @@ For the philosophy and team workflow, read [The Susumu Way](docs/the-susumu-way.
 ## Documentation map
 
 - [The Susumu Way](docs/the-susumu-way.md) - the normal daily workflow and how evidence becomes reviewable.
-- [Server deployment](docs/deployment.md) - local Docker testing and production deployment responsibilities.
 - [Feature inventory](docs/feature-inventory.md) - the current capability and limitation checklist.
 - [Artifact contract](docs/artifact.md) - the portable `.susu` record model and evidence boundaries.
-- [Collaboration backend](docs/collaboration-backend.md) - users, repositories, GitHub connections, synchronization, threads, and conflicts.
 - [Verification integrity and provenance](docs/verification-integrity.md) - what evidence levels mean and what they do not prove.
 - [Language and framework adapters](docs/adapters.md) - supported scanner ecosystems and extension boundaries.
 - [Product architecture](docs/vision.md) - the long-term product model and delivery sequence.
@@ -113,37 +106,18 @@ For the philosophy and team workflow, read [The Susumu Way](docs/the-susumu-way.
 
 Susumu is pre-1.0, but it is already an end-to-end product rather than only a scanner. The local
 path is stable enough to use for project review and CI: scan source, author expectations, connect
-Git work, record verifications, inspect readiness, and publish a portable HTML review. The optional
-live path adds authenticated collaboration around connected repositories.
+Git work, record verifications, inspect readiness, and publish a portable HTML review.
 
 | Available now | Still being expanded |
 | --- | --- |
 | Deterministic scanning for seven language families and common HTTP workflow patterns | More workflow types such as jobs, queues, events, tests, databases, and deployments |
 | Portable `.susu` artifacts for observations, expectations, verifications, decisions, work, and review threads | Source-revision migration across renames and refactors |
 | CLI, TUI, static HTML, JSON, and CI review surfaces | Broader and more precise historical dirty-state propagation |
-| Docker API and Caddy portal with local users, PostgreSQL, multiple GitHub App connections, API search, structured forms, anchored threads, ownership, and timelines | Richer server resource endpoints, webhooks, permissions management, and release snapshots |
-| One active synchronization PR per connected repository, with base advancement and guided conflict resolution | Optional BYOK AI assistance after the deterministic review model is stronger |
+| Branded, read-only HTML portal with expectation evidence ladders, readiness grouping, and filterable review threads | Optional BYOK AI assistance after the deterministic review model is stronger |
+| Continuously published portal from CI, using GitHub Pages for open source and the same artifact pattern for internal hosting | Richer portal narratives, accessibility polish, and release snapshots |
 
-Business users do not need GitHub accounts. A Susumu administrator connects one or more GitHub Apps
-to the deployment, then users work through Susumu's authenticated portal. GitHub remains the source
-control provider and pull-request review boundary; Susumu does not write directly to a base branch.
 See the [feature inventory](docs/feature-inventory.md) for the detailed current contract and
 limitations.
-
-## Live repository portal
-
-The optional Docker deployment provides the authenticated workspace for business, operations, and engineering users. It can be deployed with Docker Engine and Compose on Linux, macOS, or Windows:
-
-```sh
-cp .env.example .env
-docker compose up --build
-```
-
-On PowerShell, use `Copy-Item .env.example .env` for the first command. Open `http://localhost:3000` after the containers are healthy. To stop the local stack, run `docker compose down`.
-
-An administrator can add a named GitHub App connection, reuse an existing connection, select an available repository, and choose one of its branches. The setup flow stores encrypted credentials in PostgreSQL, not in `.env`; set `SUSUMU_CREDENTIAL_KEY` once in the deployment environment.
-
-The live portal can inspect repository records, search through the API, show record detail and anchored threads, author structured expectations, verifications, work, and review comments, and submit bounded changes through the repository's active PR. Review conversations use semantic thread and reply endpoints backed by that same synchronization lifecycle. The standalone `review.html` export remains read-only.
 
 ## Common commands
 
@@ -171,7 +145,7 @@ Open the latest static portal export in your default browser:
 cargo run -- open
 ```
 
-Use the local server when the portal needs to be served over HTTP:
+Use the local HTTP server when the portal needs to be served over HTTP:
 
 ```sh
 cargo run -- open --serve
@@ -259,12 +233,7 @@ The scanner can determine support, not satisfaction. If a commit links to an exp
 - Preserves ambiguous and external calls as visible gaps.
 - Reports deterministic findings for large files, long workflow units, high fan-out, ambiguous targets, parse recovery, and call cycles.
 - Carries authored expectations, verification records, decision records, work records, and threaded review records with explicit owners.
-- Shows threaded review records and ownership in both the standalone portal and the engineering TUI.
-- Provides authenticated live portal review with repository switching, searchable record lists, record detail pages, anchored threads, replies, ownership, timelines, and structured forms for expectations, verifications, work, and review comments.
-- Supports multiple encrypted GitHub App connections. Each connected repository records which App connection it uses, and repository discovery and branch selection are scoped to that connection.
-- Maintains one active synchronization branch and pull request per repository, not for the system as a whole. New changes update that repository's active PR until it is merged, then the next change starts a new lifecycle.
-- Detects base-branch advancement, preserves conflicts, and provides a guided record-level resolver. Unique records are included automatically; matching record IDs require an explicit choice.
-- Refreshes the API search index during inspection, after successful sidecar synchronization, and periodically so externally merged changes become searchable.
+- Shows threaded review records and ownership in the standalone portal and the engineering TUI.
 - Flags review threads whose target or reply parent is missing, so discussion remains traceable to current evidence.
 - Summarizes expectation support and machine-readable readiness queues in review packets.
 - Shows an expectation evidence ladder in the portal: observed target, linked work, verification evidence, decision context, review status, and the next suggested action.
@@ -384,7 +353,7 @@ cargo run -- review-thread list --file reviews.susu --status open --owner team-p
 cargo run -- review-thread remove --file reviews.susu r_abc123
 ```
 
-The daily review build automatically loads `reviews.susu` from an initialized project. Review records may target a project, file, symbol, or workflow, and may carry an explicit anchor such as `expectation:e_123`, `verification:v_123`, `work:w_123`, or `source:src/main.rs#42`; `--parent` creates a reply and `--kind` records a question, objection, approval, risk, clarification, decision request, or comment. `--status` and `--owner` filter the CLI list for focused follow-up. Open threads appear as warning-level review work with an owner and next action. Ownership is an authored responsibility label, not an access-control or approval claim. The standalone portal exposes an owner workload summary, live text search, owner/status filters, and next actions in its Threads view, keeping discussion separate from verification evidence. The live portal shows anchored threads when a user opens a record and can submit replies or new threads through the configured review service. The exported HTML is read-only; replies and lifecycle changes require a separately configured review service.
+The daily review build automatically loads `reviews.susu` from an initialized project. Review records may target a project, file, symbol, or workflow, and may carry an explicit anchor such as `expectation:e_123`, `verification:v_123`, `work:w_123`, or `source:src/main.rs#42`; `--parent` creates a reply and `--kind` records a question, objection, approval, risk, clarification, decision request, or comment. `--status` and `--owner` filter the CLI list for focused follow-up. Open threads appear as warning-level review work with an owner and next action. Ownership is an authored responsibility label, not an access-control or approval claim. The standalone portal exposes an owner workload summary, live text search, owner/status filters, and next actions in its Threads view, keeping discussion separate from verification evidence. The exported HTML is read-only; replies and lifecycle changes are made with the CLI or TUI.
 
 Import local Git commits as work records:
 
@@ -559,14 +528,14 @@ See [the artifact contract](docs/artifact.md), [the product architecture](docs/v
 
 - Deepen deterministic adapters for Rust, PHP, Python, JavaScript, TypeScript, TSX, and Vue.
 - Add more workflow types: jobs, queues, events, tests, database boundaries, policies, and deployment checks.
-- Deepen threaded reviews with server-derived timestamps, richer ownership, source revisions, and migration support.
+- Deepen threaded reviews with richer ownership, source revisions, and migration support.
 - Improve dirty/stale review detection so changed code automatically flags affected expectations, verifications, and decisions across history.
-- Expand the live stakeholder portal with richer workflow narratives, accessibility polish, permissions management, and broader timeline/search resources.
+- Expand the stakeholder portal with richer workflow narratives and accessibility polish.
 - Keep AI optional and bring-your-own-key. Generated summaries or draft records should be labeled, cited, and reviewable before becoming trusted project memory.
 
 ## Status
 
-Susumu is pre-1.0 software, but the core product loop is now end to end: scanner -> evidence model -> portable `.susu` records -> CLI/TUI/static HTML/live portal/API/CI consumers. The deterministic evidence model and review boundaries remain the source of truth while collaboration, history, adapters, and deployment hardening continue to mature.
+Susumu is pre-1.0 software, but the core product loop is now end to end: scanner -> evidence model -> portable `.susu` records -> CLI/TUI/static HTML/JSON/CI consumers. The deterministic evidence model and review boundaries remain the source of truth while history, adapters, and review depth continue to mature.
 
 ## License
 

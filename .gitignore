@@ -1,7 +1,3 @@
 /target
 /.susumu
 *.min.susu
-.env
-.env.*
-!.env.example
-docker/github-fixture/test-private-key.pem

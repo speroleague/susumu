@@ -32,7 +32,7 @@ AI may eventually help summarize or propose links, but the core scanner and evid
 - `check --json` and other machine-readable surfaces for agents and automation.
 - Standalone HTML review portal, with independent panes, source views, syntax highlighting, traceability, and calm accessible styling.
 - Optional `susumu.toml` project configuration for portal branding. Branding changes the presentation shell; it must not alter or hide evidence.
-- GitHub Pages and internal hosting are intended deployment paths for continuously available project memory.
+- GitHub Pages and internal static hosting are intended paths for continuously available project memory.
 
 ## Working principles
 

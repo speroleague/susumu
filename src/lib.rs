@@ -4,8 +4,6 @@ pub mod language;
 pub mod migration;
 pub mod model;
 pub mod scanner;
-#[cfg(feature = "server")]
-pub mod server;
 pub mod susu;
 pub mod tui;
 

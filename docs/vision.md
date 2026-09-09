@@ -34,21 +34,22 @@ Comments, questions, approvals, exceptions, unresolved disagreements, and decisi
 
 The Rust TUI is fast, local, keyboard-driven, source-specific, and comfortable in an engineer or agent workflow. It favors density, exact locations, confidence, gaps, and CI-friendly export.
 
-### Stakeholder web experience
+### Stakeholder review portal
 
-The web application is a first-class product, not a browser skin for the TUI. A useful shorthand is "Swagger documentation for the entire system," expanded into a modern workflow and decision portal.
+The standalone HTML portal is a read-only view of the `.susu` model for business, operations, and review audiences. A useful shorthand is "Swagger documentation for the entire system," expanded into a workflow and decision view.
 
-It should provide:
+It provides:
 
 - progressive disclosure from business workflow to technical evidence;
-- narrative workflow pages with success, failure, and exception paths;
+- workflow pages with success, failure, and exception paths;
 - expectation pages showing status, implementation evidence, verification, ownership, and open decisions;
-- timelines of human and agent activity;
-- review threads anchored to workflows, expectations, decisions, or evidence;
+- review threads anchored to workflows, expectations, decisions, or evidence, with owner and status filters;
 - clear confidence and freshness indicators without exposing parser jargon by default;
-- excellent search, responsive layouts, accessible interactions, transitions, and presentation quality suitable for company-wide use.
+- search, responsive layouts, and accessible interactions.
 
-Both surfaces consume the same versioned `.susu` model. Presentation state may differ; factual state may not.
+It is exported from CI and can be published with GitHub Pages or any internal static host. Records are authored and changed with the CLI or TUI, never through the portal.
+
+All surfaces consume the same versioned `.susu` model. Presentation state may differ; factual state may not.
 
 ## AI boundary
 
@@ -66,6 +67,6 @@ In a company workflow, AI can still be valuable as a record-keeping assistant: d
 2. Expand the initial framework-aware HTTP adapters into queues/events, jobs, database boundaries, and tests.
 3. Extend deterministic identifiers with source-revision provenance and migration support.
 4. Expand authored expectations and verification into decisions, work records, and review records.
-5. Build the stakeholder web experience on the same artifact and local server.
+5. Build the stakeholder review portal as a standalone HTML export of the same artifact.
 6. Add CI comparison, freshness, policy checks, and agent-oriented query/update commands.
 7. Add optional BYOK assistance only where deterministic analysis and human input are insufficient.

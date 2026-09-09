@@ -282,13 +282,9 @@ public function store() {
     let analysis = scan_project(directory.path()).unwrap();
 
     assert_eq!(analysis.language_counts().get(&Language::Php), Some(&1));
-    assert!(
-        analysis
-            .symbols
-            .iter()
-            .any(|symbol| symbol.name == "checkout"
-                && symbol.kind == crate::model::SymbolKind::Function)
-    );
+    assert!(analysis.symbols.iter().any(
+        |symbol| symbol.name == "checkout" && symbol.kind == crate::model::SymbolKind::Function
+    ));
     assert!(analysis.symbols.iter().any(
         |symbol| symbol.name == "store" && symbol.kind == crate::model::SymbolKind::Method
     ));
@@ -382,13 +378,9 @@ Router::new().route("/users", get(list_users));
             && workflow.entry_symbol.is_some()
     }));
     assert_eq!(analysis.workflow_priorities.len(), analysis.workflows.len());
-    assert!(
-        analysis
-            .workflow_priorities
-            .iter()
-            .any(|priority| priority.score > 0
-                && priority.detail.contains("workflow trigger observed"))
-    );
+    assert!(analysis.workflow_priorities.iter().any(
+        |priority| priority.score > 0 && priority.detail.contains("workflow trigger observed")
+    ));
 }
 
 #[test]

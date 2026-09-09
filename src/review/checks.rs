@@ -80,9 +80,7 @@ fn add_finding_check_items(analysis: &ProjectAnalysis, items: &mut Vec<CheckItem
         let severity = match finding.severity {
             Severity::Error => CheckSeverity::Critical,
             Severity::Warning => CheckSeverity::Warning,
-            Severity::Info if matches!(finding.rule_id.as_str(), "SUS023" | "SUS033") => {
-                CheckSeverity::Warning
-            }
+            Severity::Info if finding.is_dirty_evidence() => CheckSeverity::Warning,
             Severity::Info => continue,
         };
         items.push(CheckItem {

@@ -274,7 +274,7 @@ fn freshness_check_items(analysis: &ProjectAnalysis) -> Vec<CheckItem> {
     analysis
         .findings
         .iter()
-        .filter(|finding| matches!(finding.rule_id.as_str(), "SUS023" | "SUS033"))
+        .filter(|finding| finding.is_dirty_evidence())
         .map(|finding| CheckItem {
             severity: CheckSeverity::Warning,
             title: format!("{}: {}", finding.rule_id, finding.title),

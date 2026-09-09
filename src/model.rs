@@ -271,6 +271,18 @@ pub struct Finding {
     pub location: Option<Location>,
 }
 
+/// Finding rule ids that mean "a verification or decision was recorded against
+/// evidence that has since changed" — the dirty-evidence findings.
+pub const DIRTY_FINDING_RULES: [&str; 2] = ["SUS023", "SUS033"];
+
+impl Finding {
+    /// Whether this finding reports changed verification or decision evidence.
+    #[must_use]
+    pub fn is_dirty_evidence(&self) -> bool {
+        DIRTY_FINDING_RULES.contains(&self.rule_id.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {

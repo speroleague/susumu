@@ -146,7 +146,7 @@ fn handoff_caveats(analysis: &ProjectAnalysis, check: &CheckReport) -> Vec<Strin
     let stale = analysis
         .findings
         .iter()
-        .filter(|finding| matches!(finding.rule_id.as_str(), "SUS023" | "SUS033"))
+        .filter(|finding| finding.is_dirty_evidence())
         .count();
     if stale > 0 {
         caveats.push(format!(

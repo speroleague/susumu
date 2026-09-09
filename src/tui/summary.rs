@@ -319,9 +319,7 @@ pub(super) fn add_finding_review_items(analysis: &ProjectAnalysis, items: &mut V
         let severity = match finding.severity {
             Severity::Error => ReviewSeverity::Critical,
             Severity::Warning => ReviewSeverity::Warning,
-            Severity::Info if matches!(finding.rule_id.as_str(), "SUS023" | "SUS033") => {
-                ReviewSeverity::Warning
-            }
+            Severity::Info if finding.is_dirty_evidence() => ReviewSeverity::Warning,
             Severity::Info => continue,
         };
         let jump = if finding.rule_id == "SUS023" {

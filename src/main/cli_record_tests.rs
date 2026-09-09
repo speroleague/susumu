@@ -36,7 +36,7 @@ fn verify_shortcut_writes_verification_sidecar() {
     .expect("write expectations sidecar");
     let output = temp.path().join("verifications.susu");
 
-    verify_shortcut(VerifyArgs {
+    verify_shortcut(&VerifyArgs {
         expectation: "e_verify".to_owned(),
         target: temp.path().to_path_buf(),
         file: output.clone(),
@@ -69,6 +69,17 @@ fn verify_shortcut_writes_verification_sidecar() {
             .detail
             .contains("Recorded by susumu verify.")
     );
+    // The basis is stamped from the scanned project so later runs can detect change.
+    assert!(
+        verifications[0]
+            .basis
+            .as_deref()
+            .is_some_and(|basis| basis.starts_with("review-v2:")),
+        "verify should stamp a review basis, got {:?}",
+        verifications[0].basis
+    );
+    // The temp project is not a Git work tree, so no revision is recorded.
+    assert_eq!(verifications[0].revision, None);
 }
 
 #[test]

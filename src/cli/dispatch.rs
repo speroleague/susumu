@@ -59,7 +59,7 @@ fn run_project_navigation(command: Command) -> Result<()> {
         Command::Readiness(args) => readiness_command::run(&args),
         Command::Resolve(args) => resolve_target(&args),
         Command::Expectations(args) => expectations_shortcut(&args),
-        Command::Verify(args) => verify_shortcut(args),
+        Command::Verify(args) => verify_shortcut(&args),
         _ => unreachable!("non-navigation command routed to navigation dispatcher"),
     }
 }

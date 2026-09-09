@@ -217,6 +217,13 @@ susumu verify e_checkout_sequence --failed --method "manual QA"
 susumu verify e_checkout_sequence --inconclusive --method "reviewed logs"
 ```
 
+`susumu verify` records the review basis and the current Git revision alongside
+the check. When code under the checked target later changes, `susumu review` and
+`susumu check` raise `SUS023` and name the commit that caused it. Use
+`susumu check --fail-on-dirty` in CI or a pre-merge hook to block on changed
+evidence, and `susumu verify` again (or a `susumu decision add` that accepts the
+change) to clear it.
+
 That boundary is the trust model.
 
 ## When to use advanced commands

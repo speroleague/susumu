@@ -58,7 +58,7 @@ Current deterministic findings include:
 - `SUS005`: recursive or cyclic call flow;
 - `SUS010`-`SUS012`: malformed or stale expectation targets;
 - `SUS020`: verification points at a missing expectation;
-- `SUS023`: verification basis changed and needs renewed review;
+- `SUS023`: verification basis changed and needs renewed review; commit-attributed when the record carries a `revision`;
 - `SUS056`: an authored record still references a source identity from an older revision and needs explicit migration review;
 - `SUS030`-`SUS033`: malformed, stale, or changed decision targets;
 - `SUS040`-`SUS043`: malformed, stale, or missing work targets and expectation links;
@@ -77,6 +77,7 @@ The review system currently provides:
 - human-readable and JSON readiness output with search and bucket filters;
 - review packets containing the artifact, check report, handoff state, readiness state, support summaries, next actions, and source previews;
 - packet diffing and Git rewind comparison with stale-evidence reporting;
+- commit-attributed dirty findings: `susumu review` and `susumu check` walk the Git history since a verification or decision's recorded `revision` and name the commit(s) that changed the target, with a `susumu check --fail-on-dirty` gate;
 - TUI review and connections jumps to the relevant record or review-thread context;
 - portal overview, readiness, review, threads, workflow evidence, traceability, source, records, dirty/stale evidence, artifact, and next-action views.
 

@@ -88,7 +88,7 @@ The review problem is intentionally explicit: later verification records can say
 Verification records say how an expectation was checked. They are explicit evidence records, not inferred proof.
 
 ```susu
-verification v_checkout_order expectation=e_91bbd1 status=passed method="cargo test checkout_order" source="ci:github-actions" evidence="run:123456" basis=3a834e7a4f2d901c detail="The checkout order test passed in CI.";
+verification v_checkout_order expectation=e_91bbd1 status=passed method="cargo test checkout_order" source="ci:github-actions" evidence="run:123456" basis=3a834e7a4f2d901c revision=1c9a4f0 detail="The checkout order test passed in CI.";
 ```
 
 Verification-only sidecars can be created and managed from the CLI. A verification can optionally carry `--basis`; verifications without a basis are anchored to the checked expectation target fingerprint when merged into a scan artifact.
@@ -110,9 +110,10 @@ cargo run -- ./path/to/project --expectations expectations.susu --verifications 
 - `method` names the check, such as a test command, manual review, policy check, or trace inspection.
 - `source` records provenance for the verification.
 - `evidence` is an optional external or future `.susu` evidence id, or `-`.
-- `basis` is an optional evidence fingerprint recorded when the verification was performed or merged. It fingerprints the current target of the checked expectation, not the verification text itself.
+- `basis` is an optional evidence fingerprint recorded when the verification was performed or merged. It fingerprints the current target of the checked expectation plus its linked expectation, work, and review records, not the verification text itself.
+- `revision` is the source-control revision the check was recorded against, or `-`. `susumu verify`, `susumu verification add`, and `susumu decision add` stamp `basis` and `revision` automatically when run inside a project.
 
-If a later scan observes that the checked expectation target fingerprint differs from the verification's recorded `basis`, Susumu marks the verification for review with `SUS023`. The verification status is not changed; the finding only says that the evidence the check was based on changed.
+If a later scan observes that the checked expectation target fingerprint differs from the verification's recorded `basis`, Susumu marks the verification for review with `SUS023`. The verification status is not changed; the finding only says that the evidence the check was based on changed. When the project is in Git and the verification carries a `revision`, `susumu review` and `susumu check` walk the history since that revision and name the commit(s) that changed the target file in the `SUS023` detail.
 
 ### What counts as verified
 
@@ -134,14 +135,14 @@ Susumu validates expectation links when artifacts are scanned or opened:
 - `SUS011` - an expectation points at an id that is not present in the current artifact.
 - `SUS012` - a project-wide expectation carries a subject id even though it should use `subject=-`.
 - `SUS020` - a verification points at an expectation id that is not present in the current artifact.
-- `SUS023` - a verification's recorded basis differs from the current fingerprint of the checked expectation target.
+- `SUS023` - a verification's recorded basis differs from the current fingerprint of the checked expectation target; the detail names the causing commit(s) when a `revision` is recorded.
 
 ## Decisions
 
 Decision records capture authored judgment. They are where approvals, rejected proposals, temporary exceptions, tradeoffs, and unresolved choices become inspectable project memory. They do not prove implementation behavior; they explain what a person, policy process, or imported system decided about a target.
 
 ```susu
-decision d_release_exception target=workflow subject=w_8feec23b6a19d218 status=accepted source="human:director" basis=3a834e7a4f2d901c title="Accept checkout exception" detail="The team accepts this implementation exception for the current release with follow-up verification required.";
+decision d_release_exception target=workflow subject=w_8feec23b6a19d218 status=accepted source="human:director" basis=3a834e7a4f2d901c revision=1c9a4f0 title="Accept checkout exception" detail="The team accepts this implementation exception for the current release with follow-up verification required.";
 ```
 
 Decision-only sidecars can be created and managed from the CLI:
@@ -163,8 +164,9 @@ cargo run -- ./path/to/project --expectations expectations.susu --verifications 
 - `status` is `proposed`, `accepted`, `rejected`, or `superseded`.
 - `source` records provenance, not authority. Examples: `human:director`, `human:architect`, `policy:security`, or `import:jira`.
 - `basis` is an optional evidence fingerprint recorded when the decision was made or merged. Decisions without a basis are anchored to the current target fingerprint when merged into a scan artifact.
+- `revision` is the source-control revision the decision was recorded against, or `-`.
 
-If a later scan observes that a decision's current target fingerprint differs from its recorded `basis`, Susumu marks the decision for review with `SUS033`. The decision status is not changed; the finding only says the evidence it was based on changed.
+If a later scan observes that a decision's current target fingerprint differs from its recorded `basis`, Susumu marks the decision for review with `SUS033`. The decision status is not changed; the finding only says the evidence it was based on changed. As with `SUS023`, when the decision carries a `revision` the finding detail names the commit(s) that changed the target.
 
 Susumu validates decision links when artifacts are scanned or opened:
 
@@ -250,6 +252,6 @@ This keeps artifacts inspectable, diffable, streamable, and easy for agents to e
 
 ## Evolution rules
 
-The artifact begins with `susu version=N;`. Additive records and fields must preserve old meanings. A breaking semantic change increments the version and requires an explicit migration. Project metadata may include `revision=<commit>` when the scan was taken from a Git working tree; older artifacts without it remain valid.
+The artifact begins with `susu version=N;`. Additive records and fields must preserve old meanings. A breaking semantic change increments the version and requires an explicit migration. Project metadata may include `revision=<commit>` when the scan was taken from a Git working tree, and verification and decision records may include their own `revision=<commit>`; older artifacts without these remain valid.
 
 Review threads carry provenance and target links. They are authored or explicitly imported and are not inferred into existence merely because an AI model produced plausible prose.

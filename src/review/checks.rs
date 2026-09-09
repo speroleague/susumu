@@ -29,12 +29,17 @@ pub(crate) fn check_report(analysis: &ProjectAnalysis, strict: bool) -> CheckRep
         .iter()
         .filter(|item| item.severity == CheckSeverity::Attention)
         .count();
+    let dirty = items
+        .iter()
+        .filter(|item| item.title.starts_with("SUS023") || item.title.starts_with("SUS033"))
+        .count();
     let failed = critical > 0 || (strict && warning > 0);
     CheckReport {
         items,
         critical,
         warning,
         attention,
+        dirty,
         strict,
         failed,
     }
@@ -188,6 +193,9 @@ pub(crate) fn print_check_report(
     println!("  critical: {}", report.critical);
     println!("  warning: {}", report.warning);
     println!("  attention: {}", report.attention);
+    if report.dirty > 0 {
+        println!("  changed evidence: {}", report.dirty);
+    }
     println!();
 
     if report.items.is_empty() {
@@ -257,6 +265,7 @@ pub(crate) fn check_json<'a>(
             critical: report.critical,
             warning: report.warning,
             attention: report.attention,
+            dirty: report.dirty,
         },
         result: CheckResultJson {
             status: if report.failed { "failed" } else { "passed" },

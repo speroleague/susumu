@@ -92,6 +92,7 @@ use git::reports::{print_git_connect_json, print_git_connect_report};
 #[cfg(test)]
 use git::snapshot::safe_snapshot_path;
 use git::snapshot::{git_repo_label, git_snapshot_dir};
+use git::staleness::{DEFAULT_HISTORY_LIMIT, enrich_stale_findings};
 use git::types::{
     GitCommit, GitConnectExport, GitExpectationLink, GitImportContext, GitImportJson,
     GitImportRecordJson, GitWorkTarget, ImportedGitWork,

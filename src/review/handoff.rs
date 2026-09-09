@@ -363,6 +363,7 @@ pub(crate) fn print_handoff_json(
             critical: check.critical,
             warning: check.warning,
             attention: check.attention,
+            dirty: check.dirty,
         },
         result: CheckResultJson {
             status: if check.failed { "failed" } else { "passed" },
@@ -420,6 +421,7 @@ mod tests {
             findings: Vec::new(),
         };
         let check = CheckReport {
+            dirty: 0,
             items: vec![CheckItem {
                 severity: CheckSeverity::Warning,
                 title: "Review something".to_owned(),

@@ -22,6 +22,8 @@ pub(crate) struct CheckReport {
     pub(crate) critical: usize,
     pub(crate) warning: usize,
     pub(crate) attention: usize,
+    /// Items reporting changed verification or decision evidence (SUS023 / SUS033).
+    pub(crate) dirty: usize,
     pub(crate) strict: bool,
     pub(crate) failed: bool,
 }
@@ -74,6 +76,7 @@ pub(crate) struct CheckReviewJson {
     pub(crate) critical: usize,
     pub(crate) warning: usize,
     pub(crate) attention: usize,
+    pub(crate) dirty: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -341,6 +344,8 @@ pub(crate) const fn check_result_reason(report: &CheckReport) -> &'static str {
         } else {
             "strict mode treats warnings as blockers"
         }
+    } else if report.dirty > 0 {
+        "passed with changed evidence"
     } else if report.warning > 0 || report.attention > 0 {
         "passed with review items"
     } else {
@@ -365,6 +370,7 @@ mod tests {
         let report = CheckReport {
             items: Vec::new(),
             critical: 0,
+            dirty: 0,
             warning: 1,
             attention: 0,
             strict: false,

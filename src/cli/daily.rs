@@ -103,6 +103,7 @@ pub(crate) fn status_shortcut(args: &StatusArgs) -> Result<()> {
         decisions: None,
         work,
         strict: args.strict,
+        fail_on_dirty: false,
         max_items: args.max_items,
         json: args.json,
     })

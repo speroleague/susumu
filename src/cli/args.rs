@@ -50,6 +50,10 @@ pub(crate) struct CheckArgs {
     #[arg(long)]
     pub(crate) strict: bool,
 
+    /// Fail when any verification or decision has changed evidence (SUS023 / SUS033).
+    #[arg(long)]
+    pub(crate) fail_on_dirty: bool,
+
     /// Maximum review items to print.
     #[arg(long, default_value_t = 10)]
     pub(crate) max_items: usize,

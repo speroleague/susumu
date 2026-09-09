@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use susumu::model::{
     Expectation, ExpectationStatus, ExpectationTarget, ProjectAnalysis, VerificationStatus,
 };
@@ -18,6 +20,7 @@ pub(crate) fn expectation_support(analysis: &ProjectAnalysis) -> Vec<Expectation
             let work = expectation_work_support_count(analysis, expectation);
             let decisions = expectation_decision_support_count(analysis, expectation);
             let findings = expectation_finding_support_count(analysis, expectation);
+            let dirty = expectation_dirty_evidence(analysis, expectation);
             let (support_status, reasons) = expectation_support_status(
                 expectation,
                 target_observed,
@@ -25,6 +28,7 @@ pub(crate) fn expectation_support(analysis: &ProjectAnalysis) -> Vec<Expectation
                 work,
                 decisions,
                 findings,
+                dirty,
             );
             ExpectationSupport {
                 expectation_id: expectation.id.clone(),
@@ -36,6 +40,7 @@ pub(crate) fn expectation_support(analysis: &ProjectAnalysis) -> Vec<Expectation
                 work,
                 decisions,
                 findings,
+                dirty,
                 support_status,
                 evidence_posture,
                 reasons,
@@ -96,6 +101,8 @@ fn expectation_readiness_bucket(support: &ExpectationSupport) -> (&'static str, 
         ("failed_verification", "Failed verification")
     } else if !support.target_observed {
         ("missing_target", "Missing target")
+    } else if support.dirty && support.verification.passed > 0 {
+        ("needs_reverification", "Verified, evidence changed")
     } else if support.verification.passed > 0 {
         ("verified", "Verified")
     } else if support.work > 0 {
@@ -109,10 +116,11 @@ const fn readiness_bucket_rank(bucket: &str) -> u8 {
     match bucket.as_bytes() {
         b"failed_verification" => 0,
         b"missing_target" => 1,
-        b"needs_verification" => 2,
-        b"needs_work" => 3,
-        b"verified" => 4,
-        _ => 5,
+        b"needs_reverification" => 2,
+        b"verified" => 3,
+        b"needs_verification" => 4,
+        b"needs_work" => 5,
+        _ => 6,
     }
 }
 
@@ -125,6 +133,12 @@ fn expectation_readiness_next_action(
     }
     if !support.target_observed {
         return "Find or reconnect the target this expectation is about.".to_owned();
+    }
+    if support.dirty && support.verification.passed > 0 {
+        return format!(
+            "Evidence changed since it was recorded. Re-verify with `susumu verify {} --supersedes <old>` or record a decision that accepts the change.",
+            support.expectation_id
+        );
     }
     if support.verification.passed > 0 {
         return "Verified: ready for review or business confidence.".to_owned();
@@ -239,6 +253,28 @@ fn expectation_finding_support_count(
         .count()
 }
 
+/// Whether a verification of this expectation, or a decision on its target, was
+/// recorded against evidence that has since changed (SUS023 / SUS033).
+fn expectation_dirty_evidence(analysis: &ProjectAnalysis, expectation: &Expectation) -> bool {
+    let dirty_records: BTreeSet<&str> = analysis
+        .findings
+        .iter()
+        .filter(|finding| finding.is_dirty_evidence())
+        .filter_map(|finding| finding.subject.as_deref())
+        .collect();
+    if dirty_records.is_empty() {
+        return false;
+    }
+    analysis.verifications.iter().any(|verification| {
+        verification.expectation_id == expectation.id
+            && dirty_records.contains(verification.id.as_str())
+    }) || analysis.decisions.iter().any(|decision| {
+        decision.target == expectation.target
+            && decision.subject == expectation.subject
+            && dirty_records.contains(decision.id.as_str())
+    })
+}
+
 fn expectation_support_status(
     expectation: &Expectation,
     target_observed: bool,
@@ -246,6 +282,7 @@ fn expectation_support_status(
     work: usize,
     decisions: usize,
     findings: usize,
+    dirty: bool,
 ) -> (String, Vec<String>) {
     let mut reasons = Vec::new();
     if target_observed {
@@ -283,6 +320,9 @@ fn expectation_support_status(
     if verification.passed + verification.failed + verification.inconclusive == 0 {
         reasons.push("no verification records linked".to_owned());
     }
+    if dirty {
+        reasons.push("verification or decision evidence changed since it was recorded".to_owned());
+    }
 
     let status = if matches!(expectation.status, ExpectationStatus::Superseded) {
         "superseded"
@@ -290,6 +330,8 @@ fn expectation_support_status(
         "missing_target"
     } else if verification.failed > 0 {
         "failed_verification"
+    } else if dirty && verification.passed > 0 {
+        "changed_evidence"
     } else if verification.passed > 0 {
         "verified"
     } else if verification.inconclusive > 0 {
@@ -305,7 +347,10 @@ fn expectation_support_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use susumu::model::{Expectation, SCHEMA_VERSION, Work, WorkKind, WorkStatus};
+    use susumu::model::{
+        Expectation, Finding, SCHEMA_VERSION, Severity, Verification, VerificationStatus, Work,
+        WorkKind, WorkStatus,
+    };
 
     #[test]
     fn readiness_marks_work_without_verification_as_needing_verification() {
@@ -356,5 +401,122 @@ mod tests {
         assert_eq!(support[0].work, 1);
         assert_eq!(readiness[0].bucket, "needs_verification");
         assert!(readiness[0].next_action.contains("susumu verify e_project"));
+    }
+
+    fn project_artifact() -> ProjectAnalysis {
+        ProjectAnalysis {
+            schema_version: SCHEMA_VERSION,
+            project_name: "fixture".to_owned(),
+            root: ".".to_owned(),
+            generated_unix_seconds: 0,
+            source_revision: None,
+            files: Vec::new(),
+            symbols: Vec::new(),
+            dependencies: Vec::new(),
+            workflows: Vec::new(),
+            workflow_priorities: Vec::new(),
+            flows: Vec::new(),
+            expectations: vec![Expectation {
+                id: "e_project".to_owned(),
+                target: ExpectationTarget::Project,
+                subject: None,
+                status: ExpectationStatus::Accepted,
+                source: "human:test".to_owned(),
+                title: "Project expectation".to_owned(),
+                detail: "The project expectation should be supported.".to_owned(),
+            }],
+            verifications: Vec::new(),
+            decisions: Vec::new(),
+            works: Vec::new(),
+            review_threads: Vec::new(),
+            findings: Vec::new(),
+        }
+    }
+
+    fn passed_verification(id: &str) -> Verification {
+        Verification {
+            id: id.to_owned(),
+            expectation_id: "e_project".to_owned(),
+            status: VerificationStatus::Passed,
+            supersedes: None,
+            execution: None,
+            chain: None,
+            method: "manual".to_owned(),
+            source: "human:test".to_owned(),
+            evidence: None,
+            basis: Some("review-v2:x".to_owned()),
+            revision: None,
+            detail: "checked".to_owned(),
+        }
+    }
+
+    #[test]
+    fn verified_expectation_reports_verified_bucket() {
+        let mut artifact = project_artifact();
+        artifact
+            .verifications
+            .push(passed_verification("v_project"));
+
+        let support = expectation_support(&artifact);
+        let readiness = expectation_readiness(&artifact, &support);
+
+        assert!(!support[0].dirty);
+        assert_eq!(support[0].support_status, "verified");
+        assert_eq!(readiness[0].bucket, "verified");
+    }
+
+    #[test]
+    fn changed_evidence_outranks_verified_and_gets_a_reverify_action() {
+        let mut artifact = project_artifact();
+        artifact
+            .verifications
+            .push(passed_verification("v_project"));
+        artifact.expectations.push(Expectation {
+            id: "e_other".to_owned(),
+            target: ExpectationTarget::Project,
+            subject: None,
+            status: ExpectationStatus::Accepted,
+            source: "human:test".to_owned(),
+            title: "Other".to_owned(),
+            detail: "d".to_owned(),
+        });
+        artifact.verifications.push(Verification {
+            id: "v_other".to_owned(),
+            expectation_id: "e_other".to_owned(),
+            ..passed_verification("v_other")
+        });
+        artifact.findings.push(Finding {
+            rule_id: "SUS023".to_owned(),
+            source: "susumu:derived".to_owned(),
+            severity: Severity::Warning,
+            title: "Verification evidence changed".to_owned(),
+            detail: "changed".to_owned(),
+            file_id: None,
+            subject: Some("v_project".to_owned()),
+            location: None,
+        });
+
+        let support = expectation_support(&artifact);
+        let readiness = expectation_readiness(&artifact, &support);
+
+        let project = support
+            .iter()
+            .find(|s| s.expectation_id == "e_project")
+            .unwrap();
+        let other = support
+            .iter()
+            .find(|s| s.expectation_id == "e_other")
+            .unwrap();
+        assert!(project.dirty);
+        assert!(!other.dirty);
+        assert_eq!(project.support_status, "changed_evidence");
+        assert_eq!(other.support_status, "verified");
+
+        // needs_reverification (rank 2) sorts above verified (rank 3).
+        assert_eq!(readiness[0].expectation_id, "e_project");
+        assert_eq!(readiness[0].bucket, "needs_reverification");
+        assert_eq!(readiness[0].label, "Verified, evidence changed");
+        assert!(readiness[0].next_action.contains("--supersedes"));
+        assert_eq!(readiness[1].bucket, "verified");
     }
 }

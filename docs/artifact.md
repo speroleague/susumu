@@ -2,7 +2,7 @@
 
 `.susu` is the portable boundary between evidence producers and product experiences.
 
-Producers include language scanners, framework adapters, source-control readers, test runners, CI systems, requirement importers, humans, and optional AI assistants. Consumers include the engineering TUI, CI checks, agent tools, static exports, and the authenticated stakeholder web application.
+Producers include language scanners, framework adapters, source-control readers, test runners, CI systems, requirement importers, humans, and optional AI assistants. Consumers include the engineering TUI, CI checks, agent tools, and the standalone HTML review portal.
 
 ## Version 1 records
 
@@ -43,7 +43,7 @@ attention workflow=w_8feec23b6a19d218 source="susumu:derived" score=79 detail="w
 
 Current signals include observed workflow triggers, resolved handler symbols, observed HTTP routes, fan-out, unresolved outgoing call edges, linked expectations, failed or inconclusive verification records, and linked findings.
 
-The TUI and live portal can put the highest-scoring workflows near the top while still showing the reasons behind the score.
+The TUI and portal can put the highest-scoring workflows near the top while still showing the reasons behind the score.
 
 Legacy artifacts that use the older `priority` record name are still accepted by the parser, but new artifacts write `attention`.
 

@@ -1,6 +1,6 @@
 # Susumu feature inventory
 
-This is the baseline inventory for the repository-connected collaboration work. New API and frontend features must preserve these behaviors, records, output surfaces, and trust boundaries.
+This is the baseline inventory of Susumu's current behaviors, records, output surfaces, and trust boundaries. New features must preserve them.
 
 ## Product surfaces
 
@@ -15,7 +15,6 @@ These surfaces are complementary rather than role-locked:
 
 | Surface | Business and operations | Engineering | CI and automation |
 | --- | --- | --- | --- |
-| Live API and frontend | Review, search, discuss, assign, and follow repository evidence | Same collaboration workflows plus engineering evidence and source context | Consume or update through authenticated service credentials where configured |
 | Static HTML export | Read-only review and evidence browsing | Read-only review and handoff context | Published artifact and regression surface |
 | TUI | Optional | Primary interactive engineering workbench | Not normally used |
 | CLI and JSON | Optional scripting and exports | Primary authoring, inspection, Git, and review commands | Primary automation, checks, packet builds, and readiness gates |
@@ -109,27 +108,18 @@ The current posture levels are:
 
 Attestation inspection is structural unless a future configured verifier authenticates the issuer, signature, execution claims, artifact retention, and policy. Execution metadata remains declared until authenticated. Hashes establish byte identity, not test execution or compliance. Review and decision bases produce renewed-review findings when their supporting evidence changes.
 
-Any collaboration backend must preserve these distinctions. A comment, owner assignment, approval, objection, pull request, merge, or authenticated user action must not be rendered as a verification result or compliance certification.
+Any review surface must preserve these distinctions. A comment, owner assignment, approval, or objection must not be rendered as a verification result or compliance certification.
 
 ## Current limitations to preserve visibly
 
-- The live API authenticates application users, stores append-only audit events, and keeps synchronization state server-side. Portable review records still carry declared human provenance; an authenticated session is not proof that a claim is true.
-- The live API now provides authenticated, project and branch-scoped ranked fuzzy search over indexed record summaries, with filters, pagination, synchronization upserts, and periodic base-branch refresh.
-- The static portal is read-only; the optional authenticated frontend is the mutation surface for
-  repository registration, connection setup, structured records, review comments, and synchronization.
-  Review conversations use semantic thread, reply, and action endpoints backed by the same active-PR
-  synchronization worker as other bounded sidecar changes.
+- The static HTML portal is read-only. Records are authored and changed only with the CLI or TUI.
+- Portable review records carry declared human provenance; a `source` label is not proof that a claim is true.
 - The CLI’s `source` field is declared metadata, not identity authentication.
-- Webhook processing, richer server-derived timeline resources, and authenticated user-management
-  screens remain future frontend/API slices. The current portal creates portable review records
-  through semantic thread endpoints and the repository synchronization path.
 - Source ids are stable for ordinary scans. Artifacts record the Git revision when available, and `git rewind` reports exact or candidate file, symbol, and workflow migrations across renamed or refactored source without silently rewriting authored records.
 - Dirty propagation includes target, expectation, linked work, review-thread context, and source-migration changes, while unresolved migration findings remain explicit and require authored repair.
 - The seven current language families demonstrate the adapter boundary; additional adapters are not the near-term product priority.
 - AI assistance is not required by the core scanner or review workflow and must remain optional, labeled, cited, and human-reviewable.
 
-## Contract for the next phase
+## Contract for new work
 
-The API, CLI, TUI, CI integrations, static exports, and live frontend should consume the same packet and record model. The live backend may add authenticated actor, timestamp, audit-event, repository-connection, and synchronization metadata, but it must export portable `.susu` records without weakening the evidence vocabulary above.
-
-The GitHub integration is a repository connection managed by an administrator, not a required identity provider for business users. Each connected repository may have one active Susumu synchronization branch and pull request; synchronization state is never global to the Susumu deployment. A configured base branch selects the repository’s current lifecycle context. New changes update that repository pull request until it is merged; the next change after merge begins a new synchronization cycle for that repository.
+The CLI, TUI, CI integrations, and static HTML export all consume the same packet and record model. Any new surface must read and write portable `.susu` records without weakening the evidence vocabulary above.

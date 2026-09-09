@@ -158,9 +158,9 @@ The portal should answer:
 - Which verification or decision records became dirty because an expectation or linked work record changed?
 - What changed and may need review?
 
-The live portal now provides the first authenticated conversation surface for anchored review
-threads, replies, ownership, and lifecycle status. Broader timeline resources, richer action
-history, and release snapshots remain future work.
+Anchored review threads, replies, ownership, and lifecycle status are authored with the
+`susumu review-thread` commands and shown in the TUI and the exported portal. Broader timeline
+resources, richer action history, and release snapshots remain future work.
 
 When source moves between revisions, use `susumu git rewind --from <ref> --artifact .susumu/project.susu`.
 The comparison records the old and current source revisions and reports exact or candidate mappings

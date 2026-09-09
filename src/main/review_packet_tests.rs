@@ -156,6 +156,7 @@ fn portable_memory_artifact(source_root: &Path) -> ProjectAnalysis {
         source: "ci:test".to_owned(),
         evidence: Some("run:checkout".to_owned()),
         basis: None,
+        revision: None,
         detail: "Checkout behavior was verified.".to_owned(),
     });
     artifact.decisions.push(Decision {
@@ -165,6 +166,7 @@ fn portable_memory_artifact(source_root: &Path) -> ProjectAnalysis {
         status: DecisionStatus::Accepted,
         source: "human:product".to_owned(),
         basis: None,
+        revision: None,
         title: "Keep checkout reservation first".to_owned(),
         detail: "The business accepted reserve-before-charge as durable intent.".to_owned(),
     });

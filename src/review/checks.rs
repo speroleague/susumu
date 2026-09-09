@@ -346,6 +346,7 @@ mod tests {
             source: "ci:test".to_owned(),
             evidence: Some("run:checkout".to_owned()),
             basis: None,
+            revision: None,
             detail: "Checkout test failed.".to_owned(),
         });
 

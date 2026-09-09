@@ -153,6 +153,7 @@ fn verification_findings_flag_missing_expectations() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Could not find the linked expectation.".to_owned(),
     });
 
@@ -284,6 +285,7 @@ fn workflow_priority_scores_explain_attention() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Checkout behavior did not match the expectation.".to_owned(),
     });
 
@@ -306,6 +308,7 @@ fn decision_basis_marks_changed_evidence_for_review() {
         status: DecisionStatus::Accepted,
         source: "human:test".to_owned(),
         basis: None,
+        revision: None,
         title: "Accept checkout shape".to_owned(),
         detail: "Checkout shape accepted for this test.".to_owned(),
     });
@@ -340,6 +343,7 @@ fn verification_basis_marks_changed_evidence_for_review() {
         source: "human:test".to_owned(),
         evidence: Some("review:test".to_owned()),
         basis: None,
+        revision: None,
         detail: "Checkout behavior matched the expectation.".to_owned(),
     });
 
@@ -373,6 +377,7 @@ fn expectation_changes_dirty_verifications_and_decisions() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Checked.".to_owned(),
     });
     analysis.decisions.push(Decision {
@@ -382,6 +387,7 @@ fn expectation_changes_dirty_verifications_and_decisions() {
         status: DecisionStatus::Accepted,
         source: "human:test".to_owned(),
         basis: None,
+        revision: None,
         title: "Accept checkout shape".to_owned(),
         detail: "Accepted.".to_owned(),
     });
@@ -417,6 +423,7 @@ fn linked_work_changes_dirty_verifications_and_decisions() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Checked.".to_owned(),
     });
     analysis.decisions.push(Decision {
@@ -426,6 +433,7 @@ fn linked_work_changes_dirty_verifications_and_decisions() {
         status: DecisionStatus::Accepted,
         source: "human:test".to_owned(),
         basis: None,
+        revision: None,
         title: "Accept checkout shape".to_owned(),
         detail: "Accepted.".to_owned(),
     });
@@ -467,6 +475,7 @@ fn review_thread_changes_dirty_verifications_and_decisions() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Checked.".to_owned(),
     });
     analysis.decisions.push(Decision {
@@ -476,6 +485,7 @@ fn review_thread_changes_dirty_verifications_and_decisions() {
         status: DecisionStatus::Accepted,
         source: "human:test".to_owned(),
         basis: None,
+        revision: None,
         title: "Accept checkout shape".to_owned(),
         detail: "Accepted.".to_owned(),
     });
@@ -523,6 +533,7 @@ fn symbol_verification_ignores_unrelated_file_changes() {
         source: "human:test".to_owned(),
         evidence: Some("review:test".to_owned()),
         basis: None,
+        revision: None,
         detail: "Checkout behavior matched the expectation.".to_owned(),
     });
 

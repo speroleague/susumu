@@ -25,6 +25,9 @@ pub struct Verification {
     pub source: String,
     pub evidence: Option<String>,
     pub basis: Option<String>,
+    /// Source-control revision the check was recorded against, when known.
+    #[serde(default)]
+    pub revision: Option<String>,
     pub detail: String,
 }
 
@@ -45,6 +48,9 @@ pub struct Decision {
     pub status: DecisionStatus,
     pub source: String,
     pub basis: Option<String>,
+    /// Source-control revision the decision was recorded against, when known.
+    #[serde(default)]
+    pub revision: Option<String>,
     pub title: String,
     pub detail: String,
 }

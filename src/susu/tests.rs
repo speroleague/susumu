@@ -116,6 +116,7 @@ fn fixture_expectation_records() -> (Vec<Expectation>, Vec<Verification>) {
             source: "human:engineer".to_owned(),
             evidence: Some("ci:123".to_owned()),
             basis: Some("basis-v0".to_owned()),
+            revision: None,
             detail: "The health test checks local-only behavior.".to_owned(),
         }],
     )
@@ -129,6 +130,7 @@ fn fixture_decisions() -> Vec<Decision> {
         status: DecisionStatus::Accepted,
         source: "human:lead".to_owned(),
         basis: Some("basis0".to_owned()),
+        revision: None,
         title: "Health route accepted".to_owned(),
         detail: "The team accepts the local-only health check evidence.".to_owned(),
     }]

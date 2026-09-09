@@ -101,6 +101,9 @@ pub(crate) struct VerifyArgs {
     /// Optional evidence fingerprint this verification was based on.
     #[arg(long)]
     pub(crate) basis: Option<String>,
+    /// Source-control revision the check was recorded against. Defaults to the scanned HEAD.
+    #[arg(long)]
+    pub(crate) revision: Option<String>,
     /// Verification detail. Defaults to a generated summary.
     #[arg(long)]
     pub(crate) detail: Option<String>,

@@ -35,6 +35,7 @@ pub(crate) fn add_verification(args: AddVerification) -> Result<()> {
         source: args.source,
         evidence,
         basis: args.basis.filter(|value| !value.trim().is_empty()),
+        revision: None,
         detail: args.detail,
     };
 

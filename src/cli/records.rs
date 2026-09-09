@@ -163,6 +163,7 @@ pub(crate) fn add_decision(args: AddDecision) -> Result<()> {
         status,
         source: args.source,
         basis: args.basis.filter(|value| !value.trim().is_empty()),
+        revision: None,
         title: args.title,
         detail: args.detail,
     };

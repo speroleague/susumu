@@ -394,6 +394,7 @@ pub(crate) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
         source: args.source,
         evidence,
         basis: args.basis.filter(|value| !value.trim().is_empty()),
+        revision: None,
         detail,
     };
     let written = write_verification_record(&args.file, verification, args.minify)?;

@@ -438,6 +438,7 @@ fn parse_decision_statement(statement: &[Token]) -> Result<Decision> {
             .map_err(|error: String| anyhow!(error))?,
         source: required(&values, "source")?.to_owned(),
         basis: optional_id(values.get("basis").map_or("-", String::as_str)),
+        revision: optional_id(values.get("revision").map_or("-", String::as_str)),
         title: required(&values, "title")?.to_owned(),
         detail: required(&values, "detail")?.to_owned(),
     })
@@ -464,6 +465,7 @@ fn parse_verification_statement(statement: &[Token]) -> Result<Verification> {
         source: required(&values, "source")?.to_owned(),
         evidence: optional_id(required(&values, "evidence")?),
         basis: optional_id(values.get("basis").map_or("-", String::as_str)),
+        revision: optional_id(values.get("revision").map_or("-", String::as_str)),
         detail: required(&values, "detail")?.to_owned(),
     })
 }

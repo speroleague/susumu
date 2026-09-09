@@ -24,7 +24,7 @@ pub(crate) fn add_verification(args: AddVerification) -> Result<()> {
             &args.detail,
         )
     });
-    let verification = Verification {
+    let mut verification = Verification {
         id,
         expectation_id: args.expectation,
         status,
@@ -38,6 +38,9 @@ pub(crate) fn add_verification(args: AddVerification) -> Result<()> {
         revision: None,
         detail: args.detail,
     };
+    if let Some(analysis) = load_for_stamp(&args.project) {
+        stamp_verification(&mut verification, &analysis);
+    }
 
     let id = verification.id.clone();
     write_verification_record(&args.file, verification, false)?;

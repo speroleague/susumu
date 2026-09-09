@@ -5,7 +5,10 @@ mod findings;
 mod priorities;
 mod relationships;
 
-pub use basis::{anchor_decision_bases, anchor_verification_bases};
+pub use basis::{
+    anchor_decision_bases, anchor_verification_bases, current_basis_for_decision,
+    current_basis_for_verification,
+};
 pub use priorities::refresh_workflow_priorities;
 pub use relationships::refresh_relationship_findings;
 

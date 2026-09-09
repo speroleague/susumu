@@ -156,7 +156,7 @@ pub(crate) fn add_decision(args: AddDecision) -> Result<()> {
             &args.detail,
         )
     });
-    let decision = Decision {
+    let mut decision = Decision {
         id,
         target,
         subject,
@@ -167,6 +167,9 @@ pub(crate) fn add_decision(args: AddDecision) -> Result<()> {
         title: args.title,
         detail: args.detail,
     };
+    if let Some(analysis) = load_for_stamp(&args.project) {
+        stamp_decision(&mut decision, &analysis);
+    }
 
     let mut decisions = if args.file.exists() {
         read_decision_sidecar(&args.file)?

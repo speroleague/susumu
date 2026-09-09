@@ -5,6 +5,28 @@ use crate::model::{
     Verification, Work,
 };
 
+/// Computes the current review basis for a verification, resolving its
+/// expectation. Returns `None` when the expectation or its target cannot be
+/// fingerprinted. Callers use this to stamp a persistent basis at record time.
+#[must_use]
+pub fn current_basis_for_verification(
+    analysis: &ProjectAnalysis,
+    verification: &Verification,
+) -> Option<String> {
+    let expectation = verification_expectation(analysis, verification)?;
+    current_verification_basis(analysis, verification, expectation)
+}
+
+/// Computes the current review basis for a decision. Returns `None` when the
+/// target cannot be fingerprinted.
+#[must_use]
+pub fn current_basis_for_decision(
+    analysis: &ProjectAnalysis,
+    decision: &Decision,
+) -> Option<String> {
+    current_decision_basis(analysis, decision)
+}
+
 /// Records the current review basis on decisions that do not yet carry one.
 /// Existing bases are preserved so later scans can detect changed review
 /// evidence.

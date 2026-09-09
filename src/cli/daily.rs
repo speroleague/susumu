@@ -344,7 +344,10 @@ pub(crate) struct VerifyJson {
 
 pub(crate) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
     let status = verification_status_from_flags(&args)?;
-    let analysis = load_analysis(&args.target, None, None, None, None, None, false)?;
+    // Load the same convention sidecars the daily review loop uses, so the basis
+    // stamped here matches what `susumu review` later recomputes.
+    let work = daily_work_sidecar(&args.target);
+    let analysis = load_analysis(&args.target, None, None, None, work.as_ref(), None, false)?;
     let expectation = analysis
         .expectations
         .iter()
@@ -383,7 +386,7 @@ pub(crate) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
             &detail,
         )
     });
-    let verification = Verification {
+    let mut verification = Verification {
         id,
         expectation_id: expectation.id.clone(),
         status,
@@ -394,9 +397,12 @@ pub(crate) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
         source: args.source,
         evidence,
         basis: args.basis.filter(|value| !value.trim().is_empty()),
-        revision: None,
+        revision: args.revision.filter(|value| !value.trim().is_empty()),
         detail,
     };
+    // Stamp the provenance Susumu observed at record time so later scans can
+    // detect when the checked code or its linked records have changed.
+    stamp_verification(&mut verification, &analysis);
     let written = write_verification_record(&args.file, verification, args.minify)?;
 
     print_verification_result(&args.file, expectation, &written, args.json)?;
@@ -529,6 +535,12 @@ pub(crate) fn daily_review_paths(target: &Path, output_dir: &Path) -> DailyRevie
         html: base.join("review.html"),
         work: base.join("work.susu"),
     }
+}
+
+/// The conventional `.susumu/work.susu` sidecar for a target, when it exists.
+pub(crate) fn daily_work_sidecar(target: &Path) -> Option<PathBuf> {
+    let path = conventional_output_dir(target, Path::new(".susumu")).join("work.susu");
+    path.exists().then_some(path)
 }
 
 pub(crate) fn conventional_output_dir(target: &Path, output_dir: &Path) -> PathBuf {

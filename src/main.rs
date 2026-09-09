@@ -12,7 +12,10 @@ use clap::{Parser, Subcommand};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use susumu::{
-    analysis::{anchor_decision_bases, anchor_verification_bases, refresh_derived_analysis},
+    analysis::{
+        anchor_decision_bases, anchor_verification_bases, current_basis_for_decision,
+        current_basis_for_verification, refresh_derived_analysis,
+    },
     migration::{source_migration_findings, source_migrations},
     model::{
         Decision, DecisionStatus, Expectation, ExpectationStatus, ExpectationTarget,
@@ -39,7 +42,7 @@ use cli::commands::*;
 use cli::daily::*;
 use cli::daily_options::{ExpectationsArgs, ResolveArgs, StatusArgs, VerifyArgs};
 use cli::dispatch::run_command;
-use cli::loading::load_analysis;
+use cli::loading::{load_analysis, load_for_stamp, stamp_decision, stamp_verification};
 use cli::project::{
     check, current_unix_seconds, diff, expectation_title, handoff, init_repository, write_text_file,
 };

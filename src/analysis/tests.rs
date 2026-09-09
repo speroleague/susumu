@@ -357,6 +357,26 @@ fn verification_basis_marks_changed_evidence_for_review() {
     assert!(analysis.findings.iter().any(|finding| {
         finding.rule_id == "SUS023" && finding.subject.as_deref() == Some("v_checkout")
     }));
+
+    // A superseding verification retires the changed-evidence finding.
+    analysis.verifications.push(Verification {
+        id: "v_checkout_2".to_owned(),
+        expectation_id: "e_checkout".to_owned(),
+        status: VerificationStatus::Passed,
+        supersedes: Some("v_checkout".to_owned()),
+        execution: None,
+        chain: None,
+        method: "re-reviewed after change".to_owned(),
+        source: "human:test".to_owned(),
+        evidence: None,
+        basis: None,
+        revision: None,
+        detail: "Re-checked; the change is acceptable.".to_owned(),
+    });
+    refresh_relationship_findings(&mut analysis);
+    assert!(!analysis.findings.iter().any(|finding| {
+        finding.rule_id == "SUS023" && finding.subject.as_deref() == Some("v_checkout")
+    }));
 }
 
 #[test]

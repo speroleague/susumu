@@ -99,7 +99,15 @@ fn add_verification_relationship_findings(analysis: &mut ProjectAnalysis) {
             continue;
         };
 
-        if let Some(finding) = verification_basis_finding(analysis, verification, expectation) {
+        // A verification that a later record supersedes is no longer relied on,
+        // so its changed basis does not need renewed review.
+        let superseded = analysis
+            .verifications
+            .iter()
+            .any(|other| other.supersedes.as_deref() == Some(verification.id.as_str()));
+        if !superseded
+            && let Some(finding) = verification_basis_finding(analysis, verification, expectation)
+        {
             analysis.findings.push(finding);
         }
     }

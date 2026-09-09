@@ -221,8 +221,9 @@ susumu verify e_checkout_sequence --inconclusive --method "reviewed logs"
 the check. When code under the checked target later changes, `susumu review` and
 `susumu check` raise `SUS023` and name the commit that caused it. Use
 `susumu check --fail-on-dirty` in CI or a pre-merge hook to block on changed
-evidence, and `susumu verify` again (or a `susumu decision add` that accepts the
-change) to clear it.
+evidence. Clear it by recording a fresh check that supersedes the stale one
+(`susumu verify <id> --supersedes <old-verification>`) or a `susumu decision add`
+that accepts the change.
 
 That boundary is the trust model.
 

@@ -142,10 +142,11 @@ pub(crate) fn apply_commit_attribution(
         .collect::<Vec<_>>()
         .join(", ");
     finding.detail = format!(
-        "{} was recorded against {recorded}. {} has changed in {} commit(s) since: {commit_list}. Re-verify the expectation or record a decision accepting the change.",
+        "{} was recorded against {recorded}. {} has changed in {} commit(s) since: {commit_list}. Re-run `susumu verify <expectation> --supersedes {}` or record a decision that accepts the change.",
         target.record_id,
         target.path,
         attributed.len(),
+        target.record_id,
     );
 }
 

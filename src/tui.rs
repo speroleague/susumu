@@ -35,11 +35,14 @@ use crate::{
     susu::write_susu,
 };
 
+mod connections;
 mod evidence;
 mod records;
 mod source;
 mod summary;
 
+#[allow(clippy::wildcard_imports)]
+use connections::*;
 #[allow(clippy::wildcard_imports)]
 use evidence::*;
 #[allow(clippy::wildcard_imports)]

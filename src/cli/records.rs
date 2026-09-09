@@ -142,7 +142,6 @@ pub(crate) fn remove_expectation(args: &RemoveExpectation) -> Result<()> {
 mod verification;
 pub(crate) use verification::*;
 
-
 pub(crate) fn add_decision(args: AddDecision) -> Result<()> {
     let target = ExpectationTarget::from(args.target);
     let status = DecisionStatus::from(args.status);

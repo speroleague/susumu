@@ -388,6 +388,68 @@ export function RootNavigator() {
 }
 
 #[test]
+fn treats_exported_react_components_and_vue_sfcs_as_component_workflows() {
+    let directory = tempdir().unwrap();
+    fs::write(
+        directory.path().join("Dashboard.tsx"),
+        r#"
+import { useState } from "react";
+
+function StatRow() { return <li />; }
+
+export function Dashboard() {
+    const [open, setOpen] = useState(false);
+    return <main><StatRow /></main>;
+}
+
+export const formatTitle = (value: string) => value.trim();
+"#,
+    )
+    .unwrap();
+    fs::write(
+        directory.path().join("UserCard.vue"),
+        r#"<template>
+  <article @click="expand">{{ name }}</article>
+</template>
+
+<script setup lang="ts">
+const name = "card";
+function expand() { return name; }
+</script>
+"#,
+    )
+    .unwrap();
+
+    let analysis = scan_project(directory.path()).unwrap();
+
+    assert!(analysis.workflows.iter().any(|workflow| {
+        workflow.trigger == "COMPONENT Dashboard"
+            && workflow.kind == crate::model::WorkflowKind::Component
+            && workflow.framework == "react-component"
+            && workflow.entry_symbol.is_some()
+    }));
+    // Non-exported helpers and non-component exports stay ordinary symbols.
+    assert!(
+        !analysis
+            .workflows
+            .iter()
+            .any(|workflow| workflow.trigger == "COMPONENT StatRow"
+                || workflow.trigger == "COMPONENT formatTitle")
+    );
+    assert!(analysis.workflows.iter().any(|workflow| {
+        workflow.trigger == "COMPONENT UserCard"
+            && workflow.kind == crate::model::WorkflowKind::Component
+            && workflow.framework == "vue-component"
+    }));
+    assert!(
+        analysis
+            .workflow_priorities
+            .iter()
+            .any(|priority| priority.detail.contains("component entry point observed"))
+    );
+}
+
+#[test]
 fn detects_laravel_and_rust_http_workflows() {
     let directory = tempdir().unwrap();
     fs::write(

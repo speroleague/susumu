@@ -1,4 +1,5 @@
 mod adapters;
+mod component;
 mod react_navigation;
 
 use adapters::adapter_for;

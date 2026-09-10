@@ -99,7 +99,7 @@ fn exported_review_html_loads_portal_config_from_project_root() {
     let html = fs::read_to_string(html_path).expect("read html");
     assert!(html.contains("Acme Memory &middot; fixture"));
     assert!(html.contains("<div class=\"eyebrow\">Acme Memory</div>"));
-    assert!(html.contains(":root{--accent:#445566;--bg:#101820}"));
+    assert!(html.contains(":root:root{--accent:#445566;--bg:#101820}"));
 }
 
 #[test]
@@ -258,6 +258,13 @@ fn export_review_html_writes_standalone_portal() {
     assert!(html.contains("detail-pane traceability-detail"));
     assert!(html.contains("max-width:100%;min-height:0;overflow:auto"));
     assert!(html.contains("--bg:#11131a"));
+    // Light and dark themes are both defined, with a manual switch.
+    assert!(html.contains("color-scheme:light dark"));
+    assert!(html.contains("@media(prefers-color-scheme:light)"));
+    assert!(html.contains(":root[data-theme=\"light\"]"));
+    assert!(html.contains("id=\"themeToggle\""));
+    assert!(html.contains("function toggleTheme()"));
+    assert!(html.contains("susumu-theme"));
 }
 
 #[test]

@@ -27,7 +27,7 @@ The scanner currently records:
 - supported source files, language, line count, byte count, and content hash when available;
 - symbols with stable ids, kinds, locations, and source-region fingerprints;
 - dependencies and source locations;
-- framework-level HTTP workflows and React Router / React Navigation `navigation` workflows with method or route/screen trigger, path, handler, entry symbol, file, location, and resolution confidence;
+- framework-level HTTP workflows, React Router / React Navigation `navigation` workflows, and `component` workflows for exported React components and Vue single-file components, each with a method or route/screen/component trigger, path, handler, entry symbol, file, location, and resolution confidence;
 - symbol-to-symbol call flows, including unresolved external or ambiguous edges;
 - syntax-highlighted source previews in review packets when source is readable;
 - deterministic workflow attention scores with inspectable reasons.
@@ -80,7 +80,8 @@ The review system currently provides:
 - packet diffing and Git rewind comparison with stale-evidence reporting;
 - commit-attributed dirty findings: `susumu review` and `susumu check` walk the Git history since a verification or decision's recorded `revision` and name the commit(s) that changed the target, with a `susumu check --fail-on-dirty` gate;
 - TUI review and connections jumps to the relevant record or review-thread context;
-- portal overview, readiness, review, threads, workflow evidence, traceability, source, records, dirty/stale evidence, artifact, and next-action views.
+- portal overview, readiness, review, threads, workflow evidence, traceability, source, records, dirty/stale evidence, artifact, and next-action views;
+- portal light and dark themes that follow the browser's `prefers-color-scheme` with a persisted manual switch; `susumu.toml` branding colors still override both themes.
 
 ## Git and history
 

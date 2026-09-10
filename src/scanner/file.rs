@@ -4,6 +4,7 @@ use crate::{
     language::{ParsedCall, ParsedWorkflow, parse_file},
     model::{
         Dependency, Finding, Language, Location, ProjectAnalysis, Severity, SourceFile, Symbol,
+        WorkflowKind,
     },
     scanner::{hex_prefix, stable_id},
 };
@@ -89,6 +90,40 @@ pub(crate) fn scan_file(
         pending_workflows,
         parsed,
     );
+
+    if language == Language::Vue {
+        push_vue_component_workflow(&file_id, relative, lines, pending_workflows);
+    }
+}
+
+/// A Vue single-file component is a component by file definition: `<script setup>`
+/// blocks declare no component object, so the file identity is the only
+/// deterministic signal. The component is named after the file stem.
+fn push_vue_component_workflow(
+    file_id: &str,
+    relative: &Path,
+    lines: usize,
+    pending_workflows: &mut Vec<PendingWorkflow>,
+) {
+    let Some(name) = relative.file_stem().and_then(|stem| stem.to_str()) else {
+        return;
+    };
+    pending_workflows.push(PendingWorkflow {
+        file_id: file_id.to_owned(),
+        workflow: ParsedWorkflow {
+            kind: WorkflowKind::Component,
+            framework: "vue-component".to_owned(),
+            method: "COMPONENT".to_owned(),
+            path: name.to_owned(),
+            handler: None,
+            location: Location {
+                start_line: 1,
+                start_column: 1,
+                end_line: lines,
+                end_column: 1,
+            },
+        },
+    });
 }
 
 fn add_skipped_file_finding(analysis: &mut ProjectAnalysis, detail: String) {

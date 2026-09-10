@@ -241,6 +241,7 @@ The scanner can determine support, not satisfaction. If a commit links to an exp
 - Extracts modules, functions, methods, imports, and calls using Tree-sitter.
 - Detects initial HTTP workflows for Express-compatible, FastAPI-compatible, Flask-compatible, Laravel, Symfony, Axum-compatible, and Actix Web conventions.
 - Detects client-side `navigation` workflows for React Router `<Route>` and React Navigation `<*.Screen>` declarations, with `ROUTE <path>` / `SCREEN <name>` triggers and resolved handler components.
+- Detects `component` workflows for exported PascalCase React components that return JSX and for Vue single-file components, so router-less front-ends still get per-component review targets.
 - Ranks workflows with deterministic attention scores and explicit reasons.
 - Uses deterministic path/name-based ids so evidence and review targets survive ordinary rescans.
 - Resolves same-file calls exactly and unique project-wide calls as likely.
@@ -257,7 +258,7 @@ The scanner can determine support, not satisfaction. If a commit links to an exp
 - Records the Git revision a verification or decision was checked against and, on the next scan, names the commit(s) that changed the target in the `SUS023` / `SUS033` detail; `susumu check --fail-on-dirty` gates on it.
 - Builds a Review queue from stale decisions, failed or inconclusive verification records, scanner findings, and unresolved workflow gaps.
 - Explores overview metrics, review items, expectations, verifications, decisions, work records, detected workflows, call flows, findings, and files in a Ratatui interface.
-- Exports a standalone web portal with workflow drill-down and syntax-highlighted source previews.
+- Exports a standalone web portal with workflow drill-down and syntax-highlighted source previews. The portal follows the browser's light or dark preference and offers a manual theme switch that persists per browser.
 - Reads and writes the versioned `.susu` syntax in readable or minified form.
 
 This first model is a call-flow model, not yet full variable-level data lineage. That distinction matters: Susumu should grow its evidence carefully rather than overstate what static analysis can prove.

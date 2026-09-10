@@ -238,7 +238,7 @@ fn review_shortcut_writes_convention_based_outputs() {
     assert_eq!(check_json["project"]["name"], artifact.project_name);
     let html = fs::read_to_string(&html_path).expect("read html portal");
     assert!(html.contains("Daily Memory &middot;"));
-    assert!(html.contains(":root{--accent:#778899}"));
+    assert!(html.contains(":root:root{--accent:#778899}"));
 }
 
 #[test]

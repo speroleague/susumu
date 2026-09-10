@@ -319,6 +319,7 @@ fn javascript_workflows(node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
     let mut workflows = Vec::new();
     workflows.extend(javascript_workflow(node, source));
     workflows.extend(super::react_navigation::workflow(node, source));
+    workflows.extend(super::component::workflow(node, source));
     workflows
 }
 

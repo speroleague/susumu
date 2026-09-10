@@ -51,6 +51,10 @@ fn add_observation_priority(workflow: &Workflow, score: &mut u32, reasons: &mut 
             *score += 20;
             reasons.push("navigation route observed".to_owned());
         }
+        WorkflowKind::Component => {
+            *score += 12;
+            reasons.push("component entry point observed".to_owned());
+        }
     }
 }
 

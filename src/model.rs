@@ -198,6 +198,9 @@ pub enum WorkflowKind {
     /// Client-side route or screen registration, such as a React Router route or
     /// a React Navigation screen. The trigger names the route path or screen name.
     Navigation,
+    /// A UI component that is also a module entry point: an exported React
+    /// component or a Vue single-file component. The trigger names the component.
+    Component,
 }
 
 impl fmt::Display for WorkflowKind {
@@ -205,6 +208,7 @@ impl fmt::Display for WorkflowKind {
         formatter.write_str(match self {
             Self::Http => "http",
             Self::Navigation => "navigation",
+            Self::Component => "component",
         })
     }
 }
@@ -216,6 +220,7 @@ impl std::str::FromStr for WorkflowKind {
         match value {
             "http" => Ok(Self::Http),
             "navigation" => Ok(Self::Navigation),
+            "component" => Ok(Self::Component),
             _ => Err(format!("unknown workflow kind: {value}")),
         }
     }

@@ -113,7 +113,7 @@ cargo run -- ./path/to/project --expectations expectations.susu --verifications 
 - `basis` is an optional evidence fingerprint recorded when the verification was performed or merged. It fingerprints the current target of the checked expectation plus its linked expectation, work, and review records, not the verification text itself.
 - `revision` is the source-control revision the check was recorded against, or `-`. `susumu verify`, `susumu verification add`, and `susumu decision add` stamp `basis` and `revision` automatically when run inside a project.
 
-If a later scan observes that the checked expectation target fingerprint differs from the verification's recorded `basis`, Susumu marks the verification for review with `SUS023`. The verification status is not changed; the finding only says that the evidence the check was based on changed. When the project is in Git and the verification carries a `revision`, `susumu review` and `susumu check` walk the history since that revision and name the commit(s) that changed the target file in the `SUS023` detail.
+If a later scan observes that the checked expectation target fingerprint differs from the verification's recorded `basis`, Susumu marks the verification for review with `SUS023`. The verification status is not changed; the finding only says that the evidence the check was based on changed. When the project is in Git and the verification carries a `revision`, `susumu review` and `susumu check` walk the history since that revision and name the commit(s) that changed the target file in the `SUS023` detail. A verification that another record supersedes (`--supersedes`) is exempt, so a fresh superseding check clears the finding.
 
 ### What counts as verified
 

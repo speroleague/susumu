@@ -253,6 +253,7 @@ The scanner can determine support, not satisfaction. If a commit links to an exp
 - Groups expectations by readiness in the portal, including a "Verified, evidence changed" bucket for verifications whose target has changed since they were recorded, and surfaces dirty or stale evidence with nearby syntax-highlighted source when Susumu can locate it.
 - Prints a terse `susumu digest` of what needs attention now: re-verification needs with the causing commit, checks, open review threads, and unverified expectations.
 - Connects local Git commits to workflows, expectations, and exported work records, including separate work records when one commit supports multiple expectations.
+- Records the Git revision a verification or decision was checked against and, on the next scan, names the commit(s) that changed the target in the `SUS023` / `SUS033` detail; `susumu check --fail-on-dirty` gates on it.
 - Builds a Review queue from stale decisions, failed or inconclusive verification records, scanner findings, and unresolved workflow gaps.
 - Explores overview metrics, review items, expectations, verifications, decisions, work records, detected workflows, call flows, findings, and files in a Ratatui interface.
 - Exports a standalone web portal with workflow drill-down and syntax-highlighted source previews.
@@ -321,7 +322,7 @@ cargo run -- verification chain --file verifications.susu --initialize
 cargo run -- verification chain --file verifications.susu --json
 ```
 
-Verification sidecars are append-only through supported commands. `verification remove` fails so a prior assertion cannot be silently removed from the supported workflow; use a new record with `--supersedes` to document a replacement or retraction. This is workflow integrity, not tamper-proofing: ordinary text files remain subject to Git and filesystem controls until a future anchored integrity feature is used.
+Verification sidecars are append-only through supported commands. `verification remove` fails so a prior assertion cannot be silently removed from the supported workflow; use a new record with `--supersedes` to document a replacement or retraction. A superseded verification is also excluded from changed-evidence (`SUS023`) findings, so `--supersedes` is how you clear a dirty verification after re-checking. This is workflow integrity, not tamper-proofing: ordinary text files remain subject to Git and filesystem controls until a future anchored integrity feature is used.
 
 `--evidence-file` records only a `sha256:<digest>` of a local artifact; Susumu does not upload, retain, or inspect the artifact contents. This is provider-neutral and works with any CI/CD system that can make an evidence file available to the command. A content hash proves only that the referenced bytes match later; it does not prove that a test ran, who produced the file, or that any compliance requirement was met. Retention, provenance, execution claims, and human review remain separate responsibilities.
 
@@ -452,7 +453,7 @@ Record verification from the daily workflow:
 cargo run -- verify e_susumu_easy_daily_cli --passed --method "cargo test --locked"
 ```
 
-`verify` validates the expectation against the current project, writes or updates `verifications.susu`, and prints `susumu review` as the next step. The easy `review` path automatically loads both `expectations.susu` and `verifications.susu` from initialized repositories. Use the advanced `verification add` command when you need explicit ids, sidecar-only workflows, or lower-level scripting.
+`verify` validates the expectation against the current project, writes or updates `verifications.susu`, and prints `susumu review` as the next step. It also records the current review basis and Git `revision`, so a later `susumu review` / `susumu check` flags the verification as changed evidence (`SUS023`) and names the commit that changed the target. The easy `review` path automatically loads both `expectations.susu` and `verifications.susu` from initialized repositories. Use the advanced `verification add` command when you need explicit ids, sidecar-only workflows, or lower-level scripting; it takes `--project <dir>` (default `.`) to stamp the same provenance, or skips it off-project.
 
 Create a handoff brief for a human reviewer or the next agent:
 
@@ -544,7 +545,7 @@ See [the artifact contract](docs/artifact.md), [the product architecture](docs/v
 - Deepen deterministic adapters for Rust, PHP, Python, JavaScript, TypeScript, TSX, and Vue.
 - Add more workflow types: jobs, queues, events, tests, database boundaries, policies, and deployment checks.
 - Deepen threaded reviews with richer ownership, source revisions, and migration support.
-- Deepen dirty/stale review detection: symbol- and rename-aware attribution, and propagation to project-level expectations.
+- Deepen dirty/stale review detection: symbol- and rename-aware commit attribution.
 - Expand the stakeholder portal with richer workflow narratives and accessibility polish.
 - Keep AI optional and bring-your-own-key. Generated summaries or draft records should be labeled, cited, and reviewable before becoming trusted project memory.
 

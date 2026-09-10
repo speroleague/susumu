@@ -4,11 +4,11 @@ This is the baseline inventory of Susumu's current behaviors, records, output su
 
 ## Product surfaces
 
-- Rust CLI for scanning, authoring records, Git history, review packets, readiness, checks, diffs, handoffs, attestation inspection, and daily workflows.
+- Rust CLI for scanning, authoring records, Git history, review packets, readiness, digests, checks, diffs, handoffs, attestation inspection, and daily workflows.
 - Ratatui TUI for engineering review, evidence browsing, source context, connections, and threaded review ownership.
 - Portable `.susu` artifacts and sidecars for project evidence, expectations, verifications, decisions, work, and review threads.
 - Standalone HTML portal for stakeholder review. The exported HTML is read-only and must not imply that it can write project records.
-- Machine-readable JSON for checks, readiness, handoffs, packet summaries, Git operations, diffs, and attestation inspection.
+- Machine-readable JSON for checks (with a changed-evidence count), readiness, digests, handoffs, packet summaries, Git operations, diffs, and attestation inspection.
 - CI and GitHub Pages workflows that build, retain, and publish review artifacts.
 
 These surfaces are complementary rather than role-locked:

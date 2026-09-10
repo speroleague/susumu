@@ -37,7 +37,7 @@ Susumu can inspect a commit with `git signature`. This reuses Git's configured G
 
 Verification sidecars can also carry a SHA-256 chain. The chain covers the ordered record content and the previous chain value, so inspection can detect edits, deletions, or reordering. Initialization reports the chain as `self_contained`; it does not create an external trust anchor. A protected branch, signed commit, append-only storage system, or other independently retained tip is required before the chain can resist deliberate rewriting.
 
-Review bases also bind a verification or decision to its observed target, the relevant expectation content, and linked work records. A later code, expectation, or link change therefore creates a dirty finding for renewed human review. This is a review-integrity signal, not proof that the prior record was fraudulent or that the new state fails its expectation.
+Review bases also bind a verification or decision to its observed target, the relevant expectation content, and linked work records. A later code, expectation, or link change therefore creates a dirty finding (`SUS023` / `SUS033`) for renewed human review. When the record also carries the `revision` it was recorded against — `susumu verify` stamps this automatically inside a Git work tree — the finding names the commit(s) that changed the target. This is a review-integrity signal, not proof that the prior record was fraudulent or that the new state fails its expectation. A superseding verification (`--supersedes`) or a decision that accepts the change clears it; a superseded verification no longer raises the finding.
 
 ## Review language
 

@@ -23,7 +23,7 @@ Installed globally, that becomes:
 
 ```sh
 susumu review
-susumu status
+susumu digest
 susumu readiness
 susumu git --since main
 susumu expectations --search git

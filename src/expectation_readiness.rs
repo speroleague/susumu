@@ -13,42 +13,58 @@ pub(crate) fn expectation_support(analysis: &ProjectAnalysis) -> Vec<Expectation
     let mut support = analysis
         .expectations
         .iter()
-        .map(|expectation| {
-            let target_observed = expectation_target_observed(analysis, expectation);
-            let verification = expectation_verification_support(analysis, &expectation.id);
-            let evidence_posture = expectation_evidence_posture(analysis, &expectation.id);
-            let work = expectation_work_support_count(analysis, expectation);
-            let decisions = expectation_decision_support_count(analysis, expectation);
-            let findings = expectation_finding_support_count(analysis, expectation);
-            let dirty = expectation_dirty_evidence(analysis, expectation);
-            let (support_status, reasons) = expectation_support_status(
-                expectation,
-                target_observed,
-                &verification,
-                work,
-                decisions,
-                findings,
-                dirty,
-            );
-            ExpectationSupport {
-                expectation_id: expectation.id.clone(),
-                title: expectation.title.clone(),
-                target: expectation.target.to_string(),
-                subject: expectation.subject.clone(),
-                target_observed,
-                verification,
-                work,
-                decisions,
-                findings,
-                dirty,
-                support_status,
-                evidence_posture,
-                reasons,
-            }
-        })
+        .map(|expectation| expectation_support_row(analysis, expectation))
         .collect::<Vec<_>>();
     support.sort_by(|left, right| left.expectation_id.cmp(&right.expectation_id));
     support
+}
+
+/// Per-expectation evidence tallies: linked work, decisions on the same target,
+/// findings on the same subject, and whether any linked evidence is dirty.
+struct EvidenceLinks {
+    work: usize,
+    decisions: usize,
+    findings: usize,
+    dirty: bool,
+}
+
+fn expectation_support_row(
+    analysis: &ProjectAnalysis,
+    expectation: &Expectation,
+) -> ExpectationSupport {
+    let target_observed = expectation_target_observed(analysis, expectation);
+    let verification = expectation_verification_support(analysis, &expectation.id);
+    let evidence_posture = expectation_evidence_posture(analysis, &expectation.id);
+    let links = expectation_evidence_links(analysis, expectation);
+    let (support_status, reasons) =
+        expectation_support_status(expectation, target_observed, &verification, &links);
+    ExpectationSupport {
+        expectation_id: expectation.id.clone(),
+        title: expectation.title.clone(),
+        target: expectation.target.to_string(),
+        subject: expectation.subject.clone(),
+        target_observed,
+        verification,
+        work: links.work,
+        decisions: links.decisions,
+        findings: links.findings,
+        dirty: links.dirty,
+        support_status,
+        evidence_posture,
+        reasons,
+    }
+}
+
+fn expectation_evidence_links(
+    analysis: &ProjectAnalysis,
+    expectation: &Expectation,
+) -> EvidenceLinks {
+    EvidenceLinks {
+        work: expectation_work_support_count(analysis, expectation),
+        decisions: expectation_decision_support_count(analysis, expectation),
+        findings: expectation_finding_support_count(analysis, expectation),
+        dirty: expectation_dirty_evidence(analysis, expectation),
+    }
 }
 
 pub(crate) fn expectation_readiness(
@@ -279,11 +295,14 @@ fn expectation_support_status(
     expectation: &Expectation,
     target_observed: bool,
     verification: &ExpectationVerificationSupport,
-    work: usize,
-    decisions: usize,
-    findings: usize,
-    dirty: bool,
+    links: &EvidenceLinks,
 ) -> (String, Vec<String>) {
+    let EvidenceLinks {
+        work,
+        decisions,
+        findings,
+        dirty,
+    } = *links;
     let mut reasons = Vec::new();
     if target_observed {
         reasons.push("target observed".to_owned());

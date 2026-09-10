@@ -4,6 +4,7 @@ use super::*;
 
 pub(crate) mod checks;
 pub(crate) mod commands;
+pub(crate) mod digest;
 pub(crate) mod handoff;
 pub(crate) mod packet;
 pub(crate) mod portal;

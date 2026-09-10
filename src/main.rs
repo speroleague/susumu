@@ -100,6 +100,7 @@ use git::types::{
 use review::checks::{
     check_item_jsons, check_json, check_report, print_check_json, print_check_report,
 };
+use review::digest::{self as digest_command, DigestArgs};
 use review::handoff::{
     handoff_report, print_handoff_json, print_handoff_records, print_handoff_report,
     print_handoff_workflows, print_string_section,

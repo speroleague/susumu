@@ -10,6 +10,7 @@ pub(crate) fn run_command(command: Command) -> Result<()> {
         | Command::Open(_)
         | Command::Status(_)
         | Command::Readiness(_)
+        | Command::Digest(_)
         | Command::Resolve(_)
         | Command::Expectations(_)
         | Command::Verify(_)) => run_project_command(command),
@@ -34,6 +35,7 @@ fn run_project_command(command: Command) -> Result<()> {
         command @ (Command::Open(_)
         | Command::Status(_)
         | Command::Readiness(_)
+        | Command::Digest(_)
         | Command::Resolve(_)
         | Command::Expectations(_)
         | Command::Verify(_)) => run_project_navigation(command),
@@ -57,6 +59,7 @@ fn run_project_navigation(command: Command) -> Result<()> {
         Command::Open(args) => open_shortcut(&args),
         Command::Status(args) => status_shortcut(&args),
         Command::Readiness(args) => readiness_command::run(&args),
+        Command::Digest(args) => digest_command::run(&args),
         Command::Resolve(args) => resolve_target(&args),
         Command::Expectations(args) => expectations_shortcut(&args),
         Command::Verify(args) => verify_shortcut(&args),

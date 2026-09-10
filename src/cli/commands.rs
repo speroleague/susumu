@@ -78,6 +78,9 @@ pub(crate) enum Command {
     /// Show expectation readiness from the latest review packet.
     Readiness(ReadinessArgs),
 
+    /// Print a short "what needs attention now" digest of the project.
+    Digest(DigestArgs),
+
     /// Resolve a source path to a scanner-assigned evidence id.
     Resolve(ResolveArgs),
 

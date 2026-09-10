@@ -81,7 +81,8 @@ The review system currently provides:
 - commit-attributed dirty findings: `susumu review` and `susumu check` walk the Git history since a verification or decision's recorded `revision` and name the commit(s) that changed the target, with a `susumu check --fail-on-dirty` gate;
 - TUI review and connections jumps to the relevant record or review-thread context;
 - portal overview, readiness, review, threads, workflow evidence, traceability, source, records, dirty/stale evidence, artifact, and next-action views;
-- portal light and dark themes that follow the browser's `prefers-color-scheme` with a persisted manual switch; `susumu.toml` branding colors still override both themes.
+- portal light and dark themes that follow the browser's `prefers-color-scheme` with a persisted manual switch; `susumu.toml` branding customizes the dark palette while the light theme keeps its tuned values;
+- portal icons are inline [Phosphor](https://phosphoricons.com/) SVGs embedded in the export, so the portal stays a single self-contained file with no icon font or network fetch.
 
 ## Git and history
 

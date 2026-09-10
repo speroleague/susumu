@@ -99,7 +99,7 @@ fn exported_review_html_loads_portal_config_from_project_root() {
     let html = fs::read_to_string(html_path).expect("read html");
     assert!(html.contains("Acme Memory &middot; fixture"));
     assert!(html.contains("<div class=\"eyebrow\">Acme Memory</div>"));
-    assert!(html.contains(":root:root{--accent:#445566;--bg:#101820}"));
+    assert!(html.contains(":root{--accent:#445566;--bg:#101820}"));
 }
 
 #[test]
@@ -265,6 +265,11 @@ fn export_review_html_writes_standalone_portal() {
     assert!(html.contains("id=\"themeToggle\""));
     assert!(html.contains("function toggleTheme()"));
     assert!(html.contains("susumu-theme"));
+    // Icons are inline Phosphor SVGs, not glyphs or web fonts.
+    assert!(html.contains("const ICONS"));
+    assert!(html.contains("function icon(name)"));
+    assert!(html.contains("<svg class=\"ph\" viewBox=\"0 0 256 256\""));
+    assert!(!html.contains("&#9888;"));
 }
 
 #[test]

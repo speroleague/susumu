@@ -73,7 +73,8 @@ The review system currently provides:
 - review queues for failed or inconclusive verifications, stale verification and decision bases, missing links, scanner findings, unresolved workflow gaps, open review threads, and work needing verification;
 - portable review anchors for expectations, verifications, work, decisions, findings, and source locations, with typed contributions, owners, parent replies, and missing-anchor findings;
 - expectation support summaries with target observation, linked work, verification posture, decision context, findings, and next action;
-- readiness buckets for failed verification, missing target, work needing verification, no linked work, verified, and unknown;
+- readiness buckets for failed verification, missing target, changed evidence needing re-verification, work needing verification, no linked work, verified, and unknown;
+- a `susumu digest` command that rescans and prints only the actionable items — re-verification needs with the causing commit, checks, open review threads, and unverified expectations — in text or JSON;
 - human-readable and JSON readiness output with search and bucket filters;
 - review packets containing the artifact, check report, handoff state, readiness state, support summaries, next actions, and source previews;
 - packet diffing and Git rewind comparison with stale-evidence reporting;

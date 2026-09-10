@@ -279,6 +279,7 @@ fn review_diff_detects_review_and_artifact_changes() {
         source: "human:qa".to_owned(),
         evidence: Some("review:1".to_owned()),
         basis: None,
+        revision: None,
         detail: "Checkout order is not acceptable.".to_owned(),
     });
     refresh_derived_analysis(&mut new_artifact);

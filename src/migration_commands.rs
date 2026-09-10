@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result, bail};
@@ -50,53 +50,86 @@ pub(crate) fn run_migrate(args: &MigrateArgs) -> Result<()> {
         .iter()
         .map(|candidate| (candidate.old_id.as_str(), candidate))
         .collect::<BTreeMap<_, _>>();
-    let accepts = parse_accepts(&args.accepts, &by_old)?;
-    let rejects = parse_dispositions(&args.rejects, &by_old, &accepts, "reject")?;
-    let defers = parse_dispositions(&args.defers, &by_old, &accepts, "defer")?;
 
-    let mut actions = Vec::new();
-    let mut action_ids = BTreeSet::new();
-    for candidate in &candidates {
-        if let Some(new_id) = accepts.get(candidate.old_id.as_str()) {
-            actions.push(MigrationActionJson {
-                old_id: candidate.old_id.clone(),
-                new_id: Some(new_id.clone()),
-                disposition: "accept".to_owned(),
-            });
-            action_ids.insert(candidate.old_id.as_str());
-        } else if rejects.contains(candidate.old_id.as_str()) {
-            actions.push(MigrationActionJson {
-                old_id: candidate.old_id.clone(),
-                new_id: None,
-                disposition: "reject".to_owned(),
-            });
-            action_ids.insert(candidate.old_id.as_str());
-        } else if defers.contains(candidate.old_id.as_str()) {
-            actions.push(MigrationActionJson {
-                old_id: candidate.old_id.clone(),
-                new_id: None,
-                disposition: "defer".to_owned(),
-            });
-            action_ids.insert(candidate.old_id.as_str());
-        }
-    }
+    let dispositions = resolve_dispositions(args, &by_old)?;
+    let actions = collect_actions(&candidates, &dispositions);
+    let rewritten = apply_rewrite(args, &mut current, &candidates, &dispositions.accepts)?;
 
-    let rewritten = if accepts.is_empty() {
-        MigrationRewriteSummary::default()
-    } else {
-        let summary = apply_accepted_migrations(&mut current, &candidates, &accepts);
-        update_sidecars(args, &accepts, &candidates)?;
-        if let Some(output) = args.output.as_ref() {
-            fs::write(output, write_susu(&current, false)?)
-                .with_context(|| format!("could not write {}", output.display()))?;
-        }
-        summary
-    };
-
-    if !action_ids.is_empty() {
+    if !actions.is_empty() {
         append_audit_work(args.work.as_ref(), &current, &actions)?;
     }
+    emit_migration_report(args, candidates, actions, rewritten)
+}
 
+struct Dispositions {
+    accepts: BTreeMap<String, String>,
+    rejects: BTreeSet<String>,
+    defers: BTreeSet<String>,
+}
+
+fn resolve_dispositions(
+    args: &MigrateArgs,
+    by_old: &BTreeMap<&str, &susumu::migration::SourceMigration>,
+) -> Result<Dispositions> {
+    let accepts = parse_accepts(&args.accepts, by_old)?;
+    let rejects = parse_dispositions(&args.rejects, by_old, &accepts, "reject")?;
+    let defers = parse_dispositions(&args.defers, by_old, &accepts, "defer")?;
+    Ok(Dispositions {
+        accepts,
+        rejects,
+        defers,
+    })
+}
+
+fn collect_actions(
+    candidates: &[susumu::migration::SourceMigration],
+    dispositions: &Dispositions,
+) -> Vec<MigrationActionJson> {
+    let mut actions = Vec::new();
+    for candidate in candidates {
+        let id = candidate.old_id.as_str();
+        let (new_id, disposition) = if let Some(new_id) = dispositions.accepts.get(id) {
+            (Some(new_id.clone()), "accept")
+        } else if dispositions.rejects.contains(id) {
+            (None, "reject")
+        } else if dispositions.defers.contains(id) {
+            (None, "defer")
+        } else {
+            continue;
+        };
+        actions.push(MigrationActionJson {
+            old_id: candidate.old_id.clone(),
+            new_id,
+            disposition: disposition.to_owned(),
+        });
+    }
+    actions
+}
+
+fn apply_rewrite(
+    args: &MigrateArgs,
+    current: &mut susumu::model::ProjectAnalysis,
+    candidates: &[susumu::migration::SourceMigration],
+    accepts: &BTreeMap<String, String>,
+) -> Result<MigrationRewriteSummary> {
+    if accepts.is_empty() {
+        return Ok(MigrationRewriteSummary::default());
+    }
+    let summary = apply_accepted_migrations(current, candidates, accepts);
+    update_sidecars(args, accepts, candidates)?;
+    if let Some(output) = args.output.as_ref() {
+        fs::write(output, write_susu(current, false)?)
+            .with_context(|| format!("could not write {}", output.display()))?;
+    }
+    Ok(summary)
+}
+
+fn emit_migration_report(
+    args: &MigrateArgs,
+    candidates: Vec<susumu::migration::SourceMigration>,
+    actions: Vec<MigrationActionJson>,
+    rewritten: MigrationRewriteSummary,
+) -> Result<()> {
     if args.json {
         let report = MigrationReportJson {
             old: args.old.clone(),
@@ -157,73 +190,92 @@ fn update_sidecars(
     candidates: &[susumu::migration::SourceMigration],
 ) -> Result<()> {
     let mut analysis = read_analysis_artifact(&args.new)?;
-    let summary = apply_accepted_migrations(&mut analysis, candidates, accepted);
-    if let Some(path) = args.expectations.as_ref() {
-        let source = fs::read_to_string(path)?;
-        let mut records = parse_expectations(&source)?;
-        for record in &mut records {
-            if let Some(subject) = record.subject.as_mut()
-                && let Some(replacement) = accepted.get(subject)
-            {
-                *subject = replacement.clone();
-            }
-        }
-        fs::write(path, write_expectations(&records, false)?)?;
+    let _ = apply_accepted_migrations(&mut analysis, candidates, accepted);
+    remap_expectation_subjects(args.expectations.as_ref(), accepted)?;
+    remap_decision_subjects(args.decisions.as_ref(), accepted)?;
+    remap_review_anchors(args.reviews.as_ref(), accepted, candidates)?;
+    remap_work_subjects(args.work.as_ref(), accepted)?;
+    Ok(())
+}
+
+/// Replaces a record subject with its accepted migration target, if any.
+fn remap_subject(subject: &mut Option<String>, accepted: &BTreeMap<String, String>) {
+    if let Some(current) = subject.as_mut()
+        && let Some(replacement) = accepted.get(current)
+    {
+        *current = replacement.clone();
     }
-    if let Some(path) = args.decisions.as_ref() {
-        let source = fs::read_to_string(path)?;
-        let mut records = parse_decisions(&source)?;
-        for record in &mut records {
-            if let Some(subject) = record.subject.as_mut()
-                && let Some(replacement) = accepted.get(subject)
-            {
-                *subject = replacement.clone();
-            }
-        }
-        fs::write(path, write_decisions(&records, false)?)?;
+}
+
+fn read_sidecar_source(path: &Path) -> Result<String> {
+    if path.exists() {
+        Ok(fs::read_to_string(path)?)
+    } else {
+        Ok(String::new())
     }
-    if let Some(path) = args.reviews.as_ref() {
-        let source = fs::read_to_string(path)?;
-        let mut records = parse_review_threads(&source)?;
-        for record in &mut records {
-            if let Some(subject) = record.subject.as_mut()
-                && let Some(replacement) = accepted.get(subject)
-            {
-                *subject = replacement.clone();
-            }
-            if let Some(susumu::model::ReviewAnchor::Source { path, .. }) = record.anchor.as_mut()
-                && let Some(migration) = candidates.iter().find(|migration| {
-                    migration.kind == "file"
-                        && migration.old_path == *path
-                        && accepted.get(&migration.old_id) == Some(&migration.new_id)
-                })
-            {
-                *path = migration.new_path.clone();
-            }
-        }
-        fs::write(path, write_review_threads(&records, false)?)?;
+}
+
+fn remap_expectation_subjects(
+    path: Option<&PathBuf>,
+    accepted: &BTreeMap<String, String>,
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let mut records = parse_expectations(&fs::read_to_string(path)?)?;
+    for record in &mut records {
+        remap_subject(&mut record.subject, accepted);
     }
-    if let Some(path) = args.work.as_ref() {
-        let source = if path.exists() {
-            fs::read_to_string(path)?
-        } else {
-            String::new()
-        };
-        let mut records = if source.trim().is_empty() {
-            Vec::new()
-        } else {
-            parse_works(&source)?
-        };
-        for record in &mut records {
-            if let Some(subject) = record.subject.as_mut()
-                && let Some(replacement) = accepted.get(subject)
-            {
-                *subject = replacement.clone();
-            }
-        }
-        fs::write(path, write_works(&records, false)?)?;
+    fs::write(path, write_expectations(&records, false)?)?;
+    Ok(())
+}
+
+fn remap_decision_subjects(
+    path: Option<&PathBuf>,
+    accepted: &BTreeMap<String, String>,
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let mut records = parse_decisions(&fs::read_to_string(path)?)?;
+    for record in &mut records {
+        remap_subject(&mut record.subject, accepted);
     }
-    let _ = summary;
+    fs::write(path, write_decisions(&records, false)?)?;
+    Ok(())
+}
+
+fn remap_work_subjects(path: Option<&PathBuf>, accepted: &BTreeMap<String, String>) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let source = read_sidecar_source(path)?;
+    let mut records = if source.trim().is_empty() {
+        Vec::new()
+    } else {
+        parse_works(&source)?
+    };
+    for record in &mut records {
+        remap_subject(&mut record.subject, accepted);
+    }
+    fs::write(path, write_works(&records, false)?)?;
+    Ok(())
+}
+
+fn remap_review_anchors(
+    path: Option<&PathBuf>,
+    accepted: &BTreeMap<String, String>,
+    candidates: &[susumu::migration::SourceMigration],
+) -> Result<()> {
+    let Some(path) = path else { return Ok(()) };
+    let mut records = parse_review_threads(&fs::read_to_string(path)?)?;
+    for record in &mut records {
+        remap_subject(&mut record.subject, accepted);
+        if let Some(susumu::model::ReviewAnchor::Source { path, .. }) = record.anchor.as_mut()
+            && let Some(migration) = candidates.iter().find(|migration| {
+                migration.kind == "file"
+                    && migration.old_path == *path
+                    && accepted.get(&migration.old_id) == Some(&migration.new_id)
+            })
+        {
+            *path = migration.new_path.clone();
+        }
+    }
+    fs::write(path, write_review_threads(&records, false)?)?;
     Ok(())
 }
 

@@ -30,6 +30,40 @@ pub(crate) fn load_analysis(
     Ok(analysis)
 }
 
+/// Best-effort load of a project analysis for stamping evidence provenance
+/// (basis + revision) at record time. Uses the same convention sidecars the
+/// daily review loop loads. Returns `None` when the path is not a project.
+pub(crate) fn load_for_stamp(project: &Path) -> Option<ProjectAnalysis> {
+    if !project.is_dir() {
+        return None;
+    }
+    let project = project.to_path_buf();
+    let work = daily::daily_work_sidecar(&project);
+    load_analysis(&project, None, None, None, work.as_ref(), None, false).ok()
+}
+
+/// Records the review basis and source revision Susumu observed when a
+/// verification was written, unless the caller supplied them explicitly.
+pub(crate) fn stamp_verification(verification: &mut Verification, analysis: &ProjectAnalysis) {
+    if verification.basis.is_none() {
+        verification.basis = current_basis_for_verification(analysis, verification);
+    }
+    if verification.revision.is_none() {
+        verification.revision.clone_from(&analysis.source_revision);
+    }
+}
+
+/// Records the review basis and source revision Susumu observed when a
+/// decision was written, unless the caller supplied them explicitly.
+pub(crate) fn stamp_decision(decision: &mut Decision, analysis: &ProjectAnalysis) {
+    if decision.basis.is_none() {
+        decision.basis = current_basis_for_decision(analysis, decision);
+    }
+    if decision.revision.is_none() {
+        decision.revision.clone_from(&analysis.source_revision);
+    }
+}
+
 struct SidecarInputs<'a> {
     target: &'a Path,
     expectations: Option<&'a PathBuf>,

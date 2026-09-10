@@ -2,6 +2,7 @@
 
 use super::*;
 
+pub(crate) mod args;
 pub(crate) mod commands;
 pub(crate) mod daily;
 pub(crate) mod daily_options;

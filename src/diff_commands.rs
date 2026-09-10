@@ -13,6 +13,18 @@ pub(super) fn git_rewind(args: &GitRewindArgs) -> Result<()> {
 }
 
 fn execute_git_rewind(args: &GitRewindArgs, snapshot_dir: &Path) -> Result<bool> {
+    let (old, new) = load_rewind_endpoints(args, snapshot_dir)?;
+    let report = diff_report(&old, &new);
+    emit_rewind_report(args, &old, &new, &report)?;
+    Ok(args.fail_on_stale && !report.stale_items.is_empty())
+}
+
+/// Reconstructs the old Git ref and loads the comparison endpoint, optionally
+/// writing the reconstructed old-ref artifact.
+fn load_rewind_endpoints(
+    args: &GitRewindArgs,
+    snapshot_dir: &Path,
+) -> Result<(ProjectAnalysis, ProjectAnalysis)> {
     let mut old = scan_project(snapshot_dir)
         .with_context(|| format!("could not scan Git ref {}", args.from))?;
     old.source_revision = Some(git_commit_for_ref(&args.repo, &args.from)?.hash);
@@ -27,24 +39,30 @@ fn execute_git_rewind(args: &GitRewindArgs, snapshot_dir: &Path) -> Result<bool>
             .with_context(|| format!("could not write {}", output.display()))?;
         eprintln!("wrote old-ref artifact {}", output.display());
     }
+    Ok((old, new))
+}
 
-    let report = diff_report(&old, &new);
+fn emit_rewind_report(
+    args: &GitRewindArgs,
+    old: &ProjectAnalysis,
+    new: &ProjectAnalysis,
+    report: &DiffReport,
+) -> Result<()> {
     if args.json {
-        print_git_rewind_json(args, &old, &new, &report)?;
-    } else {
-        println!(
-            "Susumu git rewind: {}@{} -> {}",
-            args.repo.display(),
-            args.from,
-            args.artifact.as_ref().map_or_else(
-                || args.repo.display().to_string(),
-                |path| path.display().to_string()
-            )
-        );
-        println!();
-        print_diff_report(&old, &new, &report, args.max_items);
+        return print_git_rewind_json(args, old, new, report);
     }
-    Ok(args.fail_on_stale && !report.stale_items.is_empty())
+    println!(
+        "Susumu git rewind: {}@{} -> {}",
+        args.repo.display(),
+        args.from,
+        args.artifact.as_ref().map_or_else(
+            || args.repo.display().to_string(),
+            |path| path.display().to_string()
+        )
+    );
+    println!();
+    print_diff_report(old, new, report, args.max_items);
+    Ok(())
 }
 
 fn cleanup_git_snapshot(snapshot_dir: &Path) {
@@ -256,7 +274,7 @@ fn freshness_check_items(analysis: &ProjectAnalysis) -> Vec<CheckItem> {
     analysis
         .findings
         .iter()
-        .filter(|finding| matches!(finding.rule_id.as_str(), "SUS023" | "SUS033"))
+        .filter(|finding| finding.is_dirty_evidence())
         .map(|finding| CheckItem {
             severity: CheckSeverity::Warning,
             title: format!("{}: {}", finding.rule_id, finding.title),

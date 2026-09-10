@@ -153,6 +153,7 @@ fn verification_findings_flag_missing_expectations() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Could not find the linked expectation.".to_owned(),
     });
 
@@ -284,6 +285,7 @@ fn workflow_priority_scores_explain_attention() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Checkout behavior did not match the expectation.".to_owned(),
     });
 
@@ -306,6 +308,7 @@ fn decision_basis_marks_changed_evidence_for_review() {
         status: DecisionStatus::Accepted,
         source: "human:test".to_owned(),
         basis: None,
+        revision: None,
         title: "Accept checkout shape".to_owned(),
         detail: "Checkout shape accepted for this test.".to_owned(),
     });
@@ -340,6 +343,7 @@ fn verification_basis_marks_changed_evidence_for_review() {
         source: "human:test".to_owned(),
         evidence: Some("review:test".to_owned()),
         basis: None,
+        revision: None,
         detail: "Checkout behavior matched the expectation.".to_owned(),
     });
 
@@ -351,6 +355,26 @@ fn verification_basis_marks_changed_evidence_for_review() {
     refresh_relationship_findings(&mut analysis);
 
     assert!(analysis.findings.iter().any(|finding| {
+        finding.rule_id == "SUS023" && finding.subject.as_deref() == Some("v_checkout")
+    }));
+
+    // A superseding verification retires the changed-evidence finding.
+    analysis.verifications.push(Verification {
+        id: "v_checkout_2".to_owned(),
+        expectation_id: "e_checkout".to_owned(),
+        status: VerificationStatus::Passed,
+        supersedes: Some("v_checkout".to_owned()),
+        execution: None,
+        chain: None,
+        method: "re-reviewed after change".to_owned(),
+        source: "human:test".to_owned(),
+        evidence: None,
+        basis: None,
+        revision: None,
+        detail: "Re-checked; the change is acceptable.".to_owned(),
+    });
+    refresh_relationship_findings(&mut analysis);
+    assert!(!analysis.findings.iter().any(|finding| {
         finding.rule_id == "SUS023" && finding.subject.as_deref() == Some("v_checkout")
     }));
 }
@@ -373,6 +397,7 @@ fn expectation_changes_dirty_verifications_and_decisions() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Checked.".to_owned(),
     });
     analysis.decisions.push(Decision {
@@ -382,6 +407,7 @@ fn expectation_changes_dirty_verifications_and_decisions() {
         status: DecisionStatus::Accepted,
         source: "human:test".to_owned(),
         basis: None,
+        revision: None,
         title: "Accept checkout shape".to_owned(),
         detail: "Accepted.".to_owned(),
     });
@@ -417,6 +443,7 @@ fn linked_work_changes_dirty_verifications_and_decisions() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Checked.".to_owned(),
     });
     analysis.decisions.push(Decision {
@@ -426,6 +453,7 @@ fn linked_work_changes_dirty_verifications_and_decisions() {
         status: DecisionStatus::Accepted,
         source: "human:test".to_owned(),
         basis: None,
+        revision: None,
         title: "Accept checkout shape".to_owned(),
         detail: "Accepted.".to_owned(),
     });
@@ -467,6 +495,7 @@ fn review_thread_changes_dirty_verifications_and_decisions() {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Checked.".to_owned(),
     });
     analysis.decisions.push(Decision {
@@ -476,6 +505,7 @@ fn review_thread_changes_dirty_verifications_and_decisions() {
         status: DecisionStatus::Accepted,
         source: "human:test".to_owned(),
         basis: None,
+        revision: None,
         title: "Accept checkout shape".to_owned(),
         detail: "Accepted.".to_owned(),
     });
@@ -523,6 +553,7 @@ fn symbol_verification_ignores_unrelated_file_changes() {
         source: "human:test".to_owned(),
         evidence: Some("review:test".to_owned()),
         basis: None,
+        revision: None,
         detail: "Checkout behavior matched the expectation.".to_owned(),
     });
 

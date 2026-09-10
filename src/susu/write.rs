@@ -252,7 +252,7 @@ fn verification_statement(verification: &Verification) -> Result<String> {
         .map(|value| format!(" chain={value}"))
         .unwrap_or_default();
     Ok(format!(
-        "verification {} expectation={} status={}{}{}{} method={} source={} evidence={} basis={} detail={}",
+        "verification {} expectation={} status={}{}{}{} method={} source={} evidence={} basis={} revision={} detail={}",
         verification.id,
         verification.expectation_id,
         verification.status,
@@ -263,19 +263,21 @@ fn verification_statement(verification: &Verification) -> Result<String> {
         quote(&verification.source)?,
         optional_quoted(verification.evidence.as_deref())?,
         verification.basis.as_deref().unwrap_or("-"),
+        verification.revision.as_deref().unwrap_or("-"),
         quote(&verification.detail)?
     ))
 }
 
 fn decision_statement(decision: &Decision) -> Result<String> {
     Ok(format!(
-        "decision {} target={} subject={} status={} source={} basis={} title={} detail={}",
+        "decision {} target={} subject={} status={} source={} basis={} revision={} title={} detail={}",
         decision.id,
         decision.target,
         decision.subject.as_deref().unwrap_or("-"),
         decision.status,
         quote(&decision.source)?,
         decision.basis.as_deref().unwrap_or("-"),
+        decision.revision.as_deref().unwrap_or("-"),
         quote(&decision.title)?,
         quote(&decision.detail)?
     ))

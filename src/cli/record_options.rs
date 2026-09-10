@@ -162,6 +162,9 @@ pub(crate) struct AddVerification {
     /// Verification sidecar to update.
     #[arg(short, long, default_value = "verifications.susu")]
     pub(crate) file: PathBuf,
+    /// Project directory used to stamp the evidence basis and revision. Skipped when it is not a project.
+    #[arg(long, default_value = ".")]
+    pub(crate) project: PathBuf,
     #[arg(long)]
     pub(crate) id: Option<String>,
     #[arg(long)]
@@ -206,6 +209,9 @@ pub(crate) struct AddDecision {
     /// Decision sidecar to update.
     #[arg(short, long, default_value = "decisions.susu")]
     pub(crate) file: PathBuf,
+    /// Project directory used to stamp the decision basis and revision. Skipped when it is not a project.
+    #[arg(long, default_value = ".")]
+    pub(crate) project: PathBuf,
     #[arg(long)]
     pub(crate) id: Option<String>,
     #[arg(long)]

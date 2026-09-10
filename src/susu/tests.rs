@@ -116,6 +116,7 @@ fn fixture_expectation_records() -> (Vec<Expectation>, Vec<Verification>) {
             source: "human:engineer".to_owned(),
             evidence: Some("ci:123".to_owned()),
             basis: Some("basis-v0".to_owned()),
+            revision: None,
             detail: "The health test checks local-only behavior.".to_owned(),
         }],
     )
@@ -129,6 +130,7 @@ fn fixture_decisions() -> Vec<Decision> {
         status: DecisionStatus::Accepted,
         source: "human:lead".to_owned(),
         basis: Some("basis0".to_owned()),
+        revision: None,
         title: "Health route accepted".to_owned(),
         detail: "The team accepts the local-only health check evidence.".to_owned(),
     }]
@@ -229,6 +231,24 @@ fn parses_and_writes_verification_fragments() {
 
     assert!(encoded.starts_with("verification v0"));
     assert_eq!(parse_verifications(&encoded).unwrap(), expected);
+}
+
+#[test]
+fn parses_and_writes_verification_revision() {
+    let source = "verification v_rev expectation=e0 status=passed method=\"cargo test\" source=\"human:local\" evidence=- basis=review-v2:abc revision=1c9a4f0deadbeef detail=\"Recorded against a revision.\";\n";
+    let parsed = parse_verifications(source).expect("parse verification revision");
+    assert_eq!(parsed[0].revision.as_deref(), Some("1c9a4f0deadbeef"));
+
+    let encoded = write_verifications(&parsed, false).expect("write verification revision");
+    assert!(encoded.contains("revision=1c9a4f0deadbeef"));
+    assert_eq!(parse_verifications(&encoded).unwrap(), parsed);
+}
+
+#[test]
+fn parses_verification_without_revision_as_none() {
+    let source = "verification v_old expectation=e0 status=passed method=\"m\" source=\"s\" evidence=- basis=- detail=\"legacy record\";\n";
+    let parsed = parse_verifications(source).expect("parse legacy verification");
+    assert_eq!(parsed[0].revision, None);
 }
 
 #[test]

@@ -4,11 +4,11 @@ This is the baseline inventory of Susumu's current behaviors, records, output su
 
 ## Product surfaces
 
-- Rust CLI for scanning, authoring records, Git history, review packets, readiness, checks, diffs, handoffs, attestation inspection, and daily workflows.
+- Rust CLI for scanning, authoring records, Git history, review packets, readiness, digests, checks, diffs, handoffs, attestation inspection, and daily workflows.
 - Ratatui TUI for engineering review, evidence browsing, source context, connections, and threaded review ownership.
 - Portable `.susu` artifacts and sidecars for project evidence, expectations, verifications, decisions, work, and review threads.
 - Standalone HTML portal for stakeholder review. The exported HTML is read-only and must not imply that it can write project records.
-- Machine-readable JSON for checks, readiness, handoffs, packet summaries, Git operations, diffs, and attestation inspection.
+- Machine-readable JSON for checks (with a changed-evidence count), readiness, digests, handoffs, packet summaries, Git operations, diffs, and attestation inspection.
 - CI and GitHub Pages workflows that build, retain, and publish review artifacts.
 
 These surfaces are complementary rather than role-locked:
@@ -58,7 +58,7 @@ Current deterministic findings include:
 - `SUS005`: recursive or cyclic call flow;
 - `SUS010`-`SUS012`: malformed or stale expectation targets;
 - `SUS020`: verification points at a missing expectation;
-- `SUS023`: verification basis changed and needs renewed review;
+- `SUS023`: verification basis changed and needs renewed review; commit-attributed when the record carries a `revision`;
 - `SUS056`: an authored record still references a source identity from an older revision and needs explicit migration review;
 - `SUS030`-`SUS033`: malformed, stale, or changed decision targets;
 - `SUS040`-`SUS043`: malformed, stale, or missing work targets and expectation links;
@@ -73,10 +73,12 @@ The review system currently provides:
 - review queues for failed or inconclusive verifications, stale verification and decision bases, missing links, scanner findings, unresolved workflow gaps, open review threads, and work needing verification;
 - portable review anchors for expectations, verifications, work, decisions, findings, and source locations, with typed contributions, owners, parent replies, and missing-anchor findings;
 - expectation support summaries with target observation, linked work, verification posture, decision context, findings, and next action;
-- readiness buckets for failed verification, missing target, work needing verification, no linked work, verified, and unknown;
+- readiness buckets for failed verification, missing target, changed evidence needing re-verification, work needing verification, no linked work, verified, and unknown;
+- a `susumu digest` command that rescans and prints only the actionable items — re-verification needs with the causing commit, checks, open review threads, and unverified expectations — in text or JSON;
 - human-readable and JSON readiness output with search and bucket filters;
 - review packets containing the artifact, check report, handoff state, readiness state, support summaries, next actions, and source previews;
 - packet diffing and Git rewind comparison with stale-evidence reporting;
+- commit-attributed dirty findings: `susumu review` and `susumu check` walk the Git history since a verification or decision's recorded `revision` and name the commit(s) that changed the target, with a `susumu check --fail-on-dirty` gate;
 - TUI review and connections jumps to the relevant record or review-thread context;
 - portal overview, readiness, review, threads, workflow evidence, traceability, source, records, dirty/stale evidence, artifact, and next-action views.
 

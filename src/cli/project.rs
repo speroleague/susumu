@@ -108,7 +108,7 @@ pub(crate) fn write_text_file(path: &Path, contents: &str) -> Result<()> {
 }
 
 pub(crate) fn check(args: &CheckArgs) -> Result<()> {
-    let analysis = load_analysis(
+    let mut analysis = load_analysis(
         &args.target,
         args.expectations.as_ref(),
         args.verifications.as_ref(),
@@ -117,13 +117,16 @@ pub(crate) fn check(args: &CheckArgs) -> Result<()> {
         None,
         false,
     )?;
+    if args.target.is_dir() {
+        enrich_stale_findings(&mut analysis, &args.target, DEFAULT_HISTORY_LIMIT);
+    }
     let report = check_report(&analysis, args.strict);
     if args.json {
         print_check_json(&analysis, &report)?;
     } else {
         print_check_report(&analysis, &report, args.max_items);
     }
-    if report.failed {
+    if report.failed || (args.fail_on_dirty && report.dirty > 0) {
         process::exit(1);
     }
     Ok(())

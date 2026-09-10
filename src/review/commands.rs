@@ -72,7 +72,7 @@ pub(crate) fn build_review(args: &ReviewBuildArgs) -> Result<()> {
 }
 
 fn write_review_build_outputs(args: &ReviewBuildArgs) -> Result<ReviewBuildState> {
-    let analysis = load_analysis(
+    let mut analysis = load_analysis(
         &args.target,
         args.expectations.as_ref(),
         args.verifications.as_ref(),
@@ -81,6 +81,9 @@ fn write_review_build_outputs(args: &ReviewBuildArgs) -> Result<ReviewBuildState
         None,
         true,
     )?;
+    if args.target.is_dir() {
+        enrich_stale_findings(&mut analysis, &args.target, DEFAULT_HISTORY_LIMIT);
+    }
     write_text_file(&args.artifact_output, &write_susu(&analysis, false)?)?;
 
     let check = check_report(&analysis, args.strict);

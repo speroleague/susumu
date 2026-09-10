@@ -23,7 +23,7 @@ Installed globally, that becomes:
 
 ```sh
 susumu review
-susumu status
+susumu digest
 susumu readiness
 susumu git --since main
 susumu expectations --search git
@@ -85,10 +85,17 @@ susumu readiness
 
 The first command connects commits to expectations and exports work records. The second command folds that work back into the review packet. The third command shows expectation readiness counts and next actions from that packet.
 
+For a quick "what needs attention right now", run `susumu digest`. It rescans the
+project (with commit attribution) and prints only the actionable items:
+expectations that need re-verification because their target changed — naming the
+commit — plus failing checks, open review threads, and unverified expectations.
+Add `--json` to pipe it into a PR comment or a chat notification.
+
 When the queue gets long, narrow it before you decide what to do next:
 
 ```sh
 susumu readiness --bucket needs_verification
+susumu readiness --bucket needs_reverification
 susumu readiness --search git
 susumu readiness --json --bucket failed_verification
 ```
@@ -216,6 +223,14 @@ susumu verify e_checkout_sequence --passed --method "cargo test checkout_order"
 susumu verify e_checkout_sequence --failed --method "manual QA"
 susumu verify e_checkout_sequence --inconclusive --method "reviewed logs"
 ```
+
+`susumu verify` records the review basis and the current Git revision alongside
+the check. When code under the checked target later changes, `susumu review` and
+`susumu check` raise `SUS023` and name the commit that caused it. Use
+`susumu check --fail-on-dirty` in CI or a pre-merge hook to block on changed
+evidence. Clear it by recording a fresh check that supersedes the stale one
+(`susumu verify <id> --supersedes <old-verification>`) or a `susumu decision add`
+that accepts the change.
 
 That boundary is the trust model.
 

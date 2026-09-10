@@ -58,6 +58,7 @@ fn expectation_support_fixture() -> ProjectAnalysis {
         source: "ci:test".to_owned(),
         evidence: Some("run:1".to_owned()),
         basis: None,
+        revision: None,
         detail: "Passed.".to_owned(),
     });
     artifact.verifications.push(Verification {
@@ -71,6 +72,7 @@ fn expectation_support_fixture() -> ProjectAnalysis {
         source: "human:test".to_owned(),
         evidence: Some("review:1".to_owned()),
         basis: None,
+        revision: None,
         detail: "Failed.".to_owned(),
     });
     artifact.verifications.push(Verification {
@@ -84,6 +86,7 @@ fn expectation_support_fixture() -> ProjectAnalysis {
         source: "human:test".to_owned(),
         evidence: None,
         basis: None,
+        revision: None,
         detail: "Inconclusive.".to_owned(),
     });
     artifact.decisions.push(Decision {
@@ -93,6 +96,7 @@ fn expectation_support_fixture() -> ProjectAnalysis {
         status: DecisionStatus::Accepted,
         source: "human:test".to_owned(),
         basis: None,
+        revision: None,
         title: "Accept project direction".to_owned(),
         detail: "Project-wide decision context should count for project expectations.".to_owned(),
     });
@@ -243,6 +247,7 @@ fn scanner_support_does_not_verify_expectations_without_passed_verification() {
         source: "ci:test".to_owned(),
         evidence: Some("run:checkout".to_owned()),
         basis: None,
+        revision: None,
         detail: "Passed verification promotes support to verified.".to_owned(),
     });
 

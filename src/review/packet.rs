@@ -52,6 +52,7 @@ pub(crate) fn review_packet<'a>(
             critical: check.critical,
             warning: check.warning,
             attention: check.attention,
+            dirty: check.dirty,
         },
         result: CheckResultJson {
             status: if check.failed { "failed" } else { "passed" },

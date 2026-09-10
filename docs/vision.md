@@ -22,7 +22,7 @@ People connect expectations, business rules, policies, acceptance criteria, owne
 
 ### 3. Work and verification
 
-Human and AI activity records explain what changed, why it changed, which expectation it addresses, and how it was checked. Diffs, commits, test runs, analysis runs, and deployment results provide evidence. Agent-produced work carries agent provenance.
+Human and AI activity records explain what changed, why it changed, which expectation it addresses, and how it was checked. Diffs, commits, test runs, analysis runs, and deployment results provide evidence. Agent-produced work carries agent provenance. A verification or decision records the Git revision it was checked against; when the target later changes, Susumu deterministically flags the record as changed evidence and names the commit responsible.
 
 ### 4. Review and decision
 
@@ -59,7 +59,7 @@ Optional bring-your-own-key AI can help with summarization, naming, clustering, 
 
 Source code and artifacts remain local unless a user explicitly configures a provider and sends selected context.
 
-In a company workflow, AI can still be valuable as a record-keeping assistant: draft expectation updates from tickets, summarize decisions from reviews, propose intent records from pull requests, and flag places where a change may invalidate an earlier judgment. Those records should enter Susumu as drafts or review items, not silent facts. The durable system of record remains the `.susu` artifact plus explicit human, CI, policy, or deterministic scanner provenance.
+In a company workflow, AI can still be valuable as a record-keeping assistant: draft expectation updates from tickets, summarize decisions from reviews, propose intent records from pull requests, and explain in prose why the deterministic model has flagged an earlier judgment as changed evidence. Those records should enter Susumu as drafts or review items, not silent facts. The durable system of record remains the `.susu` artifact plus explicit human, CI, policy, or deterministic scanner provenance.
 
 ## Delivery sequence
 

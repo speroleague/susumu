@@ -22,6 +22,8 @@ pub(crate) struct CheckReport {
     pub(crate) critical: usize,
     pub(crate) warning: usize,
     pub(crate) attention: usize,
+    /// Items reporting changed verification or decision evidence (SUS023 / SUS033).
+    pub(crate) dirty: usize,
     pub(crate) strict: bool,
     pub(crate) failed: bool,
 }
@@ -74,6 +76,7 @@ pub(crate) struct CheckReviewJson {
     pub(crate) critical: usize,
     pub(crate) warning: usize,
     pub(crate) attention: usize,
+    pub(crate) dirty: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -134,6 +137,10 @@ pub(crate) struct ExpectationSupport {
     pub(crate) work: usize,
     pub(crate) decisions: usize,
     pub(crate) findings: usize,
+    /// A verification or decision for this expectation was recorded against
+    /// evidence that has since changed (SUS023 / SUS033).
+    #[serde(default)]
+    pub(crate) dirty: bool,
     pub(crate) support_status: String,
     pub(crate) evidence_posture: String,
     pub(crate) reasons: Vec<String>,
@@ -178,9 +185,10 @@ pub(crate) fn verification_evidence_posture(
     }
 }
 
-pub(crate) const READINESS_BUCKETS: [(&str, &str); 5] = [
+pub(crate) const READINESS_BUCKETS: [(&str, &str); 6] = [
     ("failed_verification", "Failed verification"),
     ("missing_target", "Missing target"),
+    ("needs_reverification", "Verified, evidence changed"),
     ("needs_verification", "Has work, needs verification"),
     ("needs_work", "No linked work yet"),
     ("verified", "Verified"),
@@ -341,6 +349,8 @@ pub(crate) const fn check_result_reason(report: &CheckReport) -> &'static str {
         } else {
             "strict mode treats warnings as blockers"
         }
+    } else if report.dirty > 0 {
+        "passed with changed evidence"
     } else if report.warning > 0 || report.attention > 0 {
         "passed with review items"
     } else {
@@ -365,6 +375,7 @@ mod tests {
         let report = CheckReport {
             items: Vec::new(),
             critical: 0,
+            dirty: 0,
             warning: 1,
             attention: 0,
             strict: false,

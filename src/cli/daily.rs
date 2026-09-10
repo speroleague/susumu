@@ -103,6 +103,7 @@ pub(crate) fn status_shortcut(args: &StatusArgs) -> Result<()> {
         decisions: None,
         work,
         strict: args.strict,
+        fail_on_dirty: false,
         max_items: args.max_items,
         json: args.json,
     })
@@ -342,9 +343,12 @@ pub(crate) struct VerifyJson {
     source: String,
 }
 
-pub(crate) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
-    let status = verification_status_from_flags(&args)?;
-    let analysis = load_analysis(&args.target, None, None, None, None, None, false)?;
+pub(crate) fn verify_shortcut(args: &VerifyArgs) -> Result<()> {
+    let status = verification_status_from_flags(args)?;
+    // Load the same convention sidecars the daily review loop uses, so the basis
+    // stamped here matches what `susumu review` later recomputes.
+    let work = daily_work_sidecar(&args.target);
+    let analysis = load_analysis(&args.target, None, None, None, work.as_ref(), None, false)?;
     let expectation = analysis
         .expectations
         .iter()
@@ -356,23 +360,41 @@ pub(crate) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
                 args.expectation
             )
         })?;
+    let mut verification = build_verify_record(args, status, expectation)?;
+    // Stamp the provenance Susumu observed at record time so later scans can
+    // detect when the checked code or its linked records have changed.
+    stamp_verification(&mut verification, &analysis);
+    let written = write_verification_record(&args.file, verification, args.minify)?;
+
+    print_verification_result(&args.file, expectation, &written, args.json)?;
+
+    Ok(())
+}
+
+fn build_verify_record(
+    args: &VerifyArgs,
+    status: VerificationStatus,
+    expectation: &Expectation,
+) -> Result<Verification> {
     let evidence = if let Some(path) = args.evidence_file.as_deref() {
         Some(hash_evidence_file(path)?)
     } else {
-        args.evidence.filter(|value| !value.trim().is_empty())
+        args.evidence
+            .clone()
+            .filter(|value| !value.trim().is_empty())
     };
     let execution = args
         .execution_file
         .as_deref()
         .map(read_execution_file)
         .transpose()?;
-    let detail = args.detail.unwrap_or_else(|| {
+    let detail = args.detail.clone().unwrap_or_else(|| {
         format!(
             "Recorded by susumu verify. Expectation: {} - {}. Method: {}.",
             expectation.id, expectation.title, args.method
         )
     });
-    let id = args.id.unwrap_or_else(|| {
+    let id = args.id.clone().unwrap_or_else(|| {
         verification_id(
             &expectation.id,
             status,
@@ -383,24 +405,26 @@ pub(crate) fn verify_shortcut(args: VerifyArgs) -> Result<()> {
             &detail,
         )
     });
-    let verification = Verification {
+    Ok(Verification {
         id,
         expectation_id: expectation.id.clone(),
         status,
-        supersedes: args.supersedes.filter(|value| !value.trim().is_empty()),
+        supersedes: args
+            .supersedes
+            .clone()
+            .filter(|value| !value.trim().is_empty()),
         execution,
         chain: None,
-        method: args.method,
-        source: args.source,
+        method: args.method.clone(),
+        source: args.source.clone(),
         evidence,
-        basis: args.basis.filter(|value| !value.trim().is_empty()),
+        basis: args.basis.clone().filter(|value| !value.trim().is_empty()),
+        revision: args
+            .revision
+            .clone()
+            .filter(|value| !value.trim().is_empty()),
         detail,
-    };
-    let written = write_verification_record(&args.file, verification, args.minify)?;
-
-    print_verification_result(&args.file, expectation, &written, args.json)?;
-
-    Ok(())
+    })
 }
 
 pub(crate) fn print_verification_result(
@@ -528,6 +552,12 @@ pub(crate) fn daily_review_paths(target: &Path, output_dir: &Path) -> DailyRevie
         html: base.join("review.html"),
         work: base.join("work.susu"),
     }
+}
+
+/// The conventional `.susumu/work.susu` sidecar for a target, when it exists.
+pub(crate) fn daily_work_sidecar(target: &Path) -> Option<PathBuf> {
+    let path = conventional_output_dir(target, Path::new(".susumu")).join("work.susu");
+    path.exists().then_some(path)
 }
 
 pub(crate) fn conventional_output_dir(target: &Path, output_dir: &Path) -> PathBuf {

@@ -1,6 +1,6 @@
 use tree_sitter::{Language as TreeLanguage, Node};
 
-use crate::model::{Language, SymbolKind};
+use crate::model::{Language, SymbolKind, WorkflowKind};
 
 use super::{
     HTTP_METHODS, ParsedWorkflow, is_http_method, location, quoted_strings, quoted_value,
@@ -183,7 +183,7 @@ impl LanguageAdapter for JavaScriptAdapter {
     }
 
     fn workflows(&self, node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
-        javascript_workflow(node, source).into_iter().collect()
+        javascript_workflows(node, source)
     }
 }
 
@@ -205,7 +205,7 @@ impl LanguageAdapter for TypeScriptAdapter {
     }
 
     fn workflows(&self, node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
-        javascript_workflow(node, source).into_iter().collect()
+        javascript_workflows(node, source)
     }
 }
 
@@ -227,7 +227,7 @@ impl LanguageAdapter for TsxAdapter {
     }
 
     fn workflows(&self, node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
-        javascript_workflow(node, source).into_iter().collect()
+        javascript_workflows(node, source)
     }
 }
 
@@ -249,7 +249,7 @@ impl LanguageAdapter for VueAdapter {
     }
 
     fn workflows(&self, node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
-        javascript_workflow(node, source).into_iter().collect()
+        javascript_workflows(node, source)
     }
 }
 
@@ -315,6 +315,13 @@ fn normalized_dependency(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+fn javascript_workflows(node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
+    let mut workflows = Vec::new();
+    workflows.extend(javascript_workflow(node, source));
+    workflows.extend(super::react_navigation::workflow(node, source));
+    workflows
+}
+
 fn javascript_workflow(node: Node<'_>, source: &[u8]) -> Option<ParsedWorkflow> {
     if node.kind() != "call_expression" {
         return None;
@@ -336,6 +343,7 @@ fn javascript_workflow(node: Node<'_>, source: &[u8]) -> Option<ParsedWorkflow> 
         .filter(|_| values.len() > 1)
         .and_then(|value| terminal_identifier(*value, source));
     Some(ParsedWorkflow {
+        kind: WorkflowKind::Http,
         framework: "express-compatible".to_owned(),
         method: method.to_ascii_uppercase(),
         path,
@@ -385,6 +393,7 @@ fn python_workflows(node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
                 methods
             } {
                 workflows.push(ParsedWorkflow {
+                    kind: WorkflowKind::Http,
                     framework: "flask-compatible".to_owned(),
                     method: method.to_ascii_uppercase(),
                     path: path.clone(),
@@ -394,6 +403,7 @@ fn python_workflows(node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
             }
         } else if HTTP_METHODS.contains(&method_name) {
             workflows.push(ParsedWorkflow {
+                kind: WorkflowKind::Http,
                 framework: "fastapi-compatible".to_owned(),
                 method: method_name.to_ascii_uppercase(),
                 path,
@@ -424,6 +434,7 @@ fn php_workflows(node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
             && let Some(path) = strings.first()
         {
             return vec![ParsedWorkflow {
+                kind: WorkflowKind::Http,
                 framework: "laravel".to_owned(),
                 method: method.to_ascii_uppercase(),
                 path: path.clone(),
@@ -446,6 +457,7 @@ fn php_workflows(node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
                 .and_then(|name| name.utf8_text(source).ok())
                 .map(ToOwned::to_owned);
             return vec![ParsedWorkflow {
+                kind: WorkflowKind::Http,
                 framework: "symfony".to_owned(),
                 method: method.to_ascii_uppercase(),
                 path: path.clone(),
@@ -474,6 +486,7 @@ fn rust_workflows(node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
                     .and_then(|name| name.utf8_text(source).ok())
                     .map(ToOwned::to_owned);
                 return vec![ParsedWorkflow {
+                    kind: WorkflowKind::Http,
                     framework: "actix-web".to_owned(),
                     method: method.to_ascii_uppercase(),
                     path: path.clone(),
@@ -514,6 +527,7 @@ fn rust_workflows(node: Node<'_>, source: &[u8]) -> Vec<ParsedWorkflow> {
             })
             .and_then(|handler| terminal_identifier(handler, source));
         return vec![ParsedWorkflow {
+            kind: WorkflowKind::Http,
             framework: "axum-compatible".to_owned(),
             method: method.to_ascii_uppercase(),
             path,

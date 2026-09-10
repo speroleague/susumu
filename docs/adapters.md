@@ -19,7 +19,14 @@ The initial adapters are:
 | Rust | functions, methods, `use`, calls | Axum-compatible routes, Actix Web attributes |
 | PHP | functions, methods, namespace uses/includes, calls | Laravel `Route::...`, Symfony `#[Route]` |
 | Python | functions, imports, calls | FastAPI-style method decorators, Flask `route` |
-| JavaScript/TypeScript/TSX/Vue | functions, methods, imports, calls | Express-compatible `app`/`router` methods; Vue script blocks use the TypeScript/TSX grammar |
+| JavaScript/TypeScript/TSX/Vue | functions, methods, imports, calls | Express-compatible `app`/`router` methods; React Router `<Route>` and React Navigation `<*.Screen>` navigation targets; Vue script blocks use the TypeScript/TSX grammar |
+
+React and React Native share the JavaScript/TypeScript/TSX adapters. `.jsx` files use the JavaScript grammar and `.tsx` files use the TSX grammar, so components are recorded as ordinary function symbols. In addition to Express-compatible HTTP routes, these adapters emit `navigation` workflows for declarative routing:
+
+- **React Router** — `<Route path="/users" element={<Users />} />` (and `component={Users}`), including `<Route index .../>`, which is recorded with the path `(index)`.
+- **React Navigation** — `<Stack.Screen name="Home" component={HomeScreen} />` and the `Tab`/`Drawer` equivalents, keyed by the screen `name`.
+
+The `navigation` workflow kind carries a `ROUTE <path>` or `SCREEN <name>` trigger and resolves the `component`/`element`/`getComponent` attribute to a handler symbol. Object-configuration routers (`createBrowserRouter([...])`, `useRoutes([...])`) and dynamically built route tables remain a visible gap rather than a guess.
 
 An adapter is deterministic. It may return incomplete or ambiguous evidence, but it may not guess silently. Unsupported metaprogramming, dependency injection, reflection, macros, or dynamic dispatch remains visible as a gap until a more specific adapter, runtime trace, configuration reader, or explicit declaration resolves it.
 

@@ -195,12 +195,16 @@ pub struct WorkflowPriority {
 #[serde(rename_all = "lowercase")]
 pub enum WorkflowKind {
     Http,
+    /// Client-side route or screen registration, such as a React Router route or
+    /// a React Navigation screen. The trigger names the route path or screen name.
+    Navigation,
 }
 
 impl fmt::Display for WorkflowKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::Http => "http",
+            Self::Navigation => "navigation",
         })
     }
 }
@@ -211,6 +215,7 @@ impl std::str::FromStr for WorkflowKind {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "http" => Ok(Self::Http),
+            "navigation" => Ok(Self::Navigation),
             _ => Err(format!("unknown workflow kind: {value}")),
         }
     }

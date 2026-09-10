@@ -327,6 +327,67 @@ return save_order()
 }
 
 #[test]
+fn detects_react_router_and_react_navigation_targets() {
+    let directory = tempdir().unwrap();
+    fs::write(
+        directory.path().join("routes.jsx"),
+        r#"
+function Users() { return null; }
+
+export function AppRoutes() {
+    return (
+        <Routes>
+            <Route path="/users" element={<Users />} />
+            <Route index element={<Home />} />
+        </Routes>
+    );
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        directory.path().join("navigator.tsx"),
+        r#"
+function HomeScreen() { return null; }
+
+export function RootNavigator() {
+    return (
+        <Stack.Navigator>
+            <Stack.Screen name="Home" component={HomeScreen} />
+        </Stack.Navigator>
+    );
+}
+"#,
+    )
+    .unwrap();
+
+    let analysis = scan_project(directory.path()).unwrap();
+
+    assert!(analysis.workflows.iter().any(|workflow| {
+        workflow.trigger == "ROUTE /users"
+            && workflow.kind == crate::model::WorkflowKind::Navigation
+            && workflow.framework == "react-router"
+            && workflow.entry_symbol.is_some()
+    }));
+    assert!(analysis.workflows.iter().any(|workflow| {
+        workflow.trigger == "ROUTE (index)" && workflow.framework == "react-router"
+    }));
+    assert!(analysis.workflows.iter().any(|workflow| {
+        workflow.trigger == "SCREEN Home"
+            && workflow.kind == crate::model::WorkflowKind::Navigation
+            && workflow.framework == "react-navigation"
+            && workflow.handler.as_deref() == Some("HomeScreen")
+            && workflow.entry_symbol.is_some()
+    }));
+    assert!(
+        analysis
+            .workflow_priorities
+            .iter()
+            .any(|priority| priority.detail.contains("navigation route observed"))
+    );
+}
+
+#[test]
 fn detects_laravel_and_rust_http_workflows() {
     let directory = tempdir().unwrap();
     fs::write(

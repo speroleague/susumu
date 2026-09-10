@@ -13,10 +13,7 @@ mod file;
 
 use crate::{
     analysis::add_findings,
-    model::{
-        Confidence, FlowEdge, Language, ProjectAnalysis, SCHEMA_VERSION, Symbol, Workflow,
-        WorkflowKind,
-    },
+    model::{Confidence, FlowEdge, Language, ProjectAnalysis, SCHEMA_VERSION, Symbol, Workflow},
     scanner::file::{PendingCall, PendingWorkflow, scan_file},
 };
 
@@ -147,7 +144,7 @@ fn resolve_workflows(analysis: &mut ProjectAnalysis, pending: Vec<PendingWorkflo
         *occurrence += 1;
         analysis.workflows.push(Workflow {
             id,
-            kind: WorkflowKind::Http,
+            kind: pending_workflow.workflow.kind,
             framework: pending_workflow.workflow.framework,
             trigger: format!(
                 "{} {}",

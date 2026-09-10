@@ -1,6 +1,6 @@
 use crate::model::{
     Confidence, ExpectationStatus, ExpectationTarget, ProjectAnalysis, VerificationStatus,
-    Workflow, WorkflowPriority,
+    Workflow, WorkflowKind, WorkflowPriority,
 };
 
 pub fn refresh_workflow_priorities(analysis: &mut ProjectAnalysis) {
@@ -42,9 +42,15 @@ fn add_observation_priority(workflow: &Workflow, score: &mut u32, reasons: &mut 
         reasons.push("handler symbol resolved".to_owned());
     }
 
-    if workflow.kind.to_string() == "http" {
-        *score += 20;
-        reasons.push("HTTP route observed".to_owned());
+    match workflow.kind {
+        WorkflowKind::Http => {
+            *score += 20;
+            reasons.push("HTTP route observed".to_owned());
+        }
+        WorkflowKind::Navigation => {
+            *score += 20;
+            reasons.push("navigation route observed".to_owned());
+        }
     }
 }
 

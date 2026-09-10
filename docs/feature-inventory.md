@@ -27,12 +27,12 @@ The scanner currently records:
 - supported source files, language, line count, byte count, and content hash when available;
 - symbols with stable ids, kinds, locations, and source-region fingerprints;
 - dependencies and source locations;
-- framework-level HTTP workflows with method, path, handler, entry symbol, file, location, and resolution confidence;
+- framework-level HTTP workflows and React Router / React Navigation `navigation` workflows with method or route/screen trigger, path, handler, entry symbol, file, location, and resolution confidence;
 - symbol-to-symbol call flows, including unresolved external or ambiguous edges;
 - syntax-highlighted source previews in review packets when source is readable;
 - deterministic workflow attention scores with inspectable reasons.
 
-The current adapter boundary covers Rust, PHP, Python, JavaScript, TypeScript, TSX, and Vue-family source handling. The scanner skips unsupported, unreadable, or over-limit files with visible findings rather than inventing evidence.
+The current adapter boundary covers Rust, PHP, Python, JavaScript, TypeScript, TSX, and Vue-family source handling; React and React Native are served by the JavaScript/TypeScript/TSX adapters. The scanner skips unsupported, unreadable, or over-limit files with visible findings rather than inventing evidence.
 
 ## Authored records
 

@@ -235,11 +235,12 @@ The scanner can determine support, not satisfaction. If a commit links to an exp
 
 ## Current capabilities
 
-- Scans Rust, PHP, Python, JavaScript, TypeScript, TSX, and Vue single-file components through language-specific adapters. Vue script blocks are parsed with the TypeScript/TSX Tree-sitter grammar while template and style blocks remain outside scanner evidence.
+- Scans Rust, PHP, Python, JavaScript, TypeScript, TSX, and Vue single-file components through language-specific adapters. React and React Native use the JavaScript/TypeScript/TSX adapters (`.jsx`/`.tsx`). Vue script blocks are parsed with the TypeScript/TSX Tree-sitter grammar while template and style blocks remain outside scanner evidence.
 - Keeps per-language parser behavior behind `src/language/adapters.rs`, so new ecosystems can be added without changing `.susu` consumers.
 - Respects `.gitignore`, `.ignore`, Git excludes, hidden-directory filtering, and a 2 MiB per-file safety limit.
 - Extracts modules, functions, methods, imports, and calls using Tree-sitter.
 - Detects initial HTTP workflows for Express-compatible, FastAPI-compatible, Flask-compatible, Laravel, Symfony, Axum-compatible, and Actix Web conventions.
+- Detects client-side `navigation` workflows for React Router `<Route>` and React Navigation `<*.Screen>` declarations, with `ROUTE <path>` / `SCREEN <name>` triggers and resolved handler components.
 - Ranks workflows with deterministic attention scores and explicit reasons.
 - Uses deterministic path/name-based ids so evidence and review targets survive ordinary rescans.
 - Resolves same-file calls exactly and unique project-wide calls as likely.

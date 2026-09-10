@@ -1,10 +1,11 @@
 mod adapters;
+mod react_navigation;
 
 use adapters::adapter_for;
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-use crate::model::{Language, Location, SymbolKind};
+use crate::model::{Language, Location, SymbolKind, WorkflowKind};
 
 #[derive(Debug)]
 pub(crate) struct ParsedFile {
@@ -39,6 +40,7 @@ pub(crate) struct ParsedDependency {
 
 #[derive(Debug)]
 pub(crate) struct ParsedWorkflow {
+    pub kind: WorkflowKind,
     pub framework: String,
     pub method: String,
     pub path: String,

@@ -231,7 +231,7 @@ Susumu keeps different kinds of truth separate:
 - Decisions say what judgment was made.
 - Work records say what humans, agents, imports, or automation changed or reviewed.
 
-The scanner can determine support, not satisfaction. If a commit links to an expectation, Susumu can show that work supports the expectation. It still needs verification before the expectation should be treated as proven.
+The scanner can determine support, not satisfaction. If a commit links to an expectation, Susumu can show that work supports the expectation. It still needs verification before the expectation should be treated as proven. A verification also records the revision it was checked against, so a proven expectation reverts to "needs re-verification" when the target later changes.
 
 ## Current capabilities
 

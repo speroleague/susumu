@@ -464,6 +464,14 @@ cargo run -- handoff project.susu
 cargo run -- handoff project.susu --json
 ```
 
+Expose a bounded, read-only integration digest:
+
+```sh
+cargo run -- digest . --json
+```
+
+`digest` emits the versioned `susumu.digest.v1` JSON contract with current review totals and bounded review items and next actions. It does not write artifacts or fail its process solely because review items are present. Local tools can use it without parsing `.susu` files. When a `.middleman/middleman.toml` marker is present, the digest reports that Middleman is detected but does not read Middleman's private state or invoke its CLI.
+
 Create point-in-time review packets:
 
 ```sh

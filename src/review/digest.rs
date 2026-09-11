@@ -4,7 +4,7 @@
 //! the project and runs commit attribution, so it is always current. It writes
 //! nothing.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use clap::Args;
@@ -18,6 +18,8 @@ use crate::review::types::{
     CheckReport, CheckSeverity, ExpectationReadiness, HandoffReport, check_severity_label,
 };
 use crate::{DEFAULT_HISTORY_LIMIT, enrich_stale_findings, load_analysis};
+
+const DIGEST_SCHEMA_VERSION: &str = "susumu.digest.v1";
 
 #[derive(Debug, Args)]
 pub(crate) struct DigestArgs {
@@ -80,14 +82,40 @@ pub(crate) fn run(args: &DigestArgs) -> Result<()> {
 
 #[derive(Debug, Serialize)]
 struct Digest {
+    schema_version: &'static str,
     project: String,
     revision: Option<String>,
     generated_unix_seconds: u64,
+    review: DigestReview,
+    result: DigestResult,
+    integrations: DigestIntegrations,
     attention_count: usize,
     needs_reverification: Vec<AttentionItem>,
     checks: Vec<AttentionItem>,
     open_threads: Vec<AttentionItem>,
     expectations_without_verification: Vec<AttentionItem>,
+}
+
+#[derive(Debug, Serialize)]
+struct DigestReview {
+    critical: usize,
+    warning: usize,
+    attention: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct DigestResult {
+    status: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct DigestIntegrations {
+    middleman: DigestIntegration,
+}
+
+#[derive(Debug, Serialize)]
+struct DigestIntegration {
+    detected: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -119,9 +147,30 @@ impl Digest {
         .sum();
 
         Self {
+            schema_version: DIGEST_SCHEMA_VERSION,
             project: analysis.project_name.clone(),
             revision: analysis.source_revision.clone(),
             generated_unix_seconds: analysis.generated_unix_seconds,
+            review: DigestReview {
+                critical: check.critical,
+                warning: check.warning,
+                attention: check.attention,
+            },
+            result: DigestResult {
+                status: if attention_count == 0 {
+                    "clear"
+                } else {
+                    "attention"
+                },
+            },
+            integrations: DigestIntegrations {
+                middleman: DigestIntegration {
+                    detected: Path::new(&analysis.root)
+                        .join(".middleman")
+                        .join("middleman.toml")
+                        .is_file(),
+                },
+            },
             attention_count,
             needs_reverification,
             checks,

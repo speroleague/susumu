@@ -6,7 +6,7 @@ use susumu::model::{
 use crate::review::checks::check_report;
 use crate::test_support::test_artifact;
 
-use super::Digest;
+use super::{DIGEST_SCHEMA_VERSION, Digest};
 
 fn passed_verification(id: &str, expectation_id: &str) -> Verification {
     Verification {
@@ -35,8 +35,32 @@ fn digest_is_empty_when_nothing_needs_attention() {
     let check = check_report(&analysis, false);
     let digest = Digest::build(&analysis, &check);
 
+    assert_eq!(digest.schema_version, DIGEST_SCHEMA_VERSION);
+    assert_eq!(digest.review.critical, check.critical);
+    assert_eq!(digest.review.warning, check.warning);
+    assert_eq!(digest.review.attention, check.attention);
+    assert_eq!(digest.result.status, "clear");
+    assert!(!digest.integrations.middleman.detected);
     assert_eq!(digest.attention_count, 0);
     assert!(digest.needs_reverification.is_empty());
+}
+
+#[test]
+fn digest_detects_middleman_only_from_its_conventional_marker() {
+    let temporary = tempfile::tempdir().expect("create temporary project");
+    std::fs::create_dir_all(temporary.path().join(".middleman")).expect("create marker parent");
+    std::fs::write(
+        temporary.path().join(".middleman/middleman.toml"),
+        "schema_version = 1\n",
+    )
+    .expect("write marker");
+
+    let mut analysis = test_artifact();
+    analysis.root = temporary.path().display().to_string();
+    let check = check_report(&analysis, false);
+    let digest = Digest::build(&analysis, &check);
+
+    assert!(digest.integrations.middleman.detected);
 }
 
 #[test]
